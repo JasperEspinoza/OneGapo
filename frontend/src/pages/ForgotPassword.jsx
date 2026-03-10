@@ -1,3 +1,4 @@
+import './ForgotPassword.css';
 import { useState } from 'react';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { Link } from 'react-router-dom';
@@ -19,8 +20,6 @@ export default function ForgotPassword() {
       await sendPasswordResetEmail(auth, email.trim());
       setSuccess(true);
     } catch (err) {
-      // Always show success for auth/user-not-found and auth/invalid-email to
-      // prevent account enumeration (user cannot tell if an address is registered).
       if (
         err.code === 'auth/user-not-found' ||
         err.code === 'auth/invalid-email'

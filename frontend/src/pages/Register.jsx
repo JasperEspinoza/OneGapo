@@ -1,3 +1,4 @@
+import './Register.css';
 import { useState } from 'react';
 import {
   createUserWithEmailAndPassword,

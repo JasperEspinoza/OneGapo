@@ -1,3 +1,4 @@
+import './StaffPanel.css';
 import { useAuth } from '../context/AuthContext';
 
 const PERMISSION_LABELS = {

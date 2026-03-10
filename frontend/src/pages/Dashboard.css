@@ -1,0 +1,113 @@
+/* ==========================================================================
+   Dashboard page styles
+   ========================================================================== */
+
+.dashboard-container {
+  max-width: 56rem;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 2rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+@media (max-width: 639px) {
+  .dashboard-container { padding: 1.5rem 1rem; gap: 1.5rem; }
+}
+
+.dashboard-welcome {
+  font-size: 1.625rem;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+@media (max-width: 480px) {
+  .dashboard-welcome { font-size: 1.375rem; }
+}
+
+.dashboard-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.375rem;
+  font-size: 0.875rem;
+  color: #64748b;
+}
+
+.dashboard-cards {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+@media (min-width: 540px) {
+  .dashboard-cards { grid-template-columns: repeat(2, 1fr); }
+}
+
+.dashboard-card {
+  background-color: #fff;
+  border-radius: 1rem;
+  border: 1px solid #e8ecf0;
+  box-shadow: 0 1px 4px rgba(0,0,0,.05);
+  padding: 1.375rem;
+  transition: box-shadow 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+  cursor: default;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  text-align: left;
+}
+.dashboard-card:hover {
+  box-shadow: 0 4px 16px rgba(0,0,0,.09);
+  border-color: #c7d2e0;
+  transform: translateY(-2px);
+}
+
+.dashboard-card-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: -0.01em;
+}
+.dashboard-card-body {
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: #64748b;
+}
+
+.dashboard-stat-cards {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+}
+@media (min-width: 640px) {
+  .dashboard-stat-cards { grid-template-columns: repeat(4, 1fr); }
+}
+
+.dashboard-stat-card {
+  background-color: #fff;
+  border-radius: 1rem;
+  border: 1px solid #f3f4f6;
+  box-shadow: 0 1px 2px 0 rgba(0,0,0,.05);
+  padding: 1rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.dashboard-stat-value {
+  font-size: 1.875rem;
+  line-height: 2.25rem;
+  font-weight: 700;
+  color: #2563eb;
+}
+
+.dashboard-stat-label {
+  font-size: 0.75rem;
+  line-height: 1rem;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}

@@ -1,13 +1,6 @@
 const admin = require('firebase-admin');
 const path = require('path');
 
-/**
- * Initializes the Firebase Admin SDK using credentials from environment variables.
- *
- * Priority:
- *   1. FIREBASE_SERVICE_ACCOUNT_JSON — raw JSON string (for production environments)
- *   2. FIREBASE_SERVICE_ACCOUNT_PATH — file path to a service account JSON (for local dev)
- */
 function loadServiceAccount() {
   if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
     try {

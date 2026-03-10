@@ -1,3 +1,4 @@
+import './Dashboard.css';
 import { useAuth } from '../context/AuthContext';
 
 export default function Dashboard() {

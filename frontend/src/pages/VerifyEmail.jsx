@@ -1,4 +1,5 @@
-    import { useState, useEffect } from 'react';
+import './VerifyEmail.css';
+import { useState, useEffect } from 'react';
 import { sendEmailVerification } from 'firebase/auth';
 import { useNavigate } from 'react-router-dom';
 import { auth } from '../config/firebase';
@@ -15,15 +16,12 @@ export default function VerifyEmail() {
   useEffect(() => {
     if (!currentUser) return;
 
-    // Staff / admin are provisioned accounts — they never need email verification.
     const isPrivileged = userClaims?.role === 'staff' || userClaims?.role === 'admin';
     if (isPrivileged || currentUser.emailVerified) {
       navigate('/', { replace: true });
       return;
     }
 
-    // Auto-poll every 5 seconds so the page advances as soon as the user clicks
-    // the verification link in their inbox (without needing a manual button press).
     const interval = setInterval(async () => {
       await refreshUser();
       if (auth.currentUser?.emailVerified) {

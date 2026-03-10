@@ -1,13 +1,10 @@
+import './Login.css';
 import { useState } from 'react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { useNavigate, Navigate, Link } from 'react-router-dom';
 import { auth } from '../config/firebase';
 import { useAuth } from '../context/AuthContext';
 
-/**
- * Maps Firebase Auth error codes to user-friendly messages.
- * Deliberately vague for auth/invalid-credential to avoid user enumeration.
- */
 function getErrorMessage(code) {
   switch (code) {
     case 'auth/invalid-credential':
@@ -32,7 +29,6 @@ export default function Login() {
   const [error,    setError]    = useState('');
   const [loading,  setLoading]  = useState(false);
 
-  // Already signed in — redirect away from login page based on role
   if (currentUser) {
     if (userClaims?.role === 'admin') return <Navigate to="/admin" replace />;
     if (userClaims?.role === 'staff') return <Navigate to="/staff" replace />;

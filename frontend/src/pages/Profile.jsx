@@ -1,3 +1,4 @@
+import './Profile.css';
 import { useState, useEffect } from 'react';
 import { updateProfile, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
