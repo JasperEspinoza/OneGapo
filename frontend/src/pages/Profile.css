@@ -6,13 +6,13 @@
   max-width: 40rem;
   margin-left: auto;
   margin-right: auto;
-  padding: 2rem 1.5rem;
+  padding: 0;
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
 }
 @media (max-width: 639px) {
-  .profile-container { padding: 1.5rem 1rem; }
+  .profile-container { padding: 0; }
 }
 
 .profile-card {

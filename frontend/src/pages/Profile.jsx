@@ -3,10 +3,11 @@ import { useState, useEffect } from 'react';
 import { updateProfile, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
+import AppModal from '../components/AppModal';
 import { useAuth } from '../context/AuthContext';
 
 export default function Profile() {
-  const { currentUser, userClaims, refreshUser } = useAuth();
+  const { currentUser, userClaims, accountVerified, refreshUser } = useAuth();
   const role = userClaims?.role;
 
   // Saved (committed) values — what's shown in view mode
@@ -117,8 +118,9 @@ export default function Profile() {
   };
 
   return (
-    <main className="profile-container">
-      <h1 className="page-title">My Profile</h1>
+    <main className="app-page">
+      <div className="profile-container app-page-inner">
+        <h1 className="page-title">My Profile</h1>
 
       {/* ── Account details ─────────────────────────────────── */}
       <div className="profile-card">
@@ -131,7 +133,7 @@ export default function Profile() {
 
         <div className="profile-row">
           <span className="profile-label">Email status</span>
-          {currentUser?.emailVerified
+          {accountVerified
             ? <span className="badge badge-verified">Verified</span>
             : <span className="badge badge-unverified">Not verified</span>
           }
@@ -154,103 +156,40 @@ export default function Profile() {
       </div>
 
       {/* ── Personal information ─────────────────────────────── */}
-      <div className="profile-card">
-        <div className="profile-card-header">
-          <h2 className="profile-card-title">Personal Information</h2>
-          {!loadingProfile && !editMode && (
-            <button onClick={handleEdit} className="btn-outline btn-sm">
-              Edit profile
-            </button>
+        <div className="profile-card">
+          <div className="profile-card-header">
+            <h2 className="profile-card-title">Personal Information</h2>
+            {!loadingProfile && (
+              <button onClick={handleEdit} className="btn-outline btn-sm">
+                Edit details
+              </button>
+            )}
+          </div>
+
+          {saveSuccess && <div role="status" className="auth-success mb-3">Profile saved successfully.</div>}
+
+          {loadingProfile ? (
+            <p className="text-sm text-gray-400">Loading…</p>
+          ) : (
+            <div className="profile-view">
+              <div className="profile-row">
+                <span className="profile-label">Full name</span>
+                <span className="profile-value">{saved.fullName || <span className="text-gray-400">—</span>}</span>
+              </div>
+              <div className="profile-row">
+                <span className="profile-label">Phone number</span>
+                <span className="profile-value">{saved.phone || <span className="text-gray-400">—</span>}</span>
+              </div>
+              <div className="profile-row">
+                <span className="profile-label">Home address</span>
+                <span className="profile-value">{saved.address || <span className="text-gray-400">—</span>}</span>
+              </div>
+            </div>
           )}
         </div>
 
-        {saveError   && <div role="alert"  className="auth-error   mb-3">{saveError}</div>}
-        {saveSuccess && <div role="status" className="auth-success mb-3">Profile saved successfully.</div>}
-
-        {loadingProfile ? (
-          <p className="text-sm text-gray-400">Loading…</p>
-        ) : editMode ? (
-          /* ── Edit form ── */
-          <form onSubmit={handleSaveProfile} className="auth-form">
-            <div>
-              <label htmlFor="fullName" className="form-label">Full name</label>
-              <input
-                id="fullName"
-                type="text"
-                value={draft.fullName}
-                onChange={(e) => setDraft((d) => ({ ...d, fullName: e.target.value }))}
-                className="form-input"
-                placeholder="Your full name"
-                disabled={saving}
-                autoFocus
-              />
-            </div>
-
-            <div>
-              <label htmlFor="phone" className="form-label">Phone number</label>
-              <input
-                id="phone"
-                type="tel"
-                value={draft.phone}
-                onChange={(e) => setDraft((d) => ({ ...d, phone: e.target.value }))}
-                className="form-input"
-                placeholder="+63 900 000 0000"
-                disabled={saving}
-              />
-            </div>
-
-            <div>
-              <label htmlFor="address" className="form-label">Home address</label>
-              <input
-                id="address"
-                type="text"
-                value={draft.address}
-                onChange={(e) => setDraft((d) => ({ ...d, address: e.target.value }))}
-                className="form-input"
-                placeholder="House / Street / Barangay"
-                disabled={saving}
-              />
-            </div>
-
-            <div className="profile-form-actions">
-              <button
-                type="submit"
-                disabled={saving || !draft.fullName.trim()}
-                className="btn-primary"
-              >
-                {saving ? 'Saving…' : 'Save changes'}
-              </button>
-              <button
-                type="button"
-                onClick={handleCancel}
-                disabled={saving}
-                className="btn-outline"
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
-        ) : (
-          /* ── View mode ── */
-          <div className="profile-view">
-            <div className="profile-row">
-              <span className="profile-label">Full name</span>
-              <span className="profile-value">{saved.fullName || <span className="text-gray-400">—</span>}</span>
-            </div>
-            <div className="profile-row">
-              <span className="profile-label">Phone number</span>
-              <span className="profile-value">{saved.phone || <span className="text-gray-400">—</span>}</span>
-            </div>
-            <div className="profile-row">
-              <span className="profile-label">Home address</span>
-              <span className="profile-value">{saved.address || <span className="text-gray-400">—</span>}</span>
-            </div>
-          </div>
-        )}
-      </div>
-
       {/* ── Password / Account recovery ──────────────────────── */}
-      <div className="profile-card">
+        <div className="profile-card">
         <h2 className="profile-card-title">Password &amp; Account Recovery</h2>
 
         {resetError && <div role="alert"  className="auth-error   mb-3">{resetError}</div>}
@@ -272,6 +211,73 @@ export default function Profile() {
         >
           {resetLoading ? 'Sending…' : 'Send password reset email'}
         </button>
+        </div>
+
+        {editMode && (
+          <AppModal title="Edit Personal Information" titleId="profile-edit-title" onClose={handleCancel}>
+            {saveError && <div role="alert" className="auth-error mb-3">{saveError}</div>}
+
+            <form onSubmit={handleSaveProfile} className="auth-form">
+              <div>
+                <label htmlFor="fullName" className="form-label">Full name</label>
+                <input
+                  id="fullName"
+                  type="text"
+                  value={draft.fullName}
+                  onChange={(e) => setDraft((d) => ({ ...d, fullName: e.target.value }))}
+                  className="form-input"
+                  placeholder="Your full name"
+                  disabled={saving}
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label htmlFor="phone" className="form-label">Phone number</label>
+                <input
+                  id="phone"
+                  type="tel"
+                  value={draft.phone}
+                  onChange={(e) => setDraft((d) => ({ ...d, phone: e.target.value }))}
+                  className="form-input"
+                  placeholder="+63 900 000 0000"
+                  disabled={saving}
+                />
+              </div>
+
+              <div>
+                <label htmlFor="address" className="form-label">Home address</label>
+                <input
+                  id="address"
+                  type="text"
+                  value={draft.address}
+                  onChange={(e) => setDraft((d) => ({ ...d, address: e.target.value }))}
+                  className="form-input"
+                  placeholder="House / Street / Barangay"
+                  disabled={saving}
+                />
+              </div>
+
+              <div className="profile-form-actions">
+                <button
+                  type="submit"
+                  disabled={saving || !draft.fullName.trim()}
+                  className="btn-primary"
+                >
+                  {saving ? 'Saving…' : 'Save changes'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCancel}
+                  disabled={saving}
+                  className="btn-outline"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </AppModal>
+        )}
       </div>
     </main>
   );

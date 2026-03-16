@@ -6,13 +6,53 @@
   max-width: 56rem;
   margin-left: auto;
   margin-right: auto;
-  padding: 2rem 1.5rem;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 2rem;
 }
 @media (max-width: 639px) {
-  .staff-container { padding: 1.5rem 1rem; }
+  .staff-container {
+    padding: 0;
+    gap: 1.5rem;
+  }
+}
+
+.staff-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.staff-page-subtitle {
+  margin-top: 0.5rem;
+  max-width: 42rem;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: #64748b;
+}
+
+.staff-page-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.staff-page-location {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  border: 1px solid #dbe3ef;
+  background-color: rgba(255, 255, 255, 0.78);
+  color: #334155;
+  font-size: 0.8125rem;
+  font-weight: 600;
 }
 
 .staff-features {
@@ -29,7 +69,7 @@
   border-radius: 1rem;
   border: 1px solid #e8ecf0;
   box-shadow: 0 1px 4px rgba(0,0,0,.05);
-  padding: 1.5rem;
+  padding: 1.375rem;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
@@ -38,11 +78,33 @@
   .staff-access-card { padding: 1.25rem 1rem; }
 }
 
+.staff-section-card {
+  gap: 1rem;
+}
+
 .staff-access-title {
   font-size: 1rem;
   font-weight: 700;
   color: #0f172a;
   letter-spacing: -0.01em;
+}
+
+.staff-help-text {
+  color: #64748b;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  margin-bottom: 1rem;
+}
+
+.staff-create-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.staff-submit-btn {
+  width: auto;
+  align-self: flex-start;
 }
 
 .staff-access-rows > * + * {
@@ -88,6 +150,19 @@
   min-width: 0;
 }
 
+.staff-area-name {
+  font-weight: 600;
+}
+
+.staff-entity-badge {
+  margin-left: 0.5rem;
+}
+
+.staff-empty-text {
+  color: #9ca3af;
+  font-style: italic;
+}
+
 .staff-perm-badge {
   display: inline-block;
   font-size: 0.75rem;
@@ -98,4 +173,99 @@
   border-radius: 9999px;
   padding: 0.125rem 0.625rem;
   font-weight: 500;
+}
+
+/* Staff table */
+.staff-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.staff-table-wrap {
+  overflow-x: auto;
+}
+
+.staff-table th,
+.staff-table td {
+  text-align: left;
+  padding: 0.625rem 0.75rem;
+  border-bottom: 1px solid #e8ecf0;
+}
+.staff-table th {
+  font-weight: 600;
+  color: #475569;
+  background: #f8fafc;
+  font-size: 0.8125rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.staff-table tbody tr:hover {
+  background: #f8fafc;
+}
+
+.staff-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.staff-list-title {
+  margin: 0;
+}
+
+.staff-refresh-btn {
+  width: auto;
+  padding: 0.4rem 1rem;
+  font-size: 0.85rem;
+}
+
+.staff-status-text {
+  color: #94a3b8;
+}
+
+.staff-missing-value {
+  color: #94a3b8;
+}
+
+.staff-feature-card {
+  background-color: #fff;
+  border-radius: 1rem;
+  border: 1px solid #e8ecf0;
+  box-shadow: 0 1px 4px rgba(0,0,0,.05);
+  padding: 1.375rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  text-align: left;
+  transition: box-shadow 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+
+.staff-feature-card:hover {
+  box-shadow: 0 4px 16px rgba(0,0,0,.09);
+  border-color: #c7d2e0;
+  transform: translateY(-2px);
+}
+
+.staff-feature-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: -0.01em;
+}
+
+.staff-feature-title-muted {
+  color: #9ca3af;
+}
+
+.staff-feature-body {
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: #64748b;
+}
+
+.staff-feature-body strong {
+  color: #0f172a;
 }

@@ -6,25 +6,28 @@ import { auth } from '../config/firebase';
 
 export default function ForgotPassword() {
   const [email,   setEmail]   = useState('');
+  const [submittedEmail, setSubmittedEmail] = useState('');
   const [success, setSuccess] = useState(false);
   const [error,   setError]   = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const trimmedEmail = email.trim();
+
     setError('');
     setSuccess(false);
     setLoading(true);
+    setSubmittedEmail(trimmedEmail);
 
     try {
-      await sendPasswordResetEmail(auth, email.trim());
+      await sendPasswordResetEmail(auth, trimmedEmail);
       setSuccess(true);
     } catch (err) {
-      if (
-        err.code === 'auth/user-not-found' ||
-        err.code === 'auth/invalid-email'
-      ) {
+      if (err.code === 'auth/user-not-found') {
         setSuccess(true);
+      } else if (err.code === 'auth/invalid-email') {
+        setError('Enter a valid email address.');
       } else if (err.code === 'auth/too-many-requests') {
         setError('Too many requests. Please wait a few minutes and try again.');
       } else {
@@ -49,8 +52,8 @@ export default function ForgotPassword() {
 
         {success ? (
           <div role="status" className="auth-success">
-            If an account exists for <strong>{email}</strong>, a password reset
-            link has been sent. Check your inbox (and spam folder).
+            If an account exists for <strong>{submittedEmail}</strong>, a password
+            reset link should arrive shortly. Check your inbox and spam folder.
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="auth-form" noValidate>
@@ -71,7 +74,7 @@ export default function ForgotPassword() {
 
             <button
               type="submit"
-              disabled={loading || !email}
+              disabled={loading || !email.trim()}
               className="btn-primary"
             >
               {loading ? 'Sending…' : 'Send reset link'}

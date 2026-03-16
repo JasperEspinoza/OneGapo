@@ -2,8 +2,10 @@ import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Navbar from './Navbar';
 
-function ProtectedRoute({ allowedRoles, requireVerified = true, showNav = true }) {
-  const { currentUser, userClaims, loading } = useAuth();
+const PRIMARY_ADMIN_EMAIL = 'onegapo2026@gmail.com';
+
+function ProtectedRoute({ allowedRoles, requireVerified = true, showNav = true, requirePrimaryAdmin = false }) {
+  const { currentUser, userClaims, accountVerified, loading } = useAuth();
 
   if (loading) {
     return (
@@ -19,12 +21,16 @@ function ProtectedRoute({ allowedRoles, requireVerified = true, showNav = true }
 
   if (requireVerified) {
     const isPrivileged = userClaims?.role === 'staff' || userClaims?.role === 'admin';
-    if (!isPrivileged && !currentUser.emailVerified) {
+    if (!isPrivileged && !accountVerified) {
       return <Navigate to="/verify-email" replace />;
     }
   }
 
   if (allowedRoles && !allowedRoles.includes(userClaims?.role)) {
+    return <Navigate to="/unauthorized" replace />;
+  }
+
+  if (requirePrimaryAdmin && currentUser?.email?.toLowerCase() !== PRIMARY_ADMIN_EMAIL) {
     return <Navigate to="/unauthorized" replace />;
   }
 

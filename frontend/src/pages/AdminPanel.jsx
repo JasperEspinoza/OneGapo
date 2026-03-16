@@ -1,6 +1,7 @@
 import './AdminPanel.css';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import AppModal from '../components/AppModal';
 import { useAuth } from '../context/AuthContext';
 
 const PERMISSION_OPTIONS = [
@@ -70,7 +71,9 @@ const ICONS = {
 
 const NAV_ITEMS = [
   { id: 'dashboard', label: 'Dashboard',  icon: 'dashboard' },
+  { id: 'reports',   label: 'Reports',    icon: 'report' },
   { id: 'branches',  label: 'Branches',   icon: 'branches' },
+  { id: 'roles',     label: 'Roles',      icon: 'admin_panel_settings' },
   { id: 'accounts',  label: 'Staff',      icon: 'accounts' },
   { id: 'users',     label: 'Users',      icon: 'users' },
   { id: 'analytics', label: 'Analytics',  icon: 'analytics' },
@@ -101,24 +104,46 @@ export default function AdminPanel() {
   const [branchError,    setBranchError]    = useState('');
   const [branchSuccess,  setBranchSuccess]  = useState('');
   const [newBranchName,  setNewBranchName]  = useState('');
-  const [newBranchType,  setNewBranchType]  = useState('barangay');
+  const [newBranchType,  setNewBranchType]  = useState('public');
   const [creatingBranch, setCreatingBranch] = useState(false);
+  const [branchStaffEmail, setBranchStaffEmail] = useState('');
+
+  // ── Branch edit state ───────────────────────────────────
+  const [editingBranch,    setEditingBranch]    = useState(null);
+  const [editBranchName,   setEditBranchName]   = useState('');
+  const [editBranchType,   setEditBranchType]   = useState('public');
+  const [editBranchLoading, setEditBranchLoading] = useState(false);
+  const [editBranchError,  setEditBranchError]  = useState('');
 
   // ── Staff account state ─────────────────────────────────
   const [staffEmail,    setStaffEmail]    = useState('');
   const [staffPassword, setStaffPassword] = useState('');
   const [staffRole,     setStaffRole]     = useState('staff');
   const [staffBranchId, setStaffBranchId] = useState('');
-  const [staffPerms,    setStaffPerms]    = useState([]);
+  const [staffCustomRoleId, setStaffCustomRoleId] = useState('');
   const [staffLoading,  setStaffLoading]  = useState(false);
   const [staffError,    setStaffError]    = useState('');
   const [staffSuccess,  setStaffSuccess]  = useState('');
+
+  // ── Roles state ─────────────────────────────────────────
+  const [roles,           setRoles]           = useState([]);
+  const [rolesLoading,    setRolesLoading]    = useState(false);
+  const [rolesError,      setRolesError]      = useState('');
+  const [rolesSuccess,    setRolesSuccess]    = useState('');
+  const [newRoleName,     setNewRoleName]     = useState('');
+  const [newRolePerms,    setNewRolePerms]    = useState([]);
+  const [creatingRole,    setCreatingRole]    = useState(false);
+  const [editingRole,     setEditingRole]     = useState(null);
+  const [editRoleName,    setEditRoleName]    = useState('');
+  const [editRolePerms,   setEditRolePerms]   = useState([]);
+  const [editRoleLoading, setEditRoleLoading] = useState(false);
+  const [editRoleError,   setEditRoleError]   = useState('');
 
   // ── Edit-staff state ────────────────────────────────────
   const [editingUser,  setEditingUser]  = useState(null);
   const [editRole,     setEditRole]     = useState('staff');
   const [editBranchId, setEditBranchId] = useState('');
-  const [editPerms,    setEditPerms]    = useState([]);
+  const [editCustomRoleId, setEditCustomRoleId] = useState('');
   const [editLoading,  setEditLoading]  = useState(false);
   const [editError,    setEditError]    = useState('');
   const [editSuccess,  setEditSuccess]  = useState('');
@@ -127,6 +152,10 @@ export default function AdminPanel() {
   const [users,        setUsers]        = useState([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const [usersError,   setUsersError]   = useState('');
+
+  // ── Users filter state ───────────────────────────────────
+  const [filterRole,   setFilterRole]   = useState('all');
+  const [filterBranch, setFilterBranch] = useState('all');
 
   // ── UI state ────────────────────────────────────────────
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -161,21 +190,52 @@ export default function AdminPanel() {
     }
   }, [api]);
 
-  useEffect(() => { loadBranches(); }, [loadBranches]);
+  const loadRoles = useCallback(async () => {
+    setRolesLoading(true);
+    setRolesError('');
+    try {
+      const res  = await api('/api/admin/roles');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to load roles.');
+      setRoles(data);
+    } catch (err) {
+      setRolesError(err.message);
+    } finally {
+      setRolesLoading(false);
+    }
+  }, [api]);
+
+  useEffect(() => { loadBranches(); loadRoles(); }, [loadBranches, loadRoles]);
 
   useEffect(() => {
-    if (['dashboard', 'accounts', 'users', 'analytics'].includes(activeSection)) loadUsers();
-  }, [activeSection, loadUsers]);
+    if (['dashboard', 'accounts', 'users', 'analytics', 'branches'].includes(activeSection)) loadUsers();
+    if (['roles', 'accounts'].includes(activeSection)) loadRoles();
+  }, [activeSection, loadUsers, loadRoles]);
 
   const stats = useMemo(() => ({
     totalBranches:      branches.length,
-    totalBarangays:     branches.filter((b) => b.type === 'barangay').length,
-    totalBranchOffices: branches.filter((b) => b.type === 'branch').length,
+    totalPublic:        branches.filter((b) => b.type === 'public').length,
+    totalPrivate:       branches.filter((b) => b.type === 'private').length,
     totalUsers:         users.length,
     totalStaff:         users.filter((u) => u.role === 'staff').length,
     totalAdmins:        users.filter((u) => u.role === 'admin').length,
     totalResidents:     users.filter((u) => u.role === 'resident').length,
   }), [branches, users]);
+
+  const reportOperators = useMemo(
+    () => users.filter((u) => u.role === 'staff' || u.role === 'admin'),
+    [users]
+  );
+
+  const reportEnabledUsers = useMemo(
+    () => reportOperators.filter((u) => u.role === 'admin' || (u.permissions || []).some((perm) => perm.includes('reports'))),
+    [reportOperators]
+  );
+
+  const announcementPublishers = useMemo(
+    () => reportOperators.filter((u) => u.role === 'admin' || (u.permissions || []).includes('create_announcements')),
+    [reportOperators]
+  );
 
   // ── Handlers ────────────────────────────────────────────
   const handleCreateBranch = async (e) => {
@@ -186,14 +246,21 @@ export default function AdminPanel() {
     try {
       const res  = await api('/api/admin/branches', {
         method: 'POST',
-        body: JSON.stringify({ name: newBranchName.trim(), type: newBranchType }),
+        body: JSON.stringify({ name: newBranchName.trim(), type: newBranchType, staffEmail: branchStaffEmail.trim() || undefined }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to create branch.');
-      setBranchSuccess(`"${data.name}" created successfully.`);
+      let msg = `"${data.name}" created successfully.`;
+      if (data.staffCreated) {
+        msg += ` Staff account created for ${data.staffCreated.email}. Verification and password setup emails were sent via Brevo.`;
+      }
+      setBranchSuccess(msg);
       setNewBranchName('');
-      setNewBranchType('barangay');
+      setNewBranchType('public');
+      setBranchStaffEmail('');
       setBranches((prev) => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)));
+      // Reload users to reflect branch assignments
+      loadUsers();
     } catch (err) {
       setBranchError(err.message);
     } finally {
@@ -216,14 +283,47 @@ export default function AdminPanel() {
     }
   };
 
-  const togglePerm     = (p) => setStaffPerms((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]);
-  const toggleEditPerm = (p) => setEditPerms ((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]);
+  const toggleNewRolePerm  = (p) => setNewRolePerms((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]);
+  const toggleEditRolePerm = (p) => setEditRolePerms((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]);
+
+  const handleBranchEditStart = (branch) => {
+    setEditingBranch(branch);
+    setEditBranchName(branch.name);
+    setEditBranchType(branch.type);
+    setEditBranchError('');
+  };
+
+  const handleBranchEditCancel = () => setEditingBranch(null);
+
+  const handleUpdateBranch = async (e) => {
+    e.preventDefault();
+    setEditBranchError('');
+    setEditBranchLoading(true);
+    try {
+      const res = await api(`/api/admin/branches/${editingBranch.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ name: editBranchName.trim(), type: editBranchType }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to update branch.');
+      setBranches((prev) =>
+        prev.map((b) =>
+          b.id === editingBranch.id ? { ...b, name: editBranchName.trim(), type: editBranchType } : b
+        ).sort((a, b) => a.name.localeCompare(b.name))
+      );
+      setEditingBranch(null);
+    } catch (err) {
+      setEditBranchError(err.message);
+    } finally {
+      setEditBranchLoading(false);
+    }
+  };
 
   const handleEditStart = (user) => {
     setEditingUser(user);
     setEditRole(user.role);
     setEditBranchId(user.branchId || '');
-    setEditPerms(user.permissions || []);
+    setEditCustomRoleId(user.customRoleId || '');
     setEditError('');
     setEditSuccess('');
   };
@@ -238,15 +338,16 @@ export default function AdminPanel() {
     try {
       const res  = await api(`/api/admin/users/${editingUser.uid}`, {
         method: 'PATCH',
-        body: JSON.stringify({ role: editRole, branchId: editBranchId, permissions: editPerms }),
+        body: JSON.stringify({ role: editRole, branchId: editBranchId, customRoleId: editCustomRoleId || null }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to update account.');
       const branch = branches.find((b) => b.id === editBranchId);
+      const customRole = roles.find((r) => r.id === editCustomRoleId);
       setUsers((prev) =>
         prev.map((u) =>
           u.uid === editingUser.uid
-            ? { ...u, role: editRole, branchId: editBranchId, branchName: branch?.name || u.branchName, entityType: branch?.type || u.entityType, permissions: editPerms }
+            ? { ...u, role: editRole, branchId: editBranchId, branchName: branch?.name || u.branchName, entityType: branch?.type || u.entityType, customRoleId: editCustomRoleId || null, customRoleName: customRole?.name || null, permissions: customRole?.permissions || [] }
             : u
         )
       );
@@ -274,6 +375,18 @@ export default function AdminPanel() {
     }
   };
 
+  const handleResendVerification = async (user) => {
+    try {
+      const res = await api(`/api/admin/users/${user.uid}/resend-verification`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to resend verification email.');
+      setUsersError('');
+      setStaffSuccess(data.message || `Verification email resent to ${user.email}.`);
+    } catch (err) {
+      setUsersError(err.message);
+    }
+  };
+
   const handleCreateStaff = async (e) => {
     e.preventDefault();
     setStaffError('');
@@ -282,20 +395,93 @@ export default function AdminPanel() {
     try {
       const res  = await api('/api/admin/create-staff', {
         method: 'POST',
-        body: JSON.stringify({ email: staffEmail.trim(), password: staffPassword, role: staffRole, branchId: staffBranchId, permissions: staffPerms }),
+        body: JSON.stringify({ email: staffEmail.trim(), password: staffPassword, role: staffRole, branchId: staffBranchId, customRoleId: staffCustomRoleId || undefined }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to create account.');
-      setStaffSuccess(`Account created for ${data.email} — ${data.role} at ${data.location}.`);
+      setStaffSuccess(data.message || `Account created for ${data.email} — ${data.role} at ${data.location}. Verification email sent via Brevo.`);
       setStaffEmail('');
       setStaffPassword('');
       setStaffRole('staff');
       setStaffBranchId('');
-      setStaffPerms([]);
+      setStaffCustomRoleId('');
     } catch (err) {
       setStaffError(err.message);
     } finally {
       setStaffLoading(false);
+    }
+  };
+
+  // ── Role CRUD handlers ──────────────────────────────────
+  const handleCreateRole = async (e) => {
+    e.preventDefault();
+    setRolesError('');
+    setRolesSuccess('');
+    setCreatingRole(true);
+    try {
+      const res = await api('/api/admin/roles', {
+        method: 'POST',
+        body: JSON.stringify({ name: newRoleName.trim(), permissions: newRolePerms }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to create role.');
+      setRolesSuccess(`Role "${data.name}" created.`);
+      setNewRoleName('');
+      setNewRolePerms([]);
+      setRoles((prev) => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)));
+    } catch (err) {
+      setRolesError(err.message);
+    } finally {
+      setCreatingRole(false);
+    }
+  };
+
+  const handleRoleEditStart = (role) => {
+    setEditingRole(role);
+    setEditRoleName(role.name);
+    setEditRolePerms(role.permissions || []);
+    setEditRoleError('');
+  };
+
+  const handleRoleEditCancel = () => setEditingRole(null);
+
+  const handleUpdateRole = async (e) => {
+    e.preventDefault();
+    setEditRoleError('');
+    setEditRoleLoading(true);
+    try {
+      const res = await api(`/api/admin/roles/${editingRole.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ name: editRoleName.trim(), permissions: editRolePerms }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to update role.');
+      setRoles((prev) =>
+        prev.map((r) =>
+          r.id === editingRole.id ? { ...r, name: editRoleName.trim(), permissions: editRolePerms } : r
+        ).sort((a, b) => a.name.localeCompare(b.name))
+      );
+      setEditingRole(null);
+    } catch (err) {
+      setEditRoleError(err.message);
+    } finally {
+      setEditRoleLoading(false);
+    }
+  };
+
+  const handleDeleteRole = async (role) => {
+    if (!window.confirm(`Delete role "${role.name}"? Staff with this role will retain current permissions until updated.`)) return;
+    setRolesError('');
+    try {
+      const res = await api(`/api/admin/roles/${role.id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const d = await res.json();
+        throw new Error(d.error || 'Failed to delete role.');
+      }
+      setRoles((prev) => prev.filter((r) => r.id !== role.id));
+      if (editingRole?.id === role.id) setEditingRole(null);
+    } catch (err) {
+      setRolesError(err.message);
     }
   };
 
@@ -306,14 +492,23 @@ export default function AdminPanel() {
 
   // Search filtering
   const filteredUsers = useMemo(() => {
-    if (!searchQuery) return users;
-    const q = searchQuery.toLowerCase();
-    return users.filter((u) =>
-      u.email?.toLowerCase().includes(q) ||
-      u.fullName?.toLowerCase().includes(q) ||
-      u.role?.toLowerCase().includes(q)
-    );
-  }, [users, searchQuery]);
+    let result = users;
+    if (filterRole !== 'all') {
+      result = result.filter((u) => u.role === filterRole);
+    }
+    if (filterBranch !== 'all') {
+      result = result.filter((u) => u.branchId === filterBranch);
+    }
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter((u) =>
+        u.email?.toLowerCase().includes(q) ||
+        u.fullName?.toLowerCase().includes(q) ||
+        u.role?.toLowerCase().includes(q)
+      );
+    }
+    return result;
+  }, [users, searchQuery, filterRole, filterBranch]);
 
   const filteredBranches = useMemo(() => {
     if (!searchQuery) return branches;
@@ -358,10 +553,6 @@ export default function AdminPanel() {
               <span>{item.label}</span>
             </button>
           ))}
-          <Link to="/staff" className="ap-nav-item" onClick={() => setSidebarOpen(false)}>
-            <span className="ap-nav-icon">{ICONS.report}</span>
-            <span>Reports</span>
-          </Link>
         </nav>
 
         <div className="ap-sidebar-footer">
@@ -457,11 +648,11 @@ export default function AdminPanel() {
                     <div className="ap-stat-icon ap-stat-icon-amber">
                       {ICONS.branches}
                     </div>
-                    <span className="ap-stat-badge ap-stat-badge-amber">{stats.totalBranchOffices} offices</span>
+                    <span className="ap-stat-badge ap-stat-badge-amber">{stats.totalPrivate} private</span>
                   </div>
                   <p className="ap-stat-label">Total Branches</p>
                   <h3 className="ap-stat-value">{branchLoading ? '…' : stats.totalBranches}</h3>
-                  <p className="ap-stat-meta">{stats.totalBarangays} barangay{stats.totalBarangays !== 1 ? 's' : ''}</p>
+                  <p className="ap-stat-meta">{stats.totalPublic} public · {stats.totalPrivate} private</p>
                 </div>
 
                 <div className="ap-stat-card">
@@ -481,7 +672,7 @@ export default function AdminPanel() {
                     <div className="ap-stat-icon ap-stat-icon-purple">
                       {ICONS.domain}
                     </div>
-                    <span className="ap-stat-badge ap-stat-badge-purple">{stats.totalBarangays} barangays</span>
+                    <span className="ap-stat-badge ap-stat-badge-purple">{stats.totalPublic} public</span>
                   </div>
                   <p className="ap-stat-label">Coverage</p>
                   <h3 className="ap-stat-value">{branchLoading ? '…' : stats.totalBranches}</h3>
@@ -603,12 +794,149 @@ export default function AdminPanel() {
                     <p className="ap-quick-title">View All Users</p>
                     <p className="ap-quick-body">{stats.totalUsers} registered user{stats.totalUsers !== 1 ? 's' : ''}</p>
                   </button>
-                  <Link to="/staff" className="ap-quick-card">
+                  <button className="ap-quick-card" onClick={() => setActiveSection('reports')}>
                     <span className="ap-quick-icon">{ICONS.report}</span>
                     <p className="ap-quick-title">Reports Inbox</p>
                     <p className="ap-quick-body">Review and act on incoming citizen reports</p>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ══════════════════════════════════════
+              REPORTS
+          ══════════════════════════════════════ */}
+          {activeSection === 'reports' && (
+            <div className="ap-section">
+              <div className="ap-section-heading">
+                <div>
+                  <h2 className="ap-section-title">Reports</h2>
+                  <p className="ap-section-sub">Primary admin oversight for report operations, coverage, and staff readiness</p>
+                </div>
+                <div className="ap-section-actions">
+                  <Link to="/staff" className="ap-btn-outline ap-btn-icon-left">
+                    {ICONS.report}
+                    Open staff view
                   </Link>
                 </div>
+              </div>
+
+              <div className="ap-stats-grid">
+                <div className="ap-stat-card">
+                  <div className="ap-stat-top">
+                    <div className="ap-stat-icon ap-stat-icon-blue">
+                      {ICONS.report}
+                    </div>
+                    <span className="ap-stat-badge ap-stat-badge-green">{reportEnabledUsers.length} enabled</span>
+                  </div>
+                  <p className="ap-stat-label">Report Operators</p>
+                  <h3 className="ap-stat-value">{usersLoading ? '…' : reportEnabledUsers.length}</h3>
+                  <p className="ap-stat-meta">Staff and admins with report access</p>
+                </div>
+
+                <div className="ap-stat-card">
+                  <div className="ap-stat-top">
+                    <div className="ap-stat-icon ap-stat-icon-amber">
+                      {ICONS.branches}
+                    </div>
+                    <span className="ap-stat-badge ap-stat-badge-amber">{stats.totalBranches} branches</span>
+                  </div>
+                  <p className="ap-stat-label">Coverage Areas</p>
+                  <h3 className="ap-stat-value">{branchLoading ? '…' : stats.totalBranches}</h3>
+                  <p className="ap-stat-meta">{stats.totalPublic} public · {stats.totalPrivate} private</p>
+                </div>
+
+                <div className="ap-stat-card">
+                  <div className="ap-stat-top">
+                    <div className="ap-stat-icon ap-stat-icon-purple">
+                      {ICONS.notifications}
+                    </div>
+                    <span className="ap-stat-badge ap-stat-badge-purple">{announcementPublishers.length} publishers</span>
+                  </div>
+                  <p className="ap-stat-label">Announcement Access</p>
+                  <h3 className="ap-stat-value">{usersLoading ? '…' : announcementPublishers.length}</h3>
+                  <p className="ap-stat-meta">Users who can post updates</p>
+                </div>
+
+                <div className="ap-stat-card">
+                  <div className="ap-stat-top">
+                    <div className="ap-stat-icon ap-stat-icon-emerald">
+                      {ICONS.people}
+                    </div>
+                    <span className="ap-stat-badge ap-stat-badge-green">All access</span>
+                  </div>
+                  <p className="ap-stat-label">Primary Admin</p>
+                  <h3 className="ap-stat-value">1</h3>
+                  <p className="ap-stat-meta">OneGapo master account oversight</p>
+                </div>
+              </div>
+
+              <div className="ap-card">
+                <div className="ap-card-header">
+                  <div>
+                    <h3 className="ap-card-title">Reports Operations Overview</h3>
+                    <p className="ap-card-sub">The primary admin account has full access to all report workflows across every branch.</p>
+                  </div>
+                </div>
+                <div className="ap-heatmap">
+                  <div className="ap-heatmap-placeholder">
+                    <span className="ap-heatmap-icon">{ICONS.map}</span>
+                    <p>Connect the reports API to display live incident volume and branch activity here.</p>
+                  </div>
+                  <div className="ap-blob ap-blob-red-lg"  style={{ top: '25%', left: '33%' }} />
+                  <div className="ap-blob ap-blob-red-md"  style={{ top: '50%', left: '50%' }} />
+                  <div className="ap-blob ap-blob-blue-md" style={{ bottom: '25%', right: '25%' }} />
+                  <div className="ap-pin ap-pin-red"  style={{ top: '25%', left: '33%' }} />
+                  <div className="ap-pin ap-pin-red"  style={{ top: '52%', left: '48%' }} />
+                  <div className="ap-pin ap-pin-blue" style={{ bottom: '25%', right: '25%' }} />
+                </div>
+              </div>
+
+              <div className="ap-card">
+                <div className="ap-card-header">
+                  <h3 className="ap-card-title">Report-Capable Users</h3>
+                  <button onClick={loadUsers} disabled={usersLoading} className="ap-btn-outline ap-btn-sm">
+                    {usersLoading ? 'Loading…' : 'Refresh'}
+                  </button>
+                </div>
+                {usersLoading ? (
+                  <p className="ap-loading">Loading…</p>
+                ) : reportOperators.length === 0 ? (
+                  <p className="ap-empty">No report-capable users found.</p>
+                ) : (
+                  <div className="ap-table-wrap">
+                    <table className="ap-table">
+                      <thead>
+                        <tr>
+                          <th>Email</th>
+                          <th>Role</th>
+                          <th>Branch</th>
+                          <th>Assigned Role</th>
+                          <th>Report Access</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {reportOperators.map((user) => {
+                          const canViewReports = user.role === 'admin' || (user.permissions || []).some((perm) => perm.includes('reports'));
+                          return (
+                            <tr key={user.uid}>
+                              <td>{user.email}</td>
+                              <td><span className={`badge badge-${user.role}`}>{user.role}</span></td>
+                              <td>{user.branchName || <span className="ap-muted">All branches</span>}</td>
+                              <td>{user.customRoleName || <span className="ap-muted">—</span>}</td>
+                              <td>
+                                <span className={`badge ${canViewReports ? 'badge-verified' : 'badge-unverified'}`}>
+                                  {canViewReports ? 'Enabled' : 'Not enabled'}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -620,8 +948,8 @@ export default function AdminPanel() {
             <div className="ap-section">
               <div className="ap-section-heading">
                 <div>
-                  <h2 className="ap-section-title">Branches &amp; Barangays</h2>
-                  <p className="ap-section-sub">Manage city branch offices and barangay locations</p>
+                  <h2 className="ap-section-title">Branches</h2>
+                  <p className="ap-section-sub">Manage public and private branch locations</p>
                 </div>
               </div>
 
@@ -653,10 +981,23 @@ export default function AdminPanel() {
                         className="form-select"
                         disabled={creatingBranch}
                       >
-                        <option value="barangay">Barangay</option>
-                        <option value="branch">Branch Office</option>
+                        <option value="public">Public</option>
+                        <option value="private">Private</option>
                       </select>
                     </div>
+                  </div>
+                  <div>
+                    <label htmlFor="branch-staff-email" className="form-label">Staff email (optional)</label>
+                    <input
+                      id="branch-staff-email"
+                      type="email"
+                      value={branchStaffEmail}
+                      onChange={(e) => setBranchStaffEmail(e.target.value)}
+                      className="form-input"
+                      placeholder="staff@onegapo.gov.ph"
+                      disabled={creatingBranch}
+                    />
+                    <p className="ap-field-hint">If provided, a staff account will be created and a password-reset email generated.</p>
                   </div>
                   <button
                     type="submit"
@@ -699,9 +1040,214 @@ export default function AdminPanel() {
                               <td><span className={`badge badge-entity-${b.type}`}>{b.type}</span></td>
                               <td>{count > 0 ? count : <span className="ap-muted">None</span>}</td>
                               <td className="ap-table-actions">
-                                <button onClick={() => handleDeleteBranch(b)} className="ap-btn-danger ap-btn-sm">
-                                  Delete
-                                </button>
+                                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                  <button onClick={() => handleBranchEditStart(b)} className="ap-btn-outline ap-btn-sm">Edit</button>
+                                  <button onClick={() => handleDeleteBranch(b)} className="ap-btn-danger ap-btn-sm">Delete</button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {editingBranch && (
+                <AppModal title={`Edit Branch - ${editingBranch.name}`} titleId="edit-branch-title" onClose={handleBranchEditCancel}>
+                  {editBranchError && <div role="alert" className="auth-error">{editBranchError}</div>}
+                  <form onSubmit={handleUpdateBranch} className="ap-form" noValidate>
+                    <div className="ap-form-row">
+                      <div style={{ flex: '1' }}>
+                        <label htmlFor="edit-branch-name" className="form-label">Name</label>
+                        <input
+                          id="edit-branch-name"
+                          type="text"
+                          required
+                          value={editBranchName}
+                          onChange={(e) => setEditBranchName(e.target.value)}
+                          className="form-input"
+                          disabled={editBranchLoading}
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="edit-branch-type" className="form-label">Type</label>
+                        <select
+                          id="edit-branch-type"
+                          value={editBranchType}
+                          onChange={(e) => setEditBranchType(e.target.value)}
+                          className="form-select"
+                          disabled={editBranchLoading}
+                        >
+                          <option value="public">Public</option>
+                          <option value="private">Private</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.75rem' }}>
+                      <button
+                        type="submit"
+                        disabled={editBranchLoading || !editBranchName.trim()}
+                        className="ap-btn-primary"
+                        style={{ width: 'auto', padding: '0.5rem 1.25rem' }}
+                      >
+                        {editBranchLoading ? 'Saving…' : 'Save changes'}
+                      </button>
+                      <button type="button" onClick={handleBranchEditCancel} className="ap-btn-outline">Cancel</button>
+                    </div>
+                  </form>
+                </AppModal>
+              )}
+            </div>
+          )}
+
+          {/* ══════════════════════════════════════
+              ROLES
+          ══════════════════════════════════════ */}
+          {activeSection === 'roles' && (
+            <div className="ap-section">
+              <div className="ap-section-heading">
+                <div>
+                  <h2 className="ap-section-title">Roles</h2>
+                  <p className="ap-section-sub">Define roles with permissions. Staff inherit permissions from their assigned role.</p>
+                </div>
+              </div>
+
+              <div className="ap-card">
+                <h3 className="ap-card-title">Create New Role</h3>
+                {rolesError   && <div role="alert"  className="auth-error">{rolesError}</div>}
+                {rolesSuccess && <div role="status" className="auth-success">{rolesSuccess}</div>}
+                <form onSubmit={handleCreateRole} className="ap-form" noValidate>
+                  <div>
+                    <label htmlFor="role-name" className="form-label">Role Name</label>
+                    <input
+                      id="role-name"
+                      type="text"
+                      required
+                      value={newRoleName}
+                      onChange={(e) => setNewRoleName(e.target.value)}
+                      className="form-input"
+                      placeholder="e.g. Field Officer"
+                      disabled={creatingRole}
+                    />
+                  </div>
+                  <div>
+                    <p className="form-label" style={{ marginBottom: '0.5rem' }}>Permissions</p>
+                    <div className="ap-perms-grid">
+                      {PERMISSION_OPTIONS.map((opt) => (
+                        <label key={opt.value} className="ap-perm-item">
+                          <input
+                            type="checkbox"
+                            checked={newRolePerms.includes(opt.value)}
+                            onChange={() => toggleNewRolePerm(opt.value)}
+                            disabled={creatingRole}
+                            className="ap-perm-check"
+                          />
+                          <span>{opt.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={creatingRole || !newRoleName.trim()}
+                    className="ap-btn-primary"
+                  >
+                    {creatingRole ? 'Creating…' : 'Create Role'}
+                  </button>
+                </form>
+              </div>
+
+              {editingRole && (
+                <AppModal title={`Edit Role - ${editingRole.name}`} titleId="edit-role-title" onClose={handleRoleEditCancel}>
+                  {editRoleError && <div role="alert" className="auth-error">{editRoleError}</div>}
+                      <form onSubmit={handleUpdateRole} className="ap-form" noValidate>
+                        <div>
+                          <label htmlFor="edit-role-name" className="form-label">Role Name</label>
+                          <input
+                            id="edit-role-name"
+                            type="text"
+                            required
+                            value={editRoleName}
+                            onChange={(e) => setEditRoleName(e.target.value)}
+                            className="form-input"
+                            disabled={editRoleLoading}
+                          />
+                        </div>
+                        <div>
+                          <p className="form-label" style={{ marginBottom: '0.5rem' }}>Permissions</p>
+                          <div className="ap-perms-grid">
+                            {PERMISSION_OPTIONS.map((opt) => (
+                              <label key={opt.value} className="ap-perm-item">
+                                <input
+                                  type="checkbox"
+                                  checked={editRolePerms.includes(opt.value)}
+                                  onChange={() => toggleEditRolePerm(opt.value)}
+                                  disabled={editRoleLoading}
+                                  className="ap-perm-check"
+                                />
+                                <span>{opt.label}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.75rem' }}>
+                          <button
+                            type="submit"
+                            disabled={editRoleLoading || !editRoleName.trim()}
+                            className="ap-btn-primary"
+                            style={{ width: 'auto', padding: '0.5rem 1.25rem' }}
+                          >
+                            {editRoleLoading ? 'Saving…' : 'Save changes'}
+                          </button>
+                          <button type="button" onClick={handleRoleEditCancel} className="ap-btn-outline">Cancel</button>
+                        </div>
+                      </form>
+                </AppModal>
+              )}
+
+              <div className="ap-card">
+                <div className="ap-card-header">
+                  <h3 className="ap-card-title">All Roles ({roles.length})</h3>
+                  <button onClick={loadRoles} disabled={rolesLoading} className="ap-btn-outline ap-btn-sm">
+                    {rolesLoading ? 'Loading…' : 'Refresh'}
+                  </button>
+                </div>
+                {rolesLoading ? (
+                  <p className="ap-loading">Loading…</p>
+                ) : roles.length === 0 ? (
+                  <p className="ap-empty">No roles yet. Create one above.</p>
+                ) : (
+                  <div className="ap-table-wrap">
+                    <table className="ap-table">
+                      <thead>
+                        <tr>
+                          <th>Name</th>
+                          <th>Permissions</th>
+                          <th>Staff Using</th>
+                          <th></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {roles.map((r) => {
+                          const count = users.filter((u) => u.customRoleId === r.id).length;
+                          return (
+                            <tr key={r.id}>
+                              <td><strong>{r.name}</strong></td>
+                              <td>
+                                {r.permissions?.length
+                                  ? r.permissions.map((p) => (
+                                      <span key={p} className="ap-perm-badge">{p.replace(/_/g, ' ')}</span>
+                                    ))
+                                  : <span className="ap-muted">None</span>}
+                              </td>
+                              <td>{count > 0 ? count : <span className="ap-muted">0</span>}</td>
+                              <td className="ap-table-actions">
+                                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                  <button onClick={() => handleRoleEditStart(r)} className="ap-btn-outline ap-btn-sm">Edit</button>
+                                  <button onClick={() => handleDeleteRole(r)} className="ap-btn-danger ap-btn-sm">Delete</button>
+                                </div>
                               </td>
                             </tr>
                           );
@@ -730,7 +1276,7 @@ export default function AdminPanel() {
                 <h3 className="ap-card-title">Create Staff / Admin Account</h3>
                 <p className="ap-card-desc">
                   Staff and admin accounts are provisioned here — there is no public sign-up.
-                  Each account is tagged to a branch and carries granular permissions.
+                  Each account is tagged to a branch and assigned a role with predefined permissions.
                 </p>
                 {staffError   && <div role="alert"  className="auth-error">{staffError}</div>}
                 {staffSuccess && <div role="status" className="auth-success">{staffSuccess}</div>}
@@ -765,19 +1311,6 @@ export default function AdminPanel() {
                     </div>
                   </div>
                   <div className="ap-form-row">
-                    <div>
-                      <label htmlFor="adm-role" className="form-label">Role</label>
-                      <select
-                        id="adm-role"
-                        value={staffRole}
-                        onChange={(e) => setStaffRole(e.target.value)}
-                        className="form-select"
-                        disabled={staffLoading}
-                      >
-                        <option value="staff">Staff</option>
-                        <option value="admin">Admin</option>
-                      </select>
-                    </div>
                     <div style={{ flex: '1' }}>
                       <label htmlFor="adm-branch" className="form-label">Assigned branch</label>
                       <select
@@ -797,27 +1330,28 @@ export default function AdminPanel() {
                         <p className="ap-field-hint">Create a branch first in the Branches tab.</p>
                       )}
                     </div>
-                  </div>
-                  <div>
-                    <p className="form-label" style={{ marginBottom: '0.5rem' }}>Permissions</p>
-                    <div className="ap-perms-grid">
-                      {PERMISSION_OPTIONS.map((opt) => (
-                        <label key={opt.value} className="ap-perm-item">
-                          <input
-                            type="checkbox"
-                            checked={staffPerms.includes(opt.value)}
-                            onChange={() => togglePerm(opt.value)}
-                            disabled={staffLoading}
-                            className="ap-perm-check"
-                          />
-                          <span>{opt.label}</span>
-                        </label>
-                      ))}
+                    <div style={{ flex: '1' }}>
+                      <label htmlFor="adm-custom-role" className="form-label">Assigned Role</label>
+                      <select
+                        id="adm-custom-role"
+                        value={staffCustomRoleId}
+                        onChange={(e) => setStaffCustomRoleId(e.target.value)}
+                        className="form-select"
+                        disabled={staffLoading || roles.length === 0}
+                      >
+                        <option value="">— No role —</option>
+                        {roles.map((r) => (
+                          <option key={r.id} value={r.id}>{r.name}</option>
+                        ))}
+                      </select>
+                      {roles.length === 0 && (
+                        <p className="ap-field-hint">Create a role first in the Roles tab.</p>
+                      )}
                     </div>
                   </div>
                   <button
                     type="submit"
-                    disabled={staffLoading || !staffEmail || !staffPassword || !staffBranchId}
+                    disabled={staffLoading || !staffEmail || !staffPassword}
                     className="ap-btn-primary"
                   >
                     {staffLoading ? 'Creating account…' : 'Create account'}
@@ -826,75 +1360,56 @@ export default function AdminPanel() {
               </div>
 
               {editingUser && (
-                <div className="ap-card ap-card-editing">
-                  <div className="ap-card-header">
-                    <h3 className="ap-card-title">Edit Account — {editingUser.email}</h3>
-                    <button onClick={handleEditCancel} className="ap-btn-outline ap-btn-sm">Cancel</button>
-                  </div>
-                  {editError   && <div role="alert"  className="auth-error">{editError}</div>}
-                  {editSuccess && <div role="status" className="auth-success">{editSuccess}</div>}
-                  <form onSubmit={handleUpdateStaff} className="ap-form" noValidate>
-                    <div className="ap-form-row">
-                      <div>
-                        <label htmlFor="edit-role" className="form-label">Role</label>
-                        <select
-                          id="edit-role"
-                          value={editRole}
-                          onChange={(e) => setEditRole(e.target.value)}
-                          className="form-select"
-                          disabled={editLoading}
-                        >
-                          <option value="staff">Staff</option>
-                          <option value="admin">Admin</option>
-                        </select>
-                      </div>
-                      <div style={{ flex: '1' }}>
-                        <label htmlFor="edit-branch" className="form-label">Assigned branch</label>
-                        <select
-                          id="edit-branch"
-                          value={editBranchId}
-                          onChange={(e) => setEditBranchId(e.target.value)}
-                          className="form-select"
-                          required
-                          disabled={editLoading || branches.length === 0}
-                        >
-                          <option value="">— Select a branch —</option>
-                          {branches.map((b) => (
-                            <option key={b.id} value={b.id}>{b.name} ({b.type})</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                    <div>
-                      <p className="form-label" style={{ marginBottom: '0.5rem' }}>Permissions</p>
-                      <div className="ap-perms-grid">
-                        {PERMISSION_OPTIONS.map((opt) => (
-                          <label key={opt.value} className="ap-perm-item">
-                            <input
-                              type="checkbox"
-                              checked={editPerms.includes(opt.value)}
-                              onChange={() => toggleEditPerm(opt.value)}
-                              disabled={editLoading}
-                              className="ap-perm-check"
-                            />
-                            <span>{opt.label}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: '0.75rem' }}>
-                      <button
-                        type="submit"
-                        disabled={editLoading || !editBranchId}
-                        className="ap-btn-primary"
-                        style={{ width: 'auto', padding: '0.5rem 1.25rem' }}
-                      >
-                        {editLoading ? 'Saving…' : 'Save changes'}
-                      </button>
-                      <button type="button" onClick={handleEditCancel} className="ap-btn-outline">Cancel</button>
-                    </div>
-                  </form>
-                </div>
+                <AppModal title={`Edit Account - ${editingUser.email}`} titleId="edit-account-title" onClose={handleEditCancel}>
+                  {editError && <div role="alert" className="auth-error">{editError}</div>}
+                      {editSuccess && <div role="status" className="auth-success">{editSuccess}</div>}
+                      <form onSubmit={handleUpdateStaff} className="ap-form" noValidate>
+                        <div className="ap-form-row">
+                          <div style={{ flex: '1' }}>
+                            <label htmlFor="edit-branch" className="form-label">Assigned branch</label>
+                            <select
+                              id="edit-branch"
+                              value={editBranchId}
+                              onChange={(e) => setEditBranchId(e.target.value)}
+                              className="form-select"
+                              required
+                              disabled={editLoading || branches.length === 0}
+                            >
+                              <option value="">— Select a branch —</option>
+                              {branches.map((b) => (
+                                <option key={b.id} value={b.id}>{b.name} ({b.type})</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div style={{ flex: '1' }}>
+                            <label htmlFor="edit-custom-role" className="form-label">Assigned Role</label>
+                            <select
+                              id="edit-custom-role"
+                              value={editCustomRoleId}
+                              onChange={(e) => setEditCustomRoleId(e.target.value)}
+                              className="form-select"
+                              disabled={editLoading || roles.length === 0}
+                            >
+                              <option value="">— No role —</option>
+                              {roles.map((r) => (
+                                <option key={r.id} value={r.id}>{r.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.75rem' }}>
+                          <button
+                            type="submit"
+                            disabled={editLoading || !editBranchId}
+                            className="ap-btn-primary"
+                            style={{ width: 'auto', padding: '0.5rem 1.25rem' }}
+                          >
+                            {editLoading ? 'Saving…' : 'Save changes'}
+                          </button>
+                          <button type="button" onClick={handleEditCancel} className="ap-btn-outline">Cancel</button>
+                        </div>
+                      </form>
+                </AppModal>
               )}
 
               <div className="ap-card">
@@ -916,7 +1431,8 @@ export default function AdminPanel() {
                             <th>Email</th>
                             <th>Role</th>
                             <th>Branch / Location</th>
-                            <th>Permissions</th>
+                            <th>Assigned Role</th>
+                            <th>Status</th>
                             <th></th>
                           </tr>
                         </thead>
@@ -927,18 +1443,26 @@ export default function AdminPanel() {
                               <td><span className={`badge badge-${u.role}`}>{u.role}</span></td>
                               <td>
                                 {u.branchName
-                                  ? <>{u.branchName} {u.entityType && <span className={`badge badge-entity-${u.entityType} ml-1`}>{u.entityType}</span>}</>
+                                  ? u.branchName
+                                  : <span className="ap-muted">Unassigned</span>}
+                              </td>
+                              <td>
+                                {u.customRoleName
+                                  ? <span className="ap-perm-badge">{u.customRoleName}</span>
                                   : <span className="ap-muted">—</span>}
                               </td>
                               <td>
-                                {u.permissions?.length
-                                  ? u.permissions.map((p) => (
-                                      <span key={p} className="ap-perm-badge">{p.replace(/_/g, ' ')}</span>
-                                    ))
-                                  : <span className="ap-muted">—</span>}
+                                <span className={`badge ${u.verified ? 'badge-verified' : 'badge-unverified'}`}>
+                                  {u.verified ? 'Verified' : 'Unverified'}
+                                </span>
                               </td>
                               <td className="ap-table-actions">
                                 <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                  {!u.verified && (
+                                    <button onClick={() => handleResendVerification(u)} className="ap-btn-sm ap-btn-primary" style={{ width: 'auto', padding: '0.25rem 0.75rem' }}>
+                                      Resend Verification
+                                    </button>
+                                  )}
                                   <button onClick={() => handleEditStart(u)} className="ap-btn-outline ap-btn-sm">Edit</button>
                                   <button onClick={() => handleDeleteUser(u)} className="ap-btn-danger ap-btn-sm">Delete</button>
                                 </div>
@@ -973,6 +1497,49 @@ export default function AdminPanel() {
 
               {usersError && <div role="alert" className="auth-error">{usersError}</div>}
 
+              {/* Filters */}
+              <div className="ap-card">
+                <div className="ap-filters-row">
+                  <div>
+                    <label htmlFor="filter-role" className="form-label">Filter by Role</label>
+                    <select
+                      id="filter-role"
+                      value={filterRole}
+                      onChange={(e) => setFilterRole(e.target.value)}
+                      className="form-select"
+                    >
+                      <option value="all">All Roles</option>
+                      <option value="resident">Resident</option>
+                      <option value="staff">Staff</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="filter-branch" className="form-label">Filter by Branch</label>
+                    <select
+                      id="filter-branch"
+                      value={filterBranch}
+                      onChange={(e) => setFilterBranch(e.target.value)}
+                      className="form-select"
+                    >
+                      <option value="all">All Branches</option>
+                      {branches.map((b) => (
+                        <option key={b.id} value={b.id}>{b.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {(filterRole !== 'all' || filterBranch !== 'all') && (
+                    <button
+                      className="ap-btn-outline ap-btn-sm"
+                      style={{ alignSelf: 'flex-end' }}
+                      onClick={() => { setFilterRole('all'); setFilterBranch('all'); }}
+                    >
+                      Clear filters
+                    </button>
+                  )}
+                </div>
+              </div>
+
               <div className="ap-card">
                 {usersLoading ? (
                   <p className="ap-loading">Loading…</p>
@@ -987,7 +1554,7 @@ export default function AdminPanel() {
                           <th>Full name</th>
                           <th>Role</th>
                           <th>Branch</th>
-                          <th>Permissions</th>
+                          <th>Assigned Role</th>
                           <th></th>
                         </tr>
                       </thead>
@@ -999,14 +1566,12 @@ export default function AdminPanel() {
                             <td><span className={`badge badge-${u.role}`}>{u.role}</span></td>
                             <td>
                               {u.branchName
-                                ? <>{u.branchName} {u.entityType && <span className={`badge badge-entity-${u.entityType} ml-1`}>{u.entityType}</span>}</>
+                                ? u.branchName
                                 : <span className="ap-muted">—</span>}
                             </td>
                             <td>
-                              {u.permissions?.length
-                                ? u.permissions.map((p) => (
-                                    <span key={p} className="ap-perm-badge">{p.replace(/_/g, ' ')}</span>
-                                  ))
+                              {u.customRoleName
+                                ? <span className="ap-perm-badge">{u.customRoleName}</span>
                                 : <span className="ap-muted">—</span>}
                             </td>
                             <td className="ap-table-actions">
@@ -1080,7 +1645,7 @@ export default function AdminPanel() {
                   </div>
                   <p className="ap-stat-label">Locations</p>
                   <h3 className="ap-stat-value">{stats.totalBranches}</h3>
-                  <p className="ap-stat-meta">{stats.totalBarangays} barangays · {stats.totalBranchOffices} offices</p>
+                  <p className="ap-stat-meta">{stats.totalPublic} public · {stats.totalPrivate} private</p>
                 </div>
               </div>
 

@@ -3,7 +3,6 @@ import { useState } from 'react';
 import {
   createUserWithEmailAndPassword,
   updateProfile,
-  sendEmailVerification,
 } from 'firebase/auth';
 import { Link, useNavigate, Navigate } from 'react-router-dom';
 import { auth } from '../config/firebase';
@@ -78,9 +77,6 @@ export default function Register() {
 
       // 4. Force-refresh token so claims are available immediately
       await newUser.getIdTokenResult(true);
-
-      // 5. Send email verification link
-      await sendEmailVerification(newUser);
 
       navigate('/verify-email');
     } catch (err) {

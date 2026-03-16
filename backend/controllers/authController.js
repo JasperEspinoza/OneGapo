@@ -1,4 +1,9 @@
 const admin = require('../config/firebaseAdmin');
+const {
+  getVerificationStatus,
+  sendAccountVerificationEmail,
+  verifyEmailToken,
+} = require('../services/verificationService');
 
 /**
  * POST /api/auth/complete-registration
@@ -22,7 +27,7 @@ async function completeResidentRegistration(req, res, next) {
     // Fetch display name and email from Firebase Auth
     const userRecord = await admin.auth().getUser(uid);
 
-    await admin.auth().setCustomUserClaims(uid, { role: 'resident' });
+    await admin.auth().setCustomUserClaims(uid, { role: 'resident', verified: false });
 
     // Create Firestore user document
     await admin.firestore().collection('users').doc(uid).set({
@@ -30,13 +35,95 @@ async function completeResidentRegistration(req, res, next) {
       fullName:  userRecord.displayName || '',
       email:     userRecord.email || '',
       role:      'resident',
+      verified:  false,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    return res.status(200).json({ message: 'Role assigned.', role: 'resident' });
+    let emailDelivery = { sent: true, skipped: false };
+    try {
+      const emailResult = await sendAccountVerificationEmail(uid, userRecord.email || '');
+      if (emailResult?.skipped) {
+        emailDelivery = {
+          sent: false,
+          skipped: true,
+          reason: emailResult.reason || 'Email not configured',
+        };
+      }
+    } catch (emailErr) {
+      console.warn('[completeResidentRegistration] Verification email send failed:', emailErr.message);
+      emailDelivery = {
+        sent: false,
+        skipped: false,
+        reason: emailErr.message,
+      };
+    }
+
+    return res.status(200).json({
+      message: 'Registration completed. Verification email sent.',
+      role: 'resident',
+      verified: false,
+      emailDelivery,
+    });
   } catch (err) {
     return next(err);
   }
 }
 
-module.exports = { completeResidentRegistration };
+async function getResidentVerificationStatus(req, res, next) {
+  try {
+    const verified = await getVerificationStatus(req.user.uid);
+    return res.json({ verified });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+async function resendOwnVerification(req, res, next) {
+  try {
+    const { uid } = req.user;
+    const verified = await getVerificationStatus(uid);
+    if (verified) {
+      return res.status(400).json({ error: 'This account is already verified.' });
+    }
+
+    const [userRecord, userSnap] = await Promise.all([
+      admin.auth().getUser(uid),
+      admin.firestore().collection('users').doc(uid).get(),
+    ]);
+    const userData = userSnap.exists ? userSnap.data() : {};
+
+    const emailResult = await sendAccountVerificationEmail(uid, userRecord.email || '', {
+      branchName: userData.branchName || null,
+    });
+
+    if (emailResult?.skipped) {
+      return res.json({ message: 'Verification email is not configured. Please configure SMTP.' });
+    }
+
+    return res.json({ message: 'Verification email sent.' });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+async function confirmEmailVerification(req, res, next) {
+  try {
+    const { token } = req.body || {};
+    const result = await verifyEmailToken(token);
+
+    return res.json({
+      message: result.alreadyVerified ? 'Email already verified.' : 'Email verified successfully.',
+      uid: result.uid,
+      verified: true,
+    });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+module.exports = {
+  completeResidentRegistration,
+  getResidentVerificationStatus,
+  resendOwnVerification,
+  confirmEmailVerification,
+};

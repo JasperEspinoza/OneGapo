@@ -5,6 +5,8 @@ const cors = require('cors');
 const adminRoutes  = require('./routes/adminRoutes');
 const authRoutes   = require('./routes/authRoutes');
 const branchRoutes = require('./routes/branchRoutes');
+const rolesRoutes  = require('./routes/rolesRoutes');
+const reportRoutes = require('./routes/reportRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -16,7 +18,7 @@ const allowedOrigin = process.env.FRONTEND_URL
 app.use(
   cors({
     origin: allowedOrigin,
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   })
 );
@@ -28,8 +30,10 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.use('/api/admin/branches', branchRoutes);
+app.use('/api/admin/roles',    rolesRoutes);
 app.use('/api/admin',          adminRoutes);
 app.use('/api/auth',           authRoutes);
+app.use('/api/reports',        reportRoutes);
 
 app.use((_req, res) => {
   res.status(404).json({ error: 'Resource not found.' });

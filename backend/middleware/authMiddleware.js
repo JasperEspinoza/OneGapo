@@ -1,5 +1,16 @@
 const admin = require('../config/firebaseAdmin');
 
+const PRIMARY_ADMIN_EMAIL = 'onegapo2026@gmail.com';
+
+function isPrimaryAdmin(user) {
+  return (
+    user &&
+    user.role === 'admin' &&
+    typeof user.email === 'string' &&
+    user.email.toLowerCase() === PRIMARY_ADMIN_EMAIL
+  );
+}
+
 /**
  * Middleware: verifyToken
  * Validates the Firebase ID token from the Authorization header.
@@ -29,10 +40,24 @@ async function verifyToken(req, res, next) {
  * Blocks the request if the authenticated user does not hold the 'admin' custom claim.
  */
 function requireAdmin(req, res, next) {
-  if (!req.user || req.user.role !== 'admin') {
-    return res.status(403).json({ error: 'Forbidden: Admin access required.' });
+  if (!isPrimaryAdmin(req.user)) {
+    return res.status(403).json({
+      error: 'Forbidden: Primary admin access required.',
+    });
   }
   return next();
 }
 
-module.exports = { verifyToken, requireAdmin };
+/**
+ * Middleware: requireStaffOrAdmin
+ * Must be used AFTER verifyToken.
+ * Allows both staff and admin users.
+ */
+function requireStaffOrAdmin(req, res, next) {
+  if (!req.user || (req.user.role !== 'staff' && req.user.role !== 'admin')) {
+    return res.status(403).json({ error: 'Forbidden: Staff or Admin access required.' });
+  }
+  return next();
+}
+
+module.exports = { verifyToken, requireAdmin, requireStaffOrAdmin };

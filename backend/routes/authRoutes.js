@@ -1,6 +1,11 @@
 const { Router } = require('express');
 const { verifyToken } = require('../middleware/authMiddleware');
-const { completeResidentRegistration } = require('../controllers/authController');
+const {
+	completeResidentRegistration,
+	getResidentVerificationStatus,
+	resendOwnVerification,
+	confirmEmailVerification,
+} = require('../controllers/authController');
 
 const router = Router();
 
@@ -14,5 +19,8 @@ const router = Router();
  *   Authorization: Bearer <firebaseIdToken>
  */
 router.post('/complete-registration', verifyToken, completeResidentRegistration);
+router.get('/verification-status', verifyToken, getResidentVerificationStatus);
+router.post('/resend-verification', verifyToken, resendOwnVerification);
+router.post('/verify-email', confirmEmailVerification);
 
 module.exports = router;

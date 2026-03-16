@@ -1167,17 +1167,35 @@
   letter-spacing: 0.01em;
 }
 
+/* Filters row */
+
+.ap-filters-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-end;
+}
+.ap-filters-row > div {
+  min-width: 10rem;
+}
+@media (max-width: 600px) {
+  .ap-filters-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
 /* Entity-type badges */
 
-.badge-entity-barangay {
+.badge-entity-public {
   background-color: #eff6ff;
   color: #1d4ed8;
   border: 1px solid #bfdbfe;
 }
-.badge-entity-branch {
-  background-color: #f0fdf4;
-  color: #15803d;
-  border: 1px solid #bbf7d0;
+.badge-entity-private {
+  background-color: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
 }
 
 /* Role badges refinement */
@@ -1185,6 +1203,11 @@
 .badge-resident { background-color: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; }
 .badge-staff    { background-color: #f3e8ff; color: #6d28d9; border: 1px solid #ddd6fe; }
 .badge-admin    { background-color: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; }
+
+/* Verified/unverified badges */
+
+.badge-verified   { background-color: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+.badge-unverified { background-color: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
 
 /* Form inputs (admin-context refinements) */
 

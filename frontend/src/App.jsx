@@ -29,13 +29,8 @@ function App() {
           <Route path="/login"           element={<Login />} />
           <Route path="/register"        element={<Register />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/verify-email"    element={<VerifyEmail />} />
           <Route path="/unauthorized"    element={<Unauthorized />} />
-
-          {/* ── Authenticated, email verification NOT enforced ── */}
-          {/* Resident lands here after signup; staff/admin auto-redirected away */}
-          <Route element={<ProtectedRoute requireVerified={false} showNav={false} />}>
-            <Route path="/verify-email" element={<VerifyEmail />} />
-          </Route>
 
           {/* ── Any authenticated + verified user ────────────── */}
           <Route element={<ProtectedRoute />}>
@@ -49,12 +44,12 @@ function App() {
           </Route>
 
           {/* ── Admin only ────────────────────────────────────── */}
-          <Route element={<ProtectedRoute allowedRoles={['admin']} showNav={false} />}>
+          <Route element={<ProtectedRoute allowedRoles={['admin']} requirePrimaryAdmin={true} showNav={false} />}>
             <Route path="/admin" element={<AdminPanel />} />
           </Route>
 
           {/* ── Catch-all ───────────────────────────────────────── */}
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       </AuthProvider>
     </Router>

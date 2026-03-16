@@ -10,6 +10,7 @@ require('dotenv').config();
 const admin = require('../config/firebaseAdmin');
 
 const ADMIN_EMAIL = 'onegapo2026@gmail.com';
+const ADMIN_PERMISSIONS = ['view_reports', 'update_reports', 'close_reports', 'create_announcements'];
 
 async function main() {
   // Look up the user by email
@@ -20,8 +21,12 @@ async function main() {
   console.log('Current claims:', userRecord.customClaims);
 
   // Set the admin claim
-  await admin.auth().setCustomUserClaims(uid, { role: 'admin' });
-  console.log('✔ Custom claim set: { role: "admin" }');
+  await admin.auth().setCustomUserClaims(uid, {
+    role: 'admin',
+    permissions: ADMIN_PERMISSIONS,
+    verified: true,
+  });
+  console.log('✔ Custom claim set for primary admin with full access.');
 
   // Upsert Firestore document with all required fields
   await admin.firestore().collection('users').doc(uid).set(
@@ -30,10 +35,11 @@ async function main() {
       email,
       fullName:    userRecord.displayName || 'Admin',
       role:        'admin',
+      verified:    true,
       branchId:    null,
       branchName:  null,
       entityType:  null,
-      permissions: [],
+      permissions: ADMIN_PERMISSIONS,
       createdAt:   admin.firestore.FieldValue.serverTimestamp(),
     },
     { merge: true }   // merge so existing fields aren't wiped
