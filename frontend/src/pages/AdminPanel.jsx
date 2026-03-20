@@ -2,6 +2,7 @@ import './AdminPanel.css';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import AppModal from '../components/AppModal';
+import ReportLocationMap from '../components/ReportLocationMap';
 import { useAuth } from '../context/AuthContext';
 
 const PERMISSION_OPTIONS = [
@@ -79,6 +80,14 @@ const NAV_ITEMS = [
   { id: 'analytics', label: 'Analytics',  icon: 'analytics' },
 ];
 
+const REPORT_CATEGORY_META = {
+  infrastructure: { label: 'Infrastructure', color: '#f59e0b' },
+  safety: { label: 'Public Safety', color: '#ef4444' },
+  sanitation: { label: 'Sanitation', color: '#0ea5e9' },
+  disaster: { label: 'Disaster / Emergency', color: '#dc2626' },
+  general: { label: 'General Concern', color: '#14b8a6' },
+};
+
 export default function AdminPanel() {
   const { currentUser, userClaims, logout } = useAuth();
   const navigate = useNavigate();
@@ -153,6 +162,11 @@ export default function AdminPanel() {
   const [usersLoading, setUsersLoading] = useState(false);
   const [usersError,   setUsersError]   = useState('');
 
+  // ── Reports state ───────────────────────────────────────
+  const [reports,        setReports]        = useState([]);
+  const [reportsLoading, setReportsLoading] = useState(false);
+  const [reportsError,   setReportsError]   = useState('');
+
   // ── Users filter state ───────────────────────────────────
   const [filterRole,   setFilterRole]   = useState('all');
   const [filterBranch, setFilterBranch] = useState('all');
@@ -205,12 +219,28 @@ export default function AdminPanel() {
     }
   }, [api]);
 
+  const loadReports = useCallback(async () => {
+    setReportsLoading(true);
+    setReportsError('');
+    try {
+      const res = await api('/api/reports');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to load reports.');
+      setReports(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setReportsError(err.message);
+    } finally {
+      setReportsLoading(false);
+    }
+  }, [api]);
+
   useEffect(() => { loadBranches(); loadRoles(); }, [loadBranches, loadRoles]);
 
   useEffect(() => {
     if (['dashboard', 'accounts', 'users', 'analytics', 'branches'].includes(activeSection)) loadUsers();
     if (['roles', 'accounts'].includes(activeSection)) loadRoles();
-  }, [activeSection, loadUsers, loadRoles]);
+    if (['dashboard', 'reports'].includes(activeSection)) loadReports();
+  }, [activeSection, loadUsers, loadRoles, loadReports]);
 
   const stats = useMemo(() => ({
     totalBranches:      branches.length,
@@ -235,6 +265,30 @@ export default function AdminPanel() {
   const announcementPublishers = useMemo(
     () => reportOperators.filter((u) => u.role === 'admin' || (u.permissions || []).includes('create_announcements')),
     [reportOperators]
+  );
+
+  const residentReportMarkers = useMemo(
+    () => reports
+      .filter((report) => report?.reporter?.role === 'resident')
+      .map((report) => ({
+        id: report.id,
+        lat: Number(report?.location?.latitude),
+        lng: Number(report?.location?.longitude),
+        category: String(report?.category || 'general').toLowerCase(),
+        color: (REPORT_CATEGORY_META[String(report?.category || 'general').toLowerCase()] || REPORT_CATEGORY_META.general).color,
+      }))
+      .filter((marker) => Number.isFinite(marker.lat) && Number.isFinite(marker.lng)),
+    [reports]
+  );
+
+  const residentLegendItems = useMemo(
+    () => Object.entries(REPORT_CATEGORY_META).map(([value, meta]) => ({
+      value,
+      label: meta.label,
+      color: meta.color,
+      count: residentReportMarkers.filter((marker) => marker.category === value).length,
+    })),
+    [residentReportMarkers]
   );
 
   // ── Handlers ────────────────────────────────────────────
@@ -680,46 +734,32 @@ export default function AdminPanel() {
                 </div>
               </div>
 
-              {/* Heatmap */}
+              {/* Incident map */}
               <div className="ap-card">
                 <div className="ap-card-header">
                   <div>
-                    <h3 className="ap-card-title">Incident Heatmap</h3>
-                    <p className="ap-card-sub">Geographic distribution of reported incidents in Olongapo City</p>
-                  </div>
-                  <div className="ap-heatmap-legend">
-                    <span className="ap-legend-item">
-                      <span className="ap-legend-dot ap-legend-red" /> High Density
-                    </span>
-                    <span className="ap-legend-item">
-                      <span className="ap-legend-dot ap-legend-blue" /> Low Density
-                    </span>
+                    <h3 className="ap-card-title">Incident Map</h3>
+                    <p className="ap-card-sub">Resident-submitted report locations in Olongapo City</p>
                   </div>
                 </div>
-                <div className="ap-heatmap">
-                  <div className="ap-heatmap-placeholder">
-                    <span className="ap-heatmap-icon">{ICONS.map}</span>
-                    <p>Connect a reports API to populate live incident data</p>
+                <div className="report-map-wrap">
+                  <ReportLocationMap
+                    markers={residentReportMarkers}
+                    helpText={null}
+                  />
+                  <div className="ap-report-legend" aria-label="Report category legend">
+                    {residentLegendItems.map((item) => (
+                      <span key={item.value} className="ap-report-legend-item">
+                        <span className="ap-report-legend-dot" style={{ backgroundColor: item.color }} />
+                        {item.label} ({item.count})
+                      </span>
+                    ))}
                   </div>
-                  <div className="ap-blob ap-blob-red-lg"  style={{ top: '25%',  left: '33%' }} />
-                  <div className="ap-blob ap-blob-red-md"  style={{ top: '50%',  left: '50%' }} />
-                  <div className="ap-blob ap-blob-blue-md" style={{ bottom: '25%', right: '25%' }} />
-                  <div className="ap-pin ap-pin-red"  style={{ top: '25%',  left: '33%' }} />
-                  <div className="ap-pin ap-pin-red"  style={{ top: '52%',  left: '48%' }} />
-                  <div className="ap-pin ap-pin-blue" style={{ bottom: '25%', right: '25%' }} />
-                  <div className="ap-heatmap-status">
-                    <div className="ap-heatmap-status-row">
-                      <span>Subic Bay Area</span>
-                      <span className="ap-status-clear">Clear</span>
-                    </div>
-                    <div className="ap-heatmap-status-row">
-                      <span>Barretto</span>
-                      <span className="ap-status-moderate">Moderate</span>
-                    </div>
-                    <div className="ap-heatmap-status-row">
-                      <span>Gordon Heights</span>
-                      <span className="ap-status-high">High Risk</span>
-                    </div>
+                  <div className="ap-map-meta">
+                    <span>
+                      Resident report markers: {reportsLoading ? 'Loading…' : residentReportMarkers.length}
+                    </span>
+                    {reportsError ? <span className="ap-status-high">{reportsError}</span> : null}
                   </div>
                 </div>
               </div>
