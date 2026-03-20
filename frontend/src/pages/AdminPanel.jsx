@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import AppModal from '../components/AppModal';
 import ReportLocationMap from '../components/ReportLocationMap';
 import { useAuth } from '../context/AuthContext';
+import { useSettingsModal } from '../context/SettingsModalContext';
 
 const PERMISSION_OPTIONS = [
   { value: 'view_reports',         label: 'View reports' },
@@ -90,6 +91,7 @@ const REPORT_CATEGORY_META = {
 
 export default function AdminPanel() {
   const { currentUser, userClaims, logout } = useAuth();
+  const { openSettings } = useSettingsModal();
   const navigate = useNavigate();
 
   const api = useCallback(async (url, options = {}) => {
@@ -276,6 +278,12 @@ export default function AdminPanel() {
         lng: Number(report?.location?.longitude),
         category: String(report?.category || 'general').toLowerCase(),
         color: (REPORT_CATEGORY_META[String(report?.category || 'general').toLowerCase()] || REPORT_CATEGORY_META.general).color,
+        title: report.title,
+        description: report.description,
+        status: report.status,
+        address: report?.location?.address || '',
+        createdAt: report.createdAt,
+        attachments: Array.isArray(report.attachments) ? report.attachments : [],
       }))
       .filter((marker) => Number.isFinite(marker.lat) && Number.isFinite(marker.lng)),
     [reports]
@@ -610,10 +618,10 @@ export default function AdminPanel() {
         </nav>
 
         <div className="ap-sidebar-footer">
-          <Link to="/profile" className="ap-nav-item" onClick={() => setSidebarOpen(false)}>
+          <button type="button" className="ap-nav-item" onClick={() => { openSettings(); setSidebarOpen(false); }}>
             <span className="ap-nav-icon">{ICONS.settings}</span>
             <span>Settings</span>
-          </Link>
+          </button>
           <button className="ap-nav-item ap-nav-signout" onClick={handleLogout}>
             <span className="ap-nav-icon">{ICONS.logout}</span>
             <span>Sign out</span>

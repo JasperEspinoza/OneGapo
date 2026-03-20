@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useSettingsModal } from '../context/SettingsModalContext';
 
 const ICONS = {
     menu: (
@@ -13,6 +14,7 @@ const ICONS = {
 
 export default function Navbar() {
   const { currentUser, userClaims, logout } = useAuth();
+  const { openSettings } = useSettingsModal();
   const navigate = useNavigate();
   const role = userClaims?.role;
   const [menuOpen, setMenuOpen] = useState(false);
@@ -21,6 +23,11 @@ export default function Navbar() {
     setMenuOpen(false);
     await logout();
     navigate('/login');
+  };
+
+  const handleOpenSettings = () => {
+    setMenuOpen(false);
+    openSettings();
   };
 
   const closeMenu = () => setMenuOpen(false);
@@ -37,9 +44,9 @@ export default function Navbar() {
         {role === 'admin' && (
           <Link to="/admin" className="navbar-link">Admin</Link>
         )}
-        <Link to="/profile" className="navbar-link">
-          {currentUser?.displayName || 'Profile'}
-        </Link>
+        <button type="button" onClick={handleOpenSettings} className="navbar-link">
+          Settings
+        </button>
         <button onClick={handleLogout} className="btn-outline btn-sm">
           Sign out
         </button>
@@ -70,9 +77,9 @@ export default function Navbar() {
               Admin
             </Link>
           )}
-          <Link to="/profile" className="navbar-mobile-link" onClick={closeMenu}>
-            {currentUser?.displayName || 'Profile'}
-          </Link>
+          <button type="button" className="navbar-mobile-link" onClick={handleOpenSettings}>
+            Settings
+          </button>
           <button onClick={handleLogout} className="navbar-mobile-link navbar-mobile-signout">
             Sign out
           </button>

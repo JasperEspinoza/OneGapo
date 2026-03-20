@@ -1,0 +1,223 @@
+.resident-shell {
+  min-height: 100vh;
+  background: #f8fafc;
+  color: #0f172a;
+  padding-bottom: 5rem;
+}
+
+.resident-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 0.9rem 0.85rem;
+}
+
+.resident-brand {
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #0f172a;
+}
+
+.resident-sub {
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.resident-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.resident-install,
+.resident-profile {
+  min-height: 2.25rem;
+  padding: 0.45rem 0.7rem;
+  font-size: 0.8rem;
+}
+
+.resident-logout {
+  min-height: 2.25rem;
+  padding: 0.45rem 0.7rem;
+  font-size: 0.8rem;
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+
+.resident-logout:hover:not(:disabled) {
+  background-color: #fef2f2;
+  border-color: #fca5a5;
+  color: #991b1b;
+}
+
+.resident-body {
+  width: 100%;
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 0.9rem 0.8rem 0;
+}
+
+.resident-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.resident-section-gap {
+  gap: 0.85rem;
+}
+
+.resident-summary-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.resident-summary-card {
+  background: #ffffff;
+  border: 1px solid #dbe3ef;
+  border-radius: 0.85rem;
+  box-shadow: 0 2px 10px rgba(30, 61, 107, 0.06);
+  padding: 0.75rem;
+}
+
+.resident-summary-label {
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.resident-summary-value {
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 1.2;
+  margin-top: 0.15rem;
+}
+
+.resident-card {
+  background: #ffffff;
+  border: 1px solid #dbe3ef;
+  border-radius: 0.9rem;
+  box-shadow: 0 2px 10px rgba(30, 61, 107, 0.06);
+  padding: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.resident-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.resident-card-title {
+  font-size: 0.96rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.resident-muted {
+  font-size: 0.85rem;
+  color: #64748b;
+  line-height: 1.5;
+}
+
+.resident-report-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.resident-report-item {
+  border: 1px solid #dbe3ef;
+  border-radius: 0.8rem;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.resident-report-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.45rem;
+}
+
+.resident-report-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.resident-report-meta {
+  font-size: 0.74rem;
+  color: #64748b;
+}
+
+.resident-report-desc {
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: #334155;
+}
+
+.resident-compose .report-form {
+  gap: 0.8rem;
+}
+
+.resident-location-btn {
+  width: fit-content;
+}
+
+.resident-map-card .report-map {
+  height: 20rem;
+}
+
+.resident-bottom-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid #e2e8f0;
+  background: #ffffff;
+  padding: 0.35rem 0.35rem calc(0.35rem + env(safe-area-inset-bottom));
+  gap: 0.35rem;
+}
+
+.resident-tab {
+  min-height: 2.4rem;
+  border-radius: 0.5rem;
+  color: #475569;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+
+.resident-tab-active {
+  color: #0f172a;
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+@media (min-width: 900px) {
+  .resident-shell {
+    padding-bottom: 1rem;
+  }
+
+  .resident-bottom-nav {
+    width: min(44rem, calc(100% - 2rem));
+    margin: 0 auto 0.8rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.7rem;
+  }
+}

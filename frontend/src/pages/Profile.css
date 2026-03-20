@@ -15,11 +15,35 @@
   .profile-container { padding: 0; }
 }
 
+.profile-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.profile-launch-card {
+  gap: 0.75rem;
+}
+
+.profile-modal-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.profile-modal-sections .profile-card {
+  padding: 1rem;
+  border-radius: 0.75rem;
+  box-shadow: none;
+}
+
 .profile-card {
-  background-color: #fff;
-  border-radius: 1rem;
-  box-shadow: 0 1px 4px rgba(0,0,0,.05);
-  border: 1px solid #e8ecf0;
+  background-color: var(--color-surface);
+  border-radius: 0.9rem;
+  box-shadow: 0 2px 10px rgba(30, 61, 107, 0.06);
+  border: 1px solid var(--color-border);
   padding: 1.5rem;
   display: flex;
   flex-direction: column;
@@ -40,7 +64,7 @@
 .profile-card-title {
   font-size: 1rem;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--color-text);
   letter-spacing: -0.01em;
 }
 
@@ -56,7 +80,7 @@
   justify-content: space-between;
   gap: 1rem;
   padding: 0.625rem 0;
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid var(--color-border);
 }
 .profile-row:last-child { border-bottom: none; }
 @media (max-width: 480px) {
@@ -71,7 +95,7 @@
 .profile-label {
   font-size: 0.8125rem;
   font-weight: 500;
-  color: #64748b;
+  color: var(--color-text-muted);
   flex-shrink: 0;
   width: 9rem;
   text-transform: uppercase;
@@ -84,7 +108,7 @@
 .profile-value {
   font-size: 0.9375rem;
   font-weight: 500;
-  color: #0f172a;
+  color: var(--color-text);
   word-break: break-word;
   min-width: 0;
 }
@@ -102,4 +126,38 @@
 .profile-form-actions .btn-outline {
   flex: 1;
   min-width: 5rem;
+}
+
+.profile-settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.7rem;
+  padding: 0.8rem;
+  background-color: var(--color-surface-muted);
+}
+
+.profile-settings-label {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.profile-settings-help {
+  margin-top: 0.2rem;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.profile-theme-toggle {
+  min-height: 2.25rem;
+}
+
+@media (max-width: 560px) {
+  .profile-settings-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }

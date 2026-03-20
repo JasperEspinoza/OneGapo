@@ -7,9 +7,11 @@ import Register       from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
 import VerifyEmail    from './pages/VerifyEmail';
 import Dashboard      from './pages/Dashboard';
-import Profile        from './pages/Profile';
 import StaffPanel     from './pages/StaffPanel';
 import AdminPanel     from './pages/AdminPanel';
+import ResidentHub    from './pages/ResidentHub';
+import { useAuth } from './context/AuthContext';
+import { SettingsModalProvider } from './context/SettingsModalContext';
 
 const Unauthorized = () => (
   <div className="screen-center">
@@ -20,37 +22,52 @@ const Unauthorized = () => (
   </div>
 );
 
+const HomeRoute = () => {
+  const { userClaims } = useAuth();
+
+  if (userClaims?.role === 'resident') {
+    return <Navigate to="/resident" replace />;
+  }
+
+  return <Dashboard />;
+};
+
 function App() {
   return (
     <Router>
       <AuthProvider>
-        <Routes>
-          {/* ── Public ────────────────────────────────────────────── */}
-          <Route path="/login"           element={<Login />} />
-          <Route path="/register"        element={<Register />} />
-          <Route path="/forgot-password" element={<ForgotPassword />} />
-          <Route path="/verify-email"    element={<VerifyEmail />} />
-          <Route path="/unauthorized"    element={<Unauthorized />} />
+        <SettingsModalProvider>
+          <Routes>
+            {/* ── Public ────────────────────────────────────────────── */}
+            <Route path="/login"           element={<Login />} />
+            <Route path="/register"        element={<Register />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/verify-email"    element={<VerifyEmail />} />
+            <Route path="/unauthorized"    element={<Unauthorized />} />
 
-          {/* ── Any authenticated + verified user ────────────── */}
-          <Route element={<ProtectedRoute />}>
-            <Route path="/"        element={<Dashboard />} />
-            <Route path="/profile" element={<Profile />} />
-          </Route>
+            {/* ── Any authenticated + verified user ────────────── */}
+            <Route element={<ProtectedRoute />}>
+              <Route path="/" element={<HomeRoute />} />
+            </Route>
 
-          {/* ── Staff + Admin ─────────────────────────────────── */}
-          <Route element={<ProtectedRoute allowedRoles={['staff', 'admin']} />}>
-            <Route path="/staff" element={<StaffPanel />} />
-          </Route>
+            <Route element={<ProtectedRoute allowedRoles={['resident']} showNav={false} />}>
+              <Route path="/resident" element={<ResidentHub />} />
+            </Route>
 
-          {/* ── Admin only ────────────────────────────────────── */}
-          <Route element={<ProtectedRoute allowedRoles={['admin']} requirePrimaryAdmin={true} showNav={false} />}>
-            <Route path="/admin" element={<AdminPanel />} />
-          </Route>
+            {/* ── Staff + Admin ─────────────────────────────────── */}
+            <Route element={<ProtectedRoute allowedRoles={['staff', 'admin']} />}>
+              <Route path="/staff" element={<StaffPanel />} />
+            </Route>
 
-          {/* ── Catch-all ───────────────────────────────────────── */}
-          <Route path="*" element={<Navigate to="/login" replace />} />
-        </Routes>
+            {/* ── Admin only ────────────────────────────────────── */}
+            <Route element={<ProtectedRoute allowedRoles={['admin']} requirePrimaryAdmin={true} showNav={false} />}>
+              <Route path="/admin" element={<AdminPanel />} />
+            </Route>
+
+            {/* ── Catch-all ───────────────────────────────────────── */}
+            <Route path="*" element={<Navigate to="/login" replace />} />
+          </Routes>
+        </SettingsModalProvider>
       </AuthProvider>
     </Router>
   );
