@@ -250,18 +250,24 @@ export default function GlobalSettingsModal({ isOpen, onClose }) {
 
         <section className="profile-card">
           <h2 className="profile-card-title">Appearance</h2>
-          <div className="profile-settings-row">
-            <div>
-              <p className="profile-settings-label">Theme</p>
-              <p className="profile-settings-help">Switch between light and dark mode.</p>
-            </div>
+          <p className="profile-settings-label">Theme</p>
+          <div className="profile-settings-inline">
+            <p className="profile-settings-help">Switch between light and dark mode.</p>
 
             <button
               type="button"
-              className="btn-outline profile-theme-toggle"
+              className="profile-theme-toggle"
+              role="switch"
+              aria-checked={themeMode === 'dark'}
+              aria-label={`Theme mode: ${themeMode === 'dark' ? 'dark' : 'light'}`}
               onClick={() => setThemeMode((prev) => (prev === 'light' ? 'dark' : 'light'))}
             >
-              {themeMode === 'light' ? 'Use dark mode' : 'Use light mode'}
+              <span className="profile-theme-toggle-track" aria-hidden="true">
+                <span className="profile-theme-toggle-thumb" />
+              </span>
+              <span className="profile-theme-toggle-label">
+                {themeMode === 'dark' ? 'Dark mode' : 'Light mode'}
+              </span>
             </button>
           </div>
         </section>

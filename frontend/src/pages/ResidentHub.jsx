@@ -313,17 +313,6 @@ export default function ResidentHub() {
               Install app
             </button>
           ) : null}
-          <button type="button" className="btn-outline resident-profile" onClick={openSettings}>
-            Settings
-          </button>
-          <button
-            type="button"
-            className="btn-outline resident-logout"
-            onClick={handleLogout}
-            disabled={signingOut}
-          >
-            {signingOut ? 'Logging out...' : 'Log out'}
-          </button>
         </div>
       </header>
 
@@ -394,7 +383,7 @@ export default function ResidentHub() {
                   className="form-input"
                   value={form.title}
                   onChange={handleInputChange}
-                  placeholder="Broken streetlight near market"
+                  placeholder="e.g. Broken streetlight near market"
                   required
                   minLength={5}
                   disabled={submitting}
@@ -535,6 +524,40 @@ export default function ResidentHub() {
             ) : null}
           </section>
         )}
+
+        {activeTab === 'settings' && (
+          <section className="resident-card resident-settings-card">
+            <div className="resident-card-header">
+              <p className="resident-card-title">Settings</p>
+            </div>
+
+            <p className="resident-muted">
+              Manage your account details, profile information, password, and appearance.
+            </p>
+
+            <div className="resident-settings-account">
+              <p className="resident-settings-account-name">{currentUser.displayName || 'Resident account'}</p>
+              <p className="resident-settings-account-email">{currentUser.email}</p>
+            </div>
+
+            <button
+              type="button"
+              className="btn-outline resident-settings-action"
+              onClick={openSettings}
+            >
+              Open account customization
+            </button>
+
+            <button
+              type="button"
+              className="btn-outline resident-logout"
+              onClick={handleLogout}
+              disabled={signingOut}
+            >
+              {signingOut ? 'Logging out...' : 'Log out'}
+            </button>
+          </section>
+        )}
       </section>
 
       <nav className="resident-bottom-nav" aria-label="Resident navigation">
@@ -542,22 +565,33 @@ export default function ResidentHub() {
           type="button"
           className={`resident-tab ${activeTab === 'home' ? 'resident-tab-active' : ''}`}
           onClick={() => setActiveTab('home')}
+          aria-label="Home"
         >
-          Home
+          <span className="material-symbols-outlined resident-tab-icon" aria-hidden="true">home</span>
         </button>
         <button
           type="button"
           className={`resident-tab ${activeTab === 'compose' ? 'resident-tab-active' : ''}`}
           onClick={() => setActiveTab('compose')}
+          aria-label="Create report"
         >
-          New Report
+          <span className="material-symbols-outlined resident-tab-icon" aria-hidden="true">edit_square</span>
         </button>
         <button
           type="button"
           className={`resident-tab ${activeTab === 'map' ? 'resident-tab-active' : ''}`}
           onClick={() => setActiveTab('map')}
+          aria-label="Map"
         >
-          Map
+          <span className="material-symbols-outlined resident-tab-icon" aria-hidden="true">map</span>
+        </button>
+        <button
+          type="button"
+          className={`resident-tab ${activeTab === 'settings' ? 'resident-tab-active' : ''}`}
+          onClick={() => setActiveTab('settings')}
+          aria-label="Settings"
+        >
+          <span className="material-symbols-outlined resident-tab-icon" aria-hidden="true">settings</span>
         </button>
       </nav>
     </main>

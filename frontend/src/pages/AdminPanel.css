@@ -224,9 +224,50 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  transition: transform 0.25s cubic-bezier(.4, 0, .2, 1);
+  transition: width 0.2s ease, transform 0.25s cubic-bezier(.4, 0, .2, 1);
   z-index: 40;
   box-shadow: 4px 0 24px rgba(0, 0, 0, 0.15);
+}
+
+@media (min-width: 768px) {
+  .ap-shell-sidebar-collapsed .ap-sidebar {
+    width: 4.5rem;
+  }
+
+  .ap-shell-sidebar-collapsed .ap-sidebar-brand {
+    justify-content: center;
+    padding: 1.05rem 0.5rem;
+  }
+
+  .ap-shell-sidebar-collapsed .ap-brand-copy,
+  .ap-shell-sidebar-collapsed .ap-brand-icon {
+    display: none;
+  }
+
+  .ap-shell-sidebar-collapsed .ap-sidebar-rail-toggle {
+    margin-left: 0;
+  }
+
+  .ap-shell-sidebar-collapsed .ap-nav,
+  .ap-shell-sidebar-collapsed .ap-sidebar-footer {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+
+  .ap-shell-sidebar-collapsed .ap-nav-item {
+    justify-content: center;
+    padding: 0.58rem 0.4rem;
+  }
+
+  .ap-shell-sidebar-collapsed .ap-nav-item > span:last-child {
+    display: none;
+  }
+
+  .ap-shell-sidebar-collapsed .ap-nav-item-active::before {
+    left: 1px;
+    top: 18%;
+    height: 64%;
+  }
 }
 
 @media (max-width: 767px) {
@@ -249,8 +290,14 @@
   padding: 1.375rem 1.25rem;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 0.75rem;
   border-bottom: 1px solid var(--color-sidebar-border);
+}
+
+.ap-brand-copy {
+  min-width: 0;
+  margin-right: auto;
 }
 
 .ap-brand-icon {
@@ -282,6 +329,48 @@
   letter-spacing: 0.04em;
   text-transform: uppercase;
   margin-top: 0.1rem;
+}
+
+.ap-sidebar-rail-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.45rem;
+  border: none;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-left: auto;
+  transition: background-color 0.15s ease;
+}
+
+.ap-sidebar-rail-toggle .ap-hamburger-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.18s ease;
+}
+
+.ap-shell-sidebar-collapsed .ap-sidebar-rail-toggle .ap-hamburger-icon {
+  transform: rotate(180deg);
+}
+
+.ap-sidebar-rail-toggle:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.ap-sidebar-rail-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ap-sidebar-rail-toggle .ap-hamburger-icon {
+    transition: none;
+  }
 }
 
 /* Nav */
@@ -357,7 +446,7 @@
 .ap-nav-item-active .ap-nav-icon,
 .ap-nav-item:hover .ap-nav-icon { opacity: 1; }
 
-.ap-nav-signout { color: #b91c1c; }
+.ap-nav-signout { color: #fe1d1d; }
 .ap-nav-signout:hover { background-color: #fef2f2; color: #991b1b; }
 
 /* Sidebar footer */
@@ -426,6 +515,7 @@
 
 @media (max-width: 767px) {
   .ap-hamburger { display: flex; }
+  .ap-sidebar-rail-controls { display: none; }
 }
 
 /* Search */
@@ -922,7 +1012,7 @@
 .ap-table-wrap {
   overflow-x: auto;
   border-radius: 0.5rem;
-  border: 1px solid #f1f5f9;
+  border: 1px solid #c7d2df;
 }
 
 .ap-table {
@@ -948,7 +1038,7 @@
 .ap-table td {
   padding: 0.8125rem 1rem;
   color: #1e293b;
-  border-top: 1px solid #f1f5f9;
+  border-top: 1px solid #cfd9e5;
   vertical-align: middle;
   line-height: 1.4;
 }
@@ -957,6 +1047,69 @@
   transition: background-color 0.1s ease;
 }
 .ap-table tbody tr:hover { background-color: #f8fafc; }
+
+.ap-report-row-clickable {
+  cursor: pointer;
+}
+
+.ap-report-row-clickable:focus-visible {
+  outline: 2px solid #1c385f;
+  outline-offset: -2px;
+}
+
+.ap-report-details-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem 0.875rem;
+}
+
+.ap-report-details-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.45rem;
+  padding: 0.5rem 0.625rem;
+  font-size: 0.8125rem;
+}
+
+.ap-report-details-row span {
+  color: #64748b;
+}
+
+.ap-report-details-row strong {
+  color: #0f172a;
+  font-weight: 600;
+  text-align: right;
+}
+
+.ap-report-details-description p:last-child {
+  margin: 0;
+  font-size: 0.875rem;
+  color: #1e293b;
+  line-height: 1.5;
+}
+
+.ap-report-details-media {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.ap-report-modal-image {
+  width: 100%;
+  max-height: 18rem;
+  object-fit: contain;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+  background-color: #f8fafc;
+}
+
+@media (max-width: 700px) {
+  .ap-report-details-grid {
+    grid-template-columns: 1fr;
+  }
+}
 
 .ap-table-user {
   display: flex;
@@ -1035,13 +1188,18 @@
 .ap-perm-badge {
   display: inline-block;
   font-size: 0.675rem;
-  background-color: #f1f5f9;
-  color: #475569;
+  background-color: #e6edf5;
+  color: #334155;
+  border: 1px solid #cbd7e6;
   border-radius: 0.3rem;
   padding: 0.15rem 0.45rem;
   margin-right: 0.2rem;
   margin-bottom: 0.2rem;
   font-weight: 500;
+}
+
+.ap-roles-permissions-head {
+  color: #475569;
 }
 
 .ap-field-hint {
@@ -1394,6 +1552,47 @@
   border-color: var(--color-border);
 }
 
+.theme-dark .ap-table-wrap {
+  border-color: var(--color-border-strong);
+}
+
+.theme-dark .ap-table td {
+  color: var(--color-text-soft);
+}
+
+.theme-dark .ap-perm-badge {
+  background-color: #223041;
+  color: #d6e2f0;
+  border-color: #3b4d63;
+}
+
+.theme-dark .ap-roles-permissions-head {
+  color: var(--color-text);
+}
+
+.theme-dark .ap-table tbody tr:hover {
+  background-color: var(--color-surface-muted);
+}
+
+.theme-dark .ap-report-details-row {
+  background-color: var(--color-surface-muted);
+  border-color: var(--color-border);
+}
+
+.theme-dark .ap-report-details-row span {
+  color: var(--color-text-muted);
+}
+
+.theme-dark .ap-report-details-row strong,
+.theme-dark .ap-report-details-description p:last-child {
+  color: var(--color-text-soft);
+}
+
+.theme-dark .ap-report-modal-image {
+  border-color: var(--color-border);
+  background-color: var(--color-surface-muted);
+}
+
 .theme-dark .ap-table th {
   color: var(--color-text-soft);
   background-color: var(--color-surface-muted);
@@ -1407,6 +1606,19 @@
 
 .theme-dark .ap-report-legend-item {
   color: var(--color-text-soft);
+}
+
+.theme-dark .ap-perms-grid {
+  background-color: var(--color-surface-muted);
+  border-color: var(--color-border);
+}
+
+.theme-dark .ap-perm-item {
+  color: var(--color-text-soft);
+}
+
+.theme-dark .ap-perm-item:hover {
+  color: var(--color-text);
 }
 
 .theme-dark .ap-header {

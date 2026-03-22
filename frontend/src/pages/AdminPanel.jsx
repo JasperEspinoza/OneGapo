@@ -1,5 +1,5 @@
 import './AdminPanel.css';
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import AppModal from '../components/AppModal';
 import ReportLocationMap from '../components/ReportLocationMap';
@@ -48,6 +48,12 @@ const ICONS = {
   menu: (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22" style={{minWidth: '22px'}}><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
   ),
+  chevron_left: (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22" style={{minWidth: '22px'}}><path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+  ),
+  chevron_right: (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22" style={{minWidth: '22px'}}><path d="M8.59 16.59 13.17 12 8.59 7.41 10 6l6 6-6 6z"/></svg>
+  ),
   search: (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="18" height="18" style={{minWidth: '18px'}}><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
   ),
@@ -88,6 +94,99 @@ const REPORT_CATEGORY_META = {
   disaster: { label: 'Disaster / Emergency', color: '#dc2626' },
   general: { label: 'General Concern', color: '#14b8a6' },
 };
+
+function getReportPreviewImage(report) {
+  if (!Array.isArray(report?.attachments)) return null;
+
+  const imageAttachment = report.attachments.find((attachment) => {
+    const src = String(
+      attachment?.secureUrl ||
+      attachment?.secure_url ||
+      attachment?.url ||
+      attachment?.uri ||
+      attachment?.downloadURL ||
+      attachment?.thumbnailUrl ||
+      attachment?.src ||
+      ''
+    );
+    const mime = String(
+      attachment?.mimeType ||
+      attachment?.mime_type ||
+      attachment?.resourceType ||
+      attachment?.resource_type ||
+      ''
+    ).toLowerCase();
+    if (!src) return false;
+    if (mime.includes('image')) return true;
+    return /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(src);
+  });
+
+  if (!imageAttachment) return null;
+  return (
+    imageAttachment.secureUrl ||
+    imageAttachment.secure_url ||
+    imageAttachment.url ||
+    imageAttachment.uri ||
+    imageAttachment.downloadURL ||
+    imageAttachment.thumbnailUrl ||
+    imageAttachment.src ||
+    null
+  );
+}
+
+function getReporterDisplayName(report, usersByUid) {
+  const reporter = report?.reporter || {};
+  const reporterUid = reporter.uid || reporter.userId || reporter.user_id || reporter.sub || '';
+  const matchedUser = reporterUid ? usersByUid.get(reporterUid) : null;
+
+  const reporterUsername = String(
+    reporter.username || reporter.displayName || reporter.fullName || ''
+  ).trim();
+  if (reporterUsername) return reporterUsername;
+
+  const matchedUsername = String(
+    matchedUser?.username || matchedUser?.displayName || matchedUser?.fullName || ''
+  ).trim();
+  if (matchedUsername) return matchedUsername;
+
+  return String(reporter.email || matchedUser?.email || '').trim() || '—';
+}
+
+function getReportCategoryLabel(category) {
+  const key = String(category || '').toLowerCase();
+  const knownLabel = REPORT_CATEGORY_META[key]?.label;
+  if (knownLabel) return knownLabel;
+
+  const normalized = key.replace(/[_-]+/g, ' ').trim();
+  if (!normalized) return 'Uncategorized';
+  return normalized.replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function toTitleCase(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function extractBarangayFromReport(report) {
+  const directBarangay = String(
+    report?.location?.barangay || report?.barangay || ''
+  ).trim();
+
+  if (directBarangay) {
+    return toTitleCase(directBarangay.replace(/^brgy\.?\s+/i, '').trim());
+  }
+
+  const address = String(report?.location?.address || '').trim();
+  if (!address) return '';
+
+  const fromPrefixMatch = address.match(/(?:^|,|\s)(?:brgy\.?|barangay)\s+([^,;]+)/i);
+  if (fromPrefixMatch?.[1]) {
+    return toTitleCase(fromPrefixMatch[1].trim());
+  }
+
+  return '';
+}
 
 export default function AdminPanel() {
   const { currentUser, userClaims, logout } = useAuth();
@@ -168,13 +267,26 @@ export default function AdminPanel() {
   const [reports,        setReports]        = useState([]);
   const [reportsLoading, setReportsLoading] = useState(false);
   const [reportsError,   setReportsError]   = useState('');
+  const [selectedReport, setSelectedReport] = useState(null);
+  const reportsPollingRef = useRef(false);
 
   // ── Users filter state ───────────────────────────────────
   const [filterRole,   setFilterRole]   = useState('all');
   const [filterBranch, setFilterBranch] = useState('all');
+  const [reportTypeFilter, setReportTypeFilter] = useState('all');
+  const [reportBarangayFilter, setReportBarangayFilter] = useState('all');
 
   // ── UI state ────────────────────────────────────────────
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem('ap-sidebar-collapsed') === 'true';
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('ap-sidebar-collapsed', sidebarCollapsed ? 'true' : 'false');
+  }, [sidebarCollapsed]);
 
   const loadBranches = useCallback(async () => {
     setBranchLoading(true);
@@ -221,9 +333,14 @@ export default function AdminPanel() {
     }
   }, [api]);
 
-  const loadReports = useCallback(async () => {
-    setReportsLoading(true);
-    setReportsError('');
+  const loadReports = useCallback(async (options = {}) => {
+    const { silent = false } = options;
+
+    if (!silent) {
+      setReportsLoading(true);
+      setReportsError('');
+    }
+
     try {
       const res = await api('/api/reports');
       const data = await res.json();
@@ -232,7 +349,9 @@ export default function AdminPanel() {
     } catch (err) {
       setReportsError(err.message);
     } finally {
-      setReportsLoading(false);
+      if (!silent) {
+        setReportsLoading(false);
+      }
     }
   }, [api]);
 
@@ -243,6 +362,37 @@ export default function AdminPanel() {
     if (['roles', 'accounts'].includes(activeSection)) loadRoles();
     if (['dashboard', 'reports'].includes(activeSection)) loadReports();
   }, [activeSection, loadUsers, loadRoles, loadReports]);
+
+  useEffect(() => {
+    if (activeSection !== 'dashboard') return undefined;
+
+    const pollReports = async () => {
+      if (reportsPollingRef.current) return;
+
+      reportsPollingRef.current = true;
+      try {
+        await loadReports({ silent: true });
+      } finally {
+        reportsPollingRef.current = false;
+      }
+    };
+
+    const intervalId = window.setInterval(pollReports, 8000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        pollReports();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      reportsPollingRef.current = false;
+    };
+  }, [activeSection, loadReports]);
 
   const stats = useMemo(() => ({
     totalBranches:      branches.length,
@@ -298,6 +448,59 @@ export default function AdminPanel() {
     })),
     [residentReportMarkers]
   );
+
+  const reportTypeOptions = useMemo(() => {
+    const knownTypes = Object.keys(REPORT_CATEGORY_META);
+    const reportTypes = Array.from(
+      new Set(
+        reports
+          .map((report) => String(report?.category || 'general').toLowerCase().trim())
+          .filter(Boolean)
+      )
+    );
+
+    const extraTypes = reportTypes.filter((value) => !knownTypes.includes(value));
+
+    const knownTypeOptions = knownTypes.map((value) => ({
+      value,
+      label: getReportCategoryLabel(value),
+    }));
+
+    const extraTypeOptions = extraTypes
+      .map((value) => ({
+        value,
+        label: getReportCategoryLabel(value),
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+
+    return [...knownTypeOptions, ...extraTypeOptions];
+  }, [reports]);
+
+  const reportBarangayOptions = useMemo(() => {
+    return Array.from(
+      new Set(
+        reports
+          .map((report) => extractBarangayFromReport(report))
+          .filter(Boolean)
+      )
+    ).sort((a, b) => a.localeCompare(b));
+  }, [reports]);
+
+  const filteredReports = useMemo(() => {
+    return reports.filter((report) => {
+      const matchesType =
+        reportTypeFilter === 'all'
+          ? true
+          : String(report?.category || 'general').toLowerCase() === reportTypeFilter;
+
+      const matchesBarangay =
+        reportBarangayFilter === 'all'
+          ? true
+          : extractBarangayFromReport(report) === reportBarangayFilter;
+
+      return matchesType && matchesBarangay;
+    });
+  }, [reports, reportTypeFilter, reportBarangayFilter]);
 
   // ── Handlers ────────────────────────────────────────────
   const handleCreateBranch = async (e) => {
@@ -578,12 +781,23 @@ export default function AdminPanel() {
     return branches.filter((b) => b.name?.toLowerCase().includes(q));
   }, [branches, searchQuery]);
 
+  const usersByUid = useMemo(
+    () => new Map(users.filter((u) => u?.uid).map((u) => [u.uid, u])),
+    [users]
+  );
+
+  const resolveReporterName = useCallback(
+    (report) => getReporterDisplayName(report, usersByUid),
+    [usersByUid]
+  );
+
   const initials    = (currentUser?.displayName || currentUser?.email || 'A')[0].toUpperCase();
   const displayName = currentUser?.displayName || currentUser?.email?.split('@')[0] || 'Admin';
   const displayRole = userClaims?.role === 'admin' ? 'Chief Administrator' : (userClaims?.role || 'Staff');
+  const selectedReportPreviewImage = selectedReport ? getReportPreviewImage(selectedReport) : null;
 
   return (
-    <div className="ap-shell">
+    <div className={`ap-shell${sidebarCollapsed ? ' ap-shell-sidebar-collapsed' : ''}`}>
 
       {/* Mobile overlay */}
       {sidebarOpen && (
@@ -598,10 +812,19 @@ export default function AdminPanel() {
           <div className="ap-brand-icon">
             {ICONS.location_city}
           </div>
-          <div>
+          <div className="ap-brand-copy">
             <div className="ap-brand-name">OneGapo</div>
             <div className="ap-brand-sub">City Admin Panel</div>
           </div>
+          <button
+            className="ap-sidebar-rail-toggle"
+            type="button"
+            onClick={() => setSidebarCollapsed((prev) => !prev)}
+            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            <span className="ap-hamburger-icon">{sidebarCollapsed ? ICONS.chevron_right : ICONS.chevron_left}</span>
+          </button>
         </div>
 
         <nav className="ap-nav">
@@ -610,6 +833,7 @@ export default function AdminPanel() {
               key={item.id}
               className={`ap-nav-item${activeSection === item.id ? ' ap-nav-item-active' : ''}`}
               onClick={() => { setActiveSection(item.id); setSidebarOpen(false); }}
+              title={item.label}
             >
               <span className="ap-nav-icon">{ICONS[item.icon]}</span>
               <span>{item.label}</span>
@@ -618,11 +842,11 @@ export default function AdminPanel() {
         </nav>
 
         <div className="ap-sidebar-footer">
-          <button type="button" className="ap-nav-item" onClick={() => { openSettings(); setSidebarOpen(false); }}>
+          <button type="button" className="ap-nav-item" onClick={() => { openSettings(); setSidebarOpen(false); }} title="Settings">
             <span className="ap-nav-icon">{ICONS.settings}</span>
             <span>Settings</span>
           </button>
-          <button className="ap-nav-item ap-nav-signout" onClick={handleLogout}>
+          <button className="ap-nav-item ap-nav-signout" onClick={handleLogout} title="Sign out">
             <span className="ap-nav-icon">{ICONS.logout}</span>
             <span>Sign out</span>
           </button>
@@ -754,6 +978,7 @@ export default function AdminPanel() {
                   <ReportLocationMap
                     markers={residentReportMarkers}
                     helpText={null}
+                    preserveViewOnRefresh
                   />
                   <div className="ap-report-legend" aria-label="Report category legend">
                     {residentLegendItems.map((item) => (
@@ -860,132 +1085,161 @@ export default function AdminPanel() {
               <div className="ap-section-heading">
                 <div>
                   <h2 className="ap-section-title">Reports</h2>
-                  <p className="ap-section-sub">Primary admin oversight for report operations, coverage, and staff readiness</p>
+                  <p className="ap-section-sub">Map overview and full report details</p>
                 </div>
                 <div className="ap-section-actions">
-                  <Link to="/staff" className="ap-btn-outline ap-btn-icon-left">
-                    {ICONS.report}
-                    Open staff view
-                  </Link>
-                </div>
-              </div>
-
-              <div className="ap-stats-grid">
-                <div className="ap-stat-card">
-                  <div className="ap-stat-top">
-                    <div className="ap-stat-icon ap-stat-icon-blue">
-                      {ICONS.report}
-                    </div>
-                    <span className="ap-stat-badge ap-stat-badge-green">{reportEnabledUsers.length} enabled</span>
-                  </div>
-                  <p className="ap-stat-label">Report Operators</p>
-                  <h3 className="ap-stat-value">{usersLoading ? '…' : reportEnabledUsers.length}</h3>
-                  <p className="ap-stat-meta">Staff and admins with report access</p>
-                </div>
-
-                <div className="ap-stat-card">
-                  <div className="ap-stat-top">
-                    <div className="ap-stat-icon ap-stat-icon-amber">
-                      {ICONS.branches}
-                    </div>
-                    <span className="ap-stat-badge ap-stat-badge-amber">{stats.totalBranches} branches</span>
-                  </div>
-                  <p className="ap-stat-label">Coverage Areas</p>
-                  <h3 className="ap-stat-value">{branchLoading ? '…' : stats.totalBranches}</h3>
-                  <p className="ap-stat-meta">{stats.totalPublic} public · {stats.totalPrivate} private</p>
-                </div>
-
-                <div className="ap-stat-card">
-                  <div className="ap-stat-top">
-                    <div className="ap-stat-icon ap-stat-icon-purple">
-                      {ICONS.notifications}
-                    </div>
-                    <span className="ap-stat-badge ap-stat-badge-purple">{announcementPublishers.length} publishers</span>
-                  </div>
-                  <p className="ap-stat-label">Announcement Access</p>
-                  <h3 className="ap-stat-value">{usersLoading ? '…' : announcementPublishers.length}</h3>
-                  <p className="ap-stat-meta">Users who can post updates</p>
-                </div>
-
-                <div className="ap-stat-card">
-                  <div className="ap-stat-top">
-                    <div className="ap-stat-icon ap-stat-icon-emerald">
-                      {ICONS.people}
-                    </div>
-                    <span className="ap-stat-badge ap-stat-badge-green">All access</span>
-                  </div>
-                  <p className="ap-stat-label">Primary Admin</p>
-                  <h3 className="ap-stat-value">1</h3>
-                  <p className="ap-stat-meta">OneGapo master account oversight</p>
+                  <button onClick={() => loadReports()} disabled={reportsLoading} className="ap-btn-outline ap-btn-sm">
+                    {reportsLoading ? 'Loading…' : 'Refresh reports'}
+                  </button>
                 </div>
               </div>
 
               <div className="ap-card">
                 <div className="ap-card-header">
                   <div>
-                    <h3 className="ap-card-title">Reports Operations Overview</h3>
-                    <p className="ap-card-sub">The primary admin account has full access to all report workflows across every branch.</p>
+                    <h3 className="ap-card-title">Incident Map</h3>
+                    <p className="ap-card-sub">Resident-submitted report locations in Olongapo City</p>
                   </div>
                 </div>
-                <div className="ap-heatmap">
-                  <div className="ap-heatmap-placeholder">
-                    <span className="ap-heatmap-icon">{ICONS.map}</span>
-                    <p>Connect the reports API to display live incident volume and branch activity here.</p>
+                <div className="report-map-wrap">
+                  <ReportLocationMap
+                    markers={residentReportMarkers}
+                    helpText={null}
+                    preserveViewOnRefresh
+                  />
+                  <div className="ap-report-legend" aria-label="Report category legend">
+                    {residentLegendItems.map((item) => (
+                      <span key={item.value} className="ap-report-legend-item">
+                        <span className="ap-report-legend-dot" style={{ backgroundColor: item.color }} />
+                        {item.label} ({item.count})
+                      </span>
+                    ))}
                   </div>
-                  <div className="ap-blob ap-blob-red-lg"  style={{ top: '25%', left: '33%' }} />
-                  <div className="ap-blob ap-blob-red-md"  style={{ top: '50%', left: '50%' }} />
-                  <div className="ap-blob ap-blob-blue-md" style={{ bottom: '25%', right: '25%' }} />
-                  <div className="ap-pin ap-pin-red"  style={{ top: '25%', left: '33%' }} />
-                  <div className="ap-pin ap-pin-red"  style={{ top: '52%', left: '48%' }} />
-                  <div className="ap-pin ap-pin-blue" style={{ bottom: '25%', right: '25%' }} />
+                  <div className="ap-map-meta">
+                    <span>
+                      Resident report markers: {reportsLoading ? 'Loading…' : residentReportMarkers.length}
+                    </span>
+                    {reportsError ? <span className="ap-status-high">{reportsError}</span> : null}
+                  </div>
                 </div>
               </div>
 
               <div className="ap-card">
                 <div className="ap-card-header">
-                  <h3 className="ap-card-title">Report-Capable Users</h3>
-                  <button onClick={loadUsers} disabled={usersLoading} className="ap-btn-outline ap-btn-sm">
-                    {usersLoading ? 'Loading…' : 'Refresh'}
-                  </button>
+                  <h3 className="ap-card-title">All Report Details</h3>
+                  <div className="ap-filters-row">
+                    <div>
+                      <label htmlFor="report-type-filter" className="form-label">Report type</label>
+                      <select
+                        id="report-type-filter"
+                        className="form-select"
+                        value={reportTypeFilter}
+                        onChange={(event) => setReportTypeFilter(event.target.value)}
+                      >
+                        <option value="all">All types</option>
+                        {reportTypeOptions.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label htmlFor="report-barangay-filter" className="form-label">Barangay</label>
+                      <select
+                        id="report-barangay-filter"
+                        className="form-select"
+                        value={reportBarangayFilter}
+                        onChange={(event) => setReportBarangayFilter(event.target.value)}
+                      >
+                        <option value="all">All barangays</option>
+                        {reportBarangayOptions.map((barangay) => (
+                          <option key={barangay} value={barangay}>{barangay}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
                 </div>
-                {usersLoading ? (
+                {reportsLoading ? (
                   <p className="ap-loading">Loading…</p>
-                ) : reportOperators.length === 0 ? (
-                  <p className="ap-empty">No report-capable users found.</p>
+                ) : reports.length === 0 ? (
+                  <p className="ap-empty">No reports found.</p>
+                ) : filteredReports.length === 0 ? (
+                  <p className="ap-empty">No reports match the selected filters.</p>
                 ) : (
                   <div className="ap-table-wrap">
                     <table className="ap-table">
                       <thead>
                         <tr>
-                          <th>Email</th>
-                          <th>Role</th>
-                          <th>Branch</th>
-                          <th>Assigned Role</th>
-                          <th>Report Access</th>
+                          <th>Title</th>
+                          <th>Category</th>
+                          <th>Status</th>
+                          <th>Address</th>
+                          <th>Reporter</th>
+                          <th>Created</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {reportOperators.map((user) => {
-                          const canViewReports = user.role === 'admin' || (user.permissions || []).some((perm) => perm.includes('reports'));
-                          return (
-                            <tr key={user.uid}>
-                              <td>{user.email}</td>
-                              <td><span className={`badge badge-${user.role}`}>{user.role}</span></td>
-                              <td>{user.branchName || <span className="ap-muted">All branches</span>}</td>
-                              <td>{user.customRoleName || <span className="ap-muted">—</span>}</td>
-                              <td>
-                                <span className={`badge ${canViewReports ? 'badge-verified' : 'badge-unverified'}`}>
-                                  {canViewReports ? 'Enabled' : 'Not enabled'}
-                                </span>
-                              </td>
-                            </tr>
-                          );
-                        })}
+                        {filteredReports.map((report) => (
+                          <tr
+                            key={report.id}
+                            className="ap-report-row-clickable"
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => setSelectedReport(report)}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault();
+                                setSelectedReport(report);
+                              }
+                            }}
+                          >
+                            <td>{report.title || <span className="ap-muted">—</span>}</td>
+                            <td>{getReportCategoryLabel(report.category)}</td>
+                            <td>{report.status || <span className="ap-muted">—</span>}</td>
+                            <td>{report?.location?.address || <span className="ap-muted">—</span>}</td>
+                            <td>{resolveReporterName(report)}</td>
+                            <td>{report.createdAt ? new Date(report.createdAt).toLocaleString() : <span className="ap-muted">—</span>}</td>
+                          </tr>
+                        ))}
                       </tbody>
                     </table>
                   </div>
                 )}
               </div>
+
+              {selectedReport && (
+                <AppModal
+                  title={selectedReport.title || 'Report details'}
+                  titleId="report-details-title"
+                  onClose={() => setSelectedReport(null)}
+                >
+                  <div className="ap-report-details-grid">
+                    <div className="ap-report-details-row"><span>Status</span><strong>{selectedReport.status || '—'}</strong></div>
+                    <div className="ap-report-details-row"><span>Category</span><strong>{selectedReport.category || '—'}</strong></div>
+                    <div className="ap-report-details-row"><span>Reporter</span><strong>{resolveReporterName(selectedReport)}</strong></div>
+                    <div className="ap-report-details-row"><span>Address</span><strong>{selectedReport?.location?.address || '—'}</strong></div>
+                    <div className="ap-report-details-row"><span>Created</span><strong>{selectedReport.createdAt ? new Date(selectedReport.createdAt).toLocaleString() : '—'}</strong></div>
+                    <div className="ap-report-details-row"><span>Updated</span><strong>{selectedReport.updatedAt ? new Date(selectedReport.updatedAt).toLocaleString() : '—'}</strong></div>
+                  </div>
+
+                  <div className="ap-report-details-description">
+                    <p className="form-label">Description</p>
+                    <p>{selectedReport.description || '—'}</p>
+                  </div>
+
+                  <div className="ap-report-details-media">
+                    <p className="form-label">Image</p>
+                    {selectedReportPreviewImage ? (
+                      <img
+                        src={selectedReportPreviewImage}
+                        alt={selectedReport.title || 'Report attachment'}
+                        className="ap-report-modal-image"
+                      />
+                    ) : (
+                      <p className="ap-muted">No image attachment for this report.</p>
+                    )}
+                  </div>
+                </AppModal>
+              )}
             </div>
           )}
 
@@ -1002,7 +1256,7 @@ export default function AdminPanel() {
               </div>
 
               <div className="ap-card">
-                <h3 className="ap-card-title">Add New Location</h3>
+                <h3 className="ap-card-title">Add New Branch</h3>
                 {branchError   && <div role="alert"  className="auth-error">{branchError}</div>}
                 {branchSuccess && <div role="status" className="auth-success">{branchSuccess}</div>}
                 <form onSubmit={handleCreateBranch} className="ap-form" noValidate>
@@ -1272,7 +1526,7 @@ export default function AdminPanel() {
                       <thead>
                         <tr>
                           <th>Name</th>
-                          <th>Permissions</th>
+                          <th className="ap-roles-permissions-head">Permissions</th>
                           <th>Staff Using</th>
                           <th></th>
                         </tr>
