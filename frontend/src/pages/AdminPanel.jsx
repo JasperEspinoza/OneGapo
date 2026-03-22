@@ -168,13 +168,63 @@ function toTitleCase(value) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+const OLONGAPO_BARANGAYS = [
+  'Asinan',
+  'Bajac-Bajac',
+  'Barretto',
+  'East Bajac-Bajac',
+  'East Tapinac',
+  'Gordon Heights',
+  'Kalaklan',
+  'Mabayuan',
+  'New Cabalan',
+  'New Ilalim',
+  'New Kababae',
+  'New Kalalake',
+  'Old Cabalan',
+  'Pag-asa',
+  'Santa Rita',
+  'West Bajac-Bajac',
+  'West Tapinac',
+];
+
+const BARANGAY_BY_NORMALIZED = new Map(
+  OLONGAPO_BARANGAYS.map((name) => [
+    String(name).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(),
+    name,
+  ])
+);
+
+function normalizeBarangayToken(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function getKnownBarangayName(value) {
+  const normalized = normalizeBarangayToken(value);
+  if (!normalized) return '';
+
+  const exact = BARANGAY_BY_NORMALIZED.get(normalized);
+  if (exact) return exact;
+
+  const partial = OLONGAPO_BARANGAYS.find((name) => {
+    const known = normalizeBarangayToken(name);
+    return normalized.includes(known);
+  });
+
+  return partial || '';
+}
+
 function extractBarangayFromReport(report) {
   const directBarangay = String(
     report?.location?.barangay || report?.barangay || ''
   ).trim();
 
   if (directBarangay) {
-    return toTitleCase(directBarangay.replace(/^brgy\.?\s+/i, '').trim());
+    const cleaned = directBarangay.replace(/^(?:brgy\.?|barangay)\s+/i, '').trim();
+    return getKnownBarangayName(cleaned) || toTitleCase(cleaned);
   }
 
   const address = String(report?.location?.address || '').trim();
@@ -182,8 +232,27 @@ function extractBarangayFromReport(report) {
 
   const fromPrefixMatch = address.match(/(?:^|,|\s)(?:brgy\.?|barangay)\s+([^,;]+)/i);
   if (fromPrefixMatch?.[1]) {
-    return toTitleCase(fromPrefixMatch[1].trim());
+    const cleaned = fromPrefixMatch[1].trim();
+    return getKnownBarangayName(cleaned) || toTitleCase(cleaned);
   }
+
+  const addressSegments = address
+    .split(',')
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+
+  for (const segment of addressSegments) {
+    const cleaned = segment
+      .replace(/\b(city of olongapo|olongapo city|olongapo|zambales|philippines)\b/gi, '')
+      .replace(/^(?:brgy\.?|barangay)\s+/i, '')
+      .trim();
+
+    const known = getKnownBarangayName(cleaned);
+    if (known) return known;
+  }
+
+  const knownFromWholeAddress = getKnownBarangayName(address);
+  if (knownFromWholeAddress) return knownFromWholeAddress;
 
   return '';
 }
