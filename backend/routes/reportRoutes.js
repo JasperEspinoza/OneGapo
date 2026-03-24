@@ -1,11 +1,17 @@
 const { Router } = require('express');
 const multer = require('multer');
-const { verifyToken } = require('../middleware/authMiddleware');
+const { verifyToken, requireStaffOrAdmin } = require('../middleware/authMiddleware');
 const {
   createReport,
   listOwnReports,
   listReportsForOperators,
   updateReportStatus,
+  archiveReport,
+  deleteReport,
+  listForwardTargets,
+  forwardReport,
+  listNotifications,
+  markNotificationRead,
 } = require('../controllers/reportController');
 
 const router = Router();
@@ -27,9 +33,32 @@ const upload = multer({
   },
 });
 
+const uploadResolutionEvidence = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    files: 4,
+    fileSize: 25 * 1024 * 1024,
+  },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+      return;
+    }
+    const err = new Error('Only image files are allowed for resolution evidence.');
+    err.status = 400;
+    cb(err);
+  },
+});
+
 router.post('/', verifyToken, upload.array('attachments', 6), createReport);
 router.get('/me', verifyToken, listOwnReports);
 router.get('/', verifyToken, listReportsForOperators);
-router.patch('/:reportId/status', verifyToken, updateReportStatus);
+router.get('/forward-targets', verifyToken, requireStaffOrAdmin, listForwardTargets);
+router.patch('/:reportId/forward', verifyToken, requireStaffOrAdmin, forwardReport);
+router.patch('/:reportId/archive', verifyToken, requireStaffOrAdmin, archiveReport);
+router.delete('/:reportId', verifyToken, requireStaffOrAdmin, deleteReport);
+router.get('/notifications', verifyToken, requireStaffOrAdmin, listNotifications);
+router.patch('/notifications/:notificationId/read', verifyToken, requireStaffOrAdmin, markNotificationRead);
+router.patch('/:reportId/status', verifyToken, uploadResolutionEvidence.array('resolutionPhotos', 4), updateReportStatus);
 
 module.exports = router;

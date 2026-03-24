@@ -1,6 +1,12 @@
 const { Router } = require('express');
 const { verifyToken, requireAdmin } = require('../middleware/authMiddleware');
-const { createBranch, listBranches, updateBranch, deleteBranch } = require('../controllers/branchController');
+const {
+	createBranch,
+	listBranches,
+	provisionDefaultBranches,
+	updateBranch,
+	deleteBranch,
+} = require('../controllers/branchController');
 
 const router = Router();
 
@@ -9,6 +15,7 @@ router.use(verifyToken, requireAdmin);
 
 router.get('/',    listBranches);
 router.post('/',   createBranch);
+router.post('/provision-defaults', provisionDefaultBranches);
 router.patch('/:id', updateBranch);
 router.delete('/:id', deleteBranch);
 

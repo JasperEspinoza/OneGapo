@@ -1,6 +1,15 @@
 const admin = require('../config/firebaseAdmin');
 
-const ALLOWED_PERMISSIONS = ['view_reports', 'update_reports', 'close_reports', 'create_announcements'];
+const ALLOWED_PERMISSIONS = [
+  'view_reports',
+  'update_reports',
+  'close_reports',
+  'archive_reports',
+  'create_announcements',
+  'add_branches',
+  'add_roles',
+  'add_staffs',
+];
 
 /**
  * POST /api/admin/roles

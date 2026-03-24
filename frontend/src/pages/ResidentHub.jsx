@@ -22,6 +22,8 @@ const INITIAL_FORM = {
   address: '',
 };
 
+const RESIDENT_REPORTS_SYNC_INTERVAL_MS = 8000;
+
 function formatReportDate(value) {
   if (!value) return 'Just now';
   const date = new Date(value);
@@ -67,9 +69,11 @@ export default function ResidentHub() {
     });
   }, [currentUser]);
 
-  const loadMyReports = useCallback(async () => {
-    setReportsLoading(true);
-    setReportsError('');
+  const loadMyReports = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) {
+      setReportsLoading(true);
+      setReportsError('');
+    }
 
     try {
       const response = await api('/api/reports/me');
@@ -77,15 +81,41 @@ export default function ResidentHub() {
       if (!response.ok) throw new Error(data.error || 'Failed to load reports.');
       setMyReports(Array.isArray(data) ? data : []);
     } catch (err) {
-      setReportsError(err.message || 'Unable to load reports.');
+      if (!silent) {
+        setReportsError(err.message || 'Unable to load reports.');
+      }
     } finally {
-      setReportsLoading(false);
+      if (!silent) {
+        setReportsLoading(false);
+      }
     }
   }, [api]);
 
   useEffect(() => {
     loadMyReports();
   }, [loadMyReports]);
+
+  useEffect(() => {
+    if (activeTab !== 'home' && activeTab !== 'map') return undefined;
+
+    const syncReports = () => {
+      if (document.visibilityState !== 'visible') return;
+      loadMyReports({ silent: true });
+    };
+
+    const intervalId = window.setInterval(syncReports, RESIDENT_REPORTS_SYNC_INTERVAL_MS);
+    const handleFocus = () => syncReports();
+    const handleVisibilityChange = () => syncReports();
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [activeTab, loadMyReports]);
 
   useEffect(() => {
     const handleInstallPrompt = (event) => {

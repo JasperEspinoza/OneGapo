@@ -26,6 +26,7 @@ export default function Login() {
 
   const [email,    setEmail]    = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error,    setError]    = useState('');
   const [loading,  setLoading]  = useState(false);
 
@@ -83,17 +84,30 @@ export default function Login() {
 
           <div>
             <label htmlFor="password" className="form-label">Password</label>
+            <div className="login-password-field">
             <input
               id="password"
-              type="password"
+              type={showPassword ? 'text' : 'password'}
               autoComplete="current-password"
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="form-input"
+              className="form-input login-password-input"
               placeholder="••••••••"
               disabled={loading}
             />
+              <button
+                type="button"
+                onClick={() => setShowPassword((prev) => !prev)}
+                className="login-password-toggle"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                disabled={loading}
+              >
+                <span className="material-symbols-outlined" aria-hidden="true">
+                  {showPassword ? 'visibility_off' : 'visibility'}
+                </span>
+              </button>
+            </div>
           </div>
 
           <div className="text-right">

@@ -1,6 +1,6 @@
 import { CircleMarker, MapContainer, Polyline, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import 'leaflet/dist/leaflet.css';
 
@@ -128,10 +128,107 @@ function formatRouteDuration(durationSeconds) {
   return `${hours}h ${minutes}m`;
 }
 
-function MapCanvas({ selectedPosition, safeMarkers, tileSource, handleTileError, onPick, expandKey, activeMarkerId, onMarkerClick, routePath, userPosition, freezeMarkerAutoFit }) {
+const OLONGAPO_BARANGAYS = [
+  'Asinan',
+  'Bajac-Bajac',
+  'Barretto',
+  'East Bajac-Bajac',
+  'East Tapinac',
+  'Gordon Heights',
+  'Kalaklan',
+  'Mabayuan',
+  'New Cabalan',
+  'New Ilalim',
+  'New Kababae',
+  'New Kalalake',
+  'Old Cabalan',
+  'Pag-asa',
+  'Santa Rita',
+  'West Bajac-Bajac',
+  'West Tapinac',
+];
+
+const BARANGAY_BY_NORMALIZED = new Map(
+  OLONGAPO_BARANGAYS.map((name) => [
+    String(name).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(),
+    name,
+  ])
+);
+
+function normalizeBarangayToken(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function toTitleCase(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function getKnownBarangayName(value) {
+  const normalized = normalizeBarangayToken(value);
+  if (!normalized) return '';
+
+  const exact = BARANGAY_BY_NORMALIZED.get(normalized);
+  if (exact) return exact;
+
+  const partial = OLONGAPO_BARANGAYS.find((name) => {
+    const known = normalizeBarangayToken(name);
+    return normalized.includes(known);
+  });
+
+  return partial || '';
+}
+
+function extractBarangayFromMarker(marker) {
+  const directBarangay = String(
+    marker?.barangay || marker?.location?.barangay || ''
+  ).trim();
+
+  if (directBarangay) {
+    const cleaned = directBarangay.replace(/^(?:brgy\.?|barangay)\s+/i, '').trim();
+    return getKnownBarangayName(cleaned) || toTitleCase(cleaned);
+  }
+
+  const address = String(marker?.address || marker?.location?.address || '').trim();
+  if (!address) return '';
+
+  const fromPrefixMatch = address.match(/(?:^|,|\s)(?:brgy\.?|barangay)\s+([^,;]+)/i);
+  if (fromPrefixMatch?.[1]) {
+    const cleaned = fromPrefixMatch[1].trim();
+    return getKnownBarangayName(cleaned) || toTitleCase(cleaned);
+  }
+
+  const addressSegments = address
+    .split(',')
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+
+  for (const segment of addressSegments) {
+    const cleaned = segment
+      .replace(/\b(city of olongapo|olongapo city|olongapo|zambales|philippines)\b/gi, '')
+      .replace(/^(?:brgy\.?|barangay)\s+/i, '')
+      .trim();
+
+    const known = getKnownBarangayName(cleaned);
+    if (known) return known;
+  }
+
+  const knownFromWholeAddress = getKnownBarangayName(address);
+  if (knownFromWholeAddress) return knownFromWholeAddress;
+
+  return '';
+}
+
+function MapCanvas({ selectedPosition, safeMarkers, autoFitMarkers, tileSource, handleTileError, onPick, expandKey, activeMarkerId, onMarkerClick, routePath, userPosition, freezeMarkerAutoFit }) {
+  const initialMarkers = autoFitMarkers.length > 0 ? autoFitMarkers : safeMarkers;
+
   return (
     <MapContainer
-      center={selectedPosition || safeMarkers[0]?.position || defaultCenter}
+      center={selectedPosition || initialMarkers[0]?.position || defaultCenter}
       zoom={selectedPosition ? 16 : 13}
       scrollWheelZoom
       className="report-map"
@@ -144,7 +241,7 @@ function MapCanvas({ selectedPosition, safeMarkers, tileSource, handleTileError,
         }}
       />
       <RecenterOnPosition position={selectedPosition} />
-      <RecenterOnMarkers markers={safeMarkers} disabled={Boolean(selectedPosition)} freezeAfterFirstFit={freezeMarkerAutoFit} />
+      <RecenterOnMarkers markers={initialMarkers} disabled={Boolean(selectedPosition)} freezeAfterFirstFit={freezeMarkerAutoFit} />
       <InvalidateMapSize expandKey={expandKey} />
       {safeMarkers.map((marker) => (
         <CircleMarker
@@ -214,10 +311,27 @@ function getMarkerPreviewImage(marker) {
   );
 }
 
-function MarkerDetailsSidebar({ marker, onClose, onOpenImage, onBuildRoute, onClearRoute, routeLoading, routeError, routeSummary, routeAvailable, isClosing = false }) {
+function MarkerDetailsSidebar({
+  marker,
+  onClose,
+  onOpenImage,
+  onBuildRoute,
+  onClearRoute,
+  routeLoading,
+  routeError,
+  routeSummary,
+  routeAvailable,
+  statusOptions,
+  canUpdateStatus,
+  updatingStatusForId,
+  onStatusChange,
+  isClosing = false,
+}) {
   if (!marker) return null;
 
   const previewImage = getMarkerPreviewImage(marker);
+  const markerStatus = String(marker?.status || 'submitted').toLowerCase();
+  const isStatusUpdating = Boolean(updatingStatusForId && updatingStatusForId === marker.id);
 
   return (
     <aside
@@ -235,6 +349,22 @@ function MarkerDetailsSidebar({ marker, onClose, onOpenImage, onBuildRoute, onCl
       <div className="report-map-sidebar-body">
         <h4 className="report-map-sidebar-report-title">{marker.title || 'Untitled report'}</h4>
         <p className="report-map-sidebar-meta">{marker.status ? `Status: ${String(marker.status).replace('_', ' ')}` : 'Status: submitted'}</p>
+        {canUpdateStatus ? (
+          <div className="report-map-status-actions">
+            <label htmlFor={`report-map-status-${marker.id}`} className="report-map-status-label">Update status</label>
+            <select
+              id={`report-map-status-${marker.id}`}
+              className="form-select report-map-status-select"
+              value={markerStatus}
+              onChange={(event) => onStatusChange?.(marker.id, event.target.value)}
+              disabled={isStatusUpdating}
+            >
+              {statusOptions.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </div>
+        ) : null}
         {marker.category ? <p className="report-map-sidebar-meta">Category: {marker.category}</p> : null}
         {marker.createdAt ? <p className="report-map-sidebar-meta">Created: {new Date(marker.createdAt).toLocaleString()}</p> : null}
         {marker.address ? <p className="report-map-sidebar-meta">Address: {marker.address}</p> : null}
@@ -288,9 +418,23 @@ function MarkerDetailsSidebar({ marker, onClose, onOpenImage, onBuildRoute, onCl
   );
 }
 
-export default function ReportLocationMap({ lat, lng, onPick, markers = [], helpText = 'Click on the map to pin the report location.', preserveViewOnRefresh = false }) {
+export default function ReportLocationMap({
+  lat,
+  lng,
+  onPick,
+  markers = [],
+  preferredBarangay = '',
+  helpText = 'Click on the map to pin the report location.',
+  preserveViewOnRefresh = false,
+  enableFullscreenBarangayFilter = true,
+  statusOptions = [],
+  onStatusChange,
+  canUpdateStatus = false,
+  updatingStatusForId = '',
+}) {
   const [tileSourceIndex, setTileSourceIndex] = useState(0);
   const [showFullscreenMap, setShowFullscreenMap] = useState(false);
+  const [fullscreenBarangayFilter, setFullscreenBarangayFilter] = useState('all');
   const [activeMarker, setActiveMarker] = useState(null);
   const [sidebarClosing, setSidebarClosing] = useState(false);
   const [zoomedImage, setZoomedImage] = useState(null);
@@ -323,11 +467,18 @@ export default function ReportLocationMap({ lat, lng, onPick, markers = [], help
   );
 
   const markerLegendItems = useMemo(() => {
+    const shouldApplyBarangayFilter = enableFullscreenBarangayFilter && fullscreenBarangayFilter !== 'all';
+    const legendMarkers = showFullscreenMap
+      ? (shouldApplyBarangayFilter
+          ? safeMarkers.filter((marker) => extractBarangayFromMarker(marker) === fullscreenBarangayFilter)
+          : safeMarkers)
+      : safeMarkers;
+
     const legendMap = new Map(
       REPORT_CATEGORY_LEGEND.map((item) => [item.key, { ...item, count: 0 }])
     );
 
-    safeMarkers.forEach((marker) => {
+    legendMarkers.forEach((marker) => {
       const key = String(marker?.category || 'general').toLowerCase().trim() || 'general';
       const current = legendMap.get(key);
 
@@ -345,7 +496,49 @@ export default function ReportLocationMap({ lat, lng, onPick, markers = [], help
     });
 
     return Array.from(legendMap.values());
+  }, [safeMarkers, showFullscreenMap, enableFullscreenBarangayFilter, fullscreenBarangayFilter]);
+
+  const fullscreenBarangayOptions = useMemo(() => {
+    return Array.from(
+      new Set(
+        safeMarkers
+          .map((marker) => extractBarangayFromMarker(marker))
+          .filter(Boolean)
+      )
+    ).sort((a, b) => a.localeCompare(b));
   }, [safeMarkers]);
+
+  const fullscreenFilteredMarkers = useMemo(() => {
+    if (!enableFullscreenBarangayFilter || fullscreenBarangayFilter === 'all') return safeMarkers;
+    return safeMarkers.filter((marker) => extractBarangayFromMarker(marker) === fullscreenBarangayFilter);
+  }, [safeMarkers, enableFullscreenBarangayFilter, fullscreenBarangayFilter]);
+
+  const preferredBarangayToken = useMemo(
+    () => normalizeBarangayToken(preferredBarangay),
+    [preferredBarangay]
+  );
+
+  const getAutoFitMarkers = useCallback((markerList) => {
+    if (!preferredBarangayToken || !Array.isArray(markerList) || markerList.length === 0) {
+      return markerList;
+    }
+
+    const focused = markerList.filter(
+      (marker) => normalizeBarangayToken(extractBarangayFromMarker(marker)) === preferredBarangayToken
+    );
+
+    return focused.length > 0 ? focused : markerList;
+  }, [preferredBarangayToken]);
+
+  const inlineAutoFitMarkers = useMemo(
+    () => getAutoFitMarkers(safeMarkers),
+    [getAutoFitMarkers, safeMarkers]
+  );
+
+  const fullscreenAutoFitMarkers = useMemo(
+    () => getAutoFitMarkers(fullscreenFilteredMarkers),
+    [getAutoFitMarkers, fullscreenFilteredMarkers]
+  );
 
   useEffect(() => {
     if (!activeMarker) return;
@@ -359,6 +552,17 @@ export default function ReportLocationMap({ lat, lng, onPick, markers = [], help
       setActiveMarker(updatedMarker);
     }
   }, [activeMarker, safeMarkers]);
+
+  useEffect(() => {
+    if (!showFullscreenMap || !activeMarker) return;
+    if (!enableFullscreenBarangayFilter || fullscreenBarangayFilter === 'all') return;
+
+    const stillVisible = fullscreenFilteredMarkers.some((marker) => marker.id === activeMarker.id);
+    if (!stillVisible) {
+      setActiveMarker(null);
+      setSidebarClosing(false);
+    }
+  }, [showFullscreenMap, activeMarker, enableFullscreenBarangayFilter, fullscreenBarangayFilter, fullscreenFilteredMarkers]);
 
   useEffect(() => {
     if (activeMarker) return;
@@ -514,6 +718,7 @@ export default function ReportLocationMap({ lat, lng, onPick, markers = [], help
             <MapCanvas
               selectedPosition={selectedPosition}
               safeMarkers={safeMarkers}
+              autoFitMarkers={inlineAutoFitMarkers}
               tileSource={tileSource}
               handleTileError={handleTileError}
               onPick={onPick}
@@ -535,6 +740,10 @@ export default function ReportLocationMap({ lat, lng, onPick, markers = [], help
             routeError={routeError}
             routeSummary={routeSummary}
             routeAvailable={routePath.length > 1}
+            statusOptions={statusOptions}
+            canUpdateStatus={canUpdateStatus && typeof onStatusChange === 'function' && statusOptions.length > 0}
+            updatingStatusForId={updatingStatusForId}
+            onStatusChange={onStatusChange}
             isClosing={sidebarClosing}
           />
         </div>
@@ -553,14 +762,32 @@ export default function ReportLocationMap({ lat, lng, onPick, markers = [], help
           <div className="report-map-modal-panel">
             <div className="report-map-modal-header">
               <p className="report-map-modal-title">Map view</p>
-              <button
-                type="button"
-                className="btn-outline report-map-expand-btn"
-                onClick={() => setShowFullscreenMap(false)}
-                aria-label="Close full screen map"
-              >
-                X
-              </button>
+              <div className="report-map-modal-controls">
+                {enableFullscreenBarangayFilter ? (
+                  <>
+                    <label htmlFor="fullscreen-barangay-filter" className="report-map-filter-label">Barangay</label>
+                    <select
+                      id="fullscreen-barangay-filter"
+                      className="form-select report-map-filter-select"
+                      value={fullscreenBarangayFilter}
+                      onChange={(event) => setFullscreenBarangayFilter(event.target.value)}
+                    >
+                      <option value="all">All barangays</option>
+                      {fullscreenBarangayOptions.map((barangay) => (
+                        <option key={barangay} value={barangay}>{barangay}</option>
+                      ))}
+                    </select>
+                  </>
+                ) : null}
+                <button
+                  type="button"
+                  className="btn-outline report-map-expand-btn"
+                  onClick={() => setShowFullscreenMap(false)}
+                  aria-label="Close full screen map"
+                >
+                  X
+                </button>
+              </div>
             </div>
 
             <div className="report-map-modal-content">
@@ -568,7 +795,8 @@ export default function ReportLocationMap({ lat, lng, onPick, markers = [], help
                 <div className="report-map-pane">
                   <MapCanvas
                     selectedPosition={selectedPosition}
-                    safeMarkers={safeMarkers}
+                    safeMarkers={fullscreenFilteredMarkers}
+                    autoFitMarkers={fullscreenAutoFitMarkers}
                     tileSource={tileSource}
                     handleTileError={handleTileError}
                     onPick={onPick}
@@ -609,6 +837,10 @@ export default function ReportLocationMap({ lat, lng, onPick, markers = [], help
                     routeError={routeError}
                     routeSummary={routeSummary}
                     routeAvailable={routePath.length > 1}
+                    statusOptions={statusOptions}
+                    canUpdateStatus={canUpdateStatus && typeof onStatusChange === 'function' && statusOptions.length > 0}
+                    updatingStatusForId={updatingStatusForId}
+                    onStatusChange={onStatusChange}
                     isClosing={sidebarClosing}
                   />
                 </div>

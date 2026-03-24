@@ -34,7 +34,7 @@ const HomeRoute = () => {
 
 function App() {
   return (
-    <Router>
+    <Router future={{ v7_relativeSplatPath: true }}>
       <AuthProvider>
         <SettingsModalProvider>
           <Routes>
@@ -55,7 +55,7 @@ function App() {
             </Route>
 
             {/* ── Staff + Admin ─────────────────────────────────── */}
-            <Route element={<ProtectedRoute allowedRoles={['staff', 'admin']} />}>
+            <Route element={<ProtectedRoute allowedRoles={['staff']} showNav={false} />}>
               <Route path="/staff" element={<StaffPanel />} />
             </Route>
 

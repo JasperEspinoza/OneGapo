@@ -1,1 +1,45 @@
 @import './AuthPages.css';
+
+.login-password-field {
+	position: relative;
+}
+
+.login-password-input {
+	padding-right: 4.4rem;
+}
+
+.login-password-toggle {
+	position: absolute;
+	top: 50%;
+	right: 0.625rem;
+	transform: translateY(-50%);
+	border: none;
+	background: transparent;
+	color: var(--color-text-muted);
+	line-height: 0;
+	cursor: pointer;
+	padding: 0.2rem;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.login-password-toggle .material-symbols-outlined {
+	font-size: 1.1rem;
+	font-variation-settings: 'FILL' 0, 'wght' 500, 'GRAD' 0, 'opsz' 20;
+}
+
+.login-password-toggle:hover {
+	color: var(--color-text);
+}
+
+.login-password-toggle:focus-visible {
+	outline: none;
+	border-radius: 0.25rem;
+	box-shadow: var(--focus-ring);
+}
+
+.login-password-toggle:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}

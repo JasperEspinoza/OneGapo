@@ -1,5 +1,5 @@
 import './VerifyEmail.css';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { auth } from '../config/firebase';
 import { useAuth } from '../context/AuthContext';
@@ -22,9 +22,12 @@ export default function VerifyEmail() {
   const [verifyingToken, setVerifyingToken] = useState(false);
   const [tokenProcessed, setTokenProcessed] = useState(false);
   const [verificationMessage, setVerificationMessage] = useState('');
+  const lastProcessedTokenRef = useRef('');
 
   useEffect(() => {
     if (!token || tokenProcessed) return;
+    if (lastProcessedTokenRef.current === token) return;
+    lastProcessedTokenRef.current = token;
 
     let active = true;
     const controller = new AbortController();

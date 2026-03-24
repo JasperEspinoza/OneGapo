@@ -9,7 +9,16 @@ const {
 } = require('../services/verificationService');
 
 const ALLOWED_ROLES = ['staff', 'admin'];
-const ALLOWED_PERMISSIONS = ['view_reports', 'update_reports', 'close_reports', 'create_announcements'];
+const ALLOWED_PERMISSIONS = [
+  'view_reports',
+  'update_reports',
+  'close_reports',
+  'archive_reports',
+  'create_announcements',
+  'add_branches',
+  'add_roles',
+  'add_staffs',
+];
 const PRIMARY_ADMIN_EMAIL = 'onegapo2026@gmail.com';
 
 // Basic email regex — prevents obviously malformed addresses from reaching Firebase

@@ -10,7 +10,11 @@ const PERMISSION_OPTIONS = [
   { value: 'view_reports',         label: 'View reports' },
   { value: 'update_reports',       label: 'Update report status' },
   { value: 'close_reports',        label: 'Close / resolve reports' },
+  { value: 'archive_reports',      label: 'Archive reports' },
   { value: 'create_announcements', label: 'Post announcements' },
+  { value: 'add_branches',         label: 'Add branches' },
+  { value: 'add_roles',            label: 'Add roles' },
+  { value: 'add_staffs',           label: 'Add staffs' },
 ];
 
 const ICONS = {
@@ -331,13 +335,23 @@ export default function AdminPanel() {
   const [users,        setUsers]        = useState([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const [usersError,   setUsersError]   = useState('');
+  const [resendingVerificationUid, setResendingVerificationUid] = useState(null);
 
   // ── Reports state ───────────────────────────────────────
   const [reports,        setReports]        = useState([]);
   const [reportsLoading, setReportsLoading] = useState(false);
   const [reportsError,   setReportsError]   = useState('');
+  const [reportActionError, setReportActionError] = useState('');
+  const [archivingReportId, setArchivingReportId] = useState('');
+  const [deletingReportId, setDeletingReportId] = useState('');
   const [selectedReport, setSelectedReport] = useState(null);
   const reportsPollingRef = useRef(false);
+
+  // Notifications state
+  const [notifications, setNotifications] = useState([]);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [notifLoading, setNotifLoading] = useState(false);
+  const [notifError, setNotifError] = useState('');
 
   // ── Users filter state ───────────────────────────────────
   const [filterRole,   setFilterRole]   = useState('all');
@@ -424,7 +438,29 @@ export default function AdminPanel() {
     }
   }, [api]);
 
-  useEffect(() => { loadBranches(); loadRoles(); }, [loadBranches, loadRoles]);
+  const loadNotifications = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) {
+      setNotifLoading(true);
+      setNotifError('');
+    }
+
+    try {
+      const res = await api('/api/reports/notifications');
+      const data = await res.json().catch(() => []);
+      if (!res.ok) throw new Error(data.error || 'Failed to load notifications.');
+      setNotifications(Array.isArray(data) ? data : []);
+    } catch (err) {
+      if (!silent) {
+        setNotifError(err.message || 'Failed to load notifications.');
+      }
+    } finally {
+      if (!silent) {
+        setNotifLoading(false);
+      }
+    }
+  }, [api]);
+
+  useEffect(() => { loadBranches(); loadRoles(); loadNotifications(); }, [loadBranches, loadRoles, loadNotifications]);
 
   useEffect(() => {
     if (['dashboard', 'accounts', 'users', 'analytics', 'branches'].includes(activeSection)) loadUsers();
@@ -462,6 +498,57 @@ export default function AdminPanel() {
       reportsPollingRef.current = false;
     };
   }, [activeSection, loadReports]);
+
+  useEffect(() => {
+    const syncNotifications = () => {
+      if (document.visibilityState !== 'visible') return;
+      loadNotifications({ silent: true });
+    };
+
+    const intervalId = window.setInterval(syncNotifications, 8000);
+    const handleFocus = () => syncNotifications();
+    const handleVisibilityChange = () => syncNotifications();
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [loadNotifications]);
+
+  const unreadNotificationsCount = useMemo(
+    () => notifications.filter((item) => !item?.isRead).length,
+    [notifications]
+  );
+
+  const handleNotificationOpen = async () => {
+    const nextOpen = !notifOpen;
+    setNotifOpen(nextOpen);
+    if (nextOpen) {
+      await loadNotifications();
+    }
+  };
+
+  const handleMarkNotificationRead = async (notificationId) => {
+    try {
+      const res = await api(`/api/reports/notifications/${notificationId}/read`, {
+        method: 'PATCH',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to update notification.');
+      const updated = data?.notification;
+      if (!updated) return;
+
+      setNotifications((prev) =>
+        prev.map((item) => (item.id === updated.id ? { ...item, ...updated } : item))
+      );
+    } catch {
+      // Do not block admin workflow for notification read failures.
+    }
+  };
 
   const stats = useMemo(() => ({
     totalBranches:      branches.length,
@@ -710,6 +797,7 @@ export default function AdminPanel() {
   };
 
   const handleResendVerification = async (user) => {
+    setResendingVerificationUid(user.uid);
     try {
       const res = await api(`/api/admin/users/${user.uid}/resend-verification`, { method: 'POST' });
       const data = await res.json();
@@ -718,6 +806,8 @@ export default function AdminPanel() {
       setStaffSuccess(data.message || `Verification email resent to ${user.email}.`);
     } catch (err) {
       setUsersError(err.message);
+    } finally {
+      setResendingVerificationUid(null);
     }
   };
 
@@ -819,6 +909,72 @@ export default function AdminPanel() {
     }
   };
 
+  const handleArchiveReport = async (report) => {
+    const reportId = String(report?.id || '').trim();
+    if (!reportId) return;
+
+    if (String(report?.status || '').toLowerCase() === 'archived') {
+      setReportActionError('This report is already archived.');
+      return;
+    }
+
+    const title = report?.title || 'this report';
+    if (!window.confirm(`Archive "${title}"?`)) {
+      return;
+    }
+
+    setReportActionError('');
+    setArchivingReportId(reportId);
+
+    try {
+      const res = await api(`/api/reports/${reportId}/archive`, {
+        method: 'PATCH',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to archive report.');
+
+      setReports((prev) =>
+        prev.map((item) => (item.id === reportId ? { ...item, ...(data?.report || {}) } : item))
+      );
+      setSelectedReport((prev) => {
+        if (!prev || prev.id !== reportId) return prev;
+        return { ...prev, ...(data?.report || {}) };
+      });
+    } catch (err) {
+      setReportActionError(err.message || 'Failed to archive report.');
+    } finally {
+      setArchivingReportId('');
+    }
+  };
+
+  const handleDeleteReport = async (report) => {
+    const reportId = String(report?.id || '').trim();
+    if (!reportId) return;
+
+    const title = report?.title || 'this report';
+    if (!window.confirm(`Permanently delete "${title}"? This cannot be undone.`)) {
+      return;
+    }
+
+    setReportActionError('');
+    setDeletingReportId(reportId);
+
+    try {
+      const res = await api(`/api/reports/${reportId}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to delete report.');
+
+      setReports((prev) => prev.filter((item) => item.id !== reportId));
+      setSelectedReport((prev) => (prev?.id === reportId ? null : prev));
+    } catch (err) {
+      setReportActionError(err.message || 'Failed to delete report.');
+    } finally {
+      setDeletingReportId('');
+    }
+  };
+
   const handleLogout = async () => {
     await logout();
     navigate('/login');
@@ -892,7 +1048,7 @@ export default function AdminPanel() {
             aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
-            <span className="ap-hamburger-icon">{sidebarCollapsed ? ICONS.chevron_right : ICONS.chevron_left}</span>
+            <span className="ap-hamburger-icon">{ICONS.chevron_left}</span>
           </button>
         </div>
 
@@ -949,9 +1105,43 @@ export default function AdminPanel() {
             </div>
           </div>
           <div className="ap-header-right">
-            <button className="ap-notif-btn" title="Notifications">
-              {ICONS.notifications}
-            </button>
+            <div className="ap-notif-wrap">
+              <button
+                type="button"
+                className="ap-notif-btn"
+                title="Notifications"
+                onClick={handleNotificationOpen}
+                aria-label="Notifications"
+              >
+                {ICONS.notifications}
+                {unreadNotificationsCount > 0 ? (
+                  <span className="ap-notif-badge" aria-hidden="true">{unreadNotificationsCount > 9 ? '9+' : unreadNotificationsCount}</span>
+                ) : null}
+              </button>
+              {notifOpen ? (
+                <div className="ap-notif-menu" role="menu" aria-label="Notifications list">
+                  <div className="ap-notif-menu-header">Notifications</div>
+                  {notifLoading ? <p className="ap-notif-empty">Loading…</p> : null}
+                  {!notifLoading && notifError ? <p className="ap-notif-empty">{notifError}</p> : null}
+                  {!notifLoading && !notifError && notifications.length === 0 ? (
+                    <p className="ap-notif-empty">No notifications yet.</p>
+                  ) : null}
+                  {!notifLoading && !notifError
+                    ? notifications.slice(0, 8).map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          className={`ap-notif-item${item.isRead ? '' : ' ap-notif-item-unread'}`}
+                          onClick={() => handleMarkNotificationRead(item.id)}
+                        >
+                          <span className="ap-notif-item-title">{item.title || 'Notification'}</span>
+                          <span className="ap-notif-item-message">{item.message || ''}</span>
+                        </button>
+                      ))
+                    : null}
+                </div>
+              ) : null}
+            </div>
             <div className="ap-header-divider" />
             <div className="ap-header-user">
               <div className="ap-header-user-info">
@@ -1227,6 +1417,7 @@ export default function AdminPanel() {
                     </div>
                   </div>
                 </div>
+                {reportActionError ? <div className="auth-error" role="alert">{reportActionError}</div> : null}
                 {reportsLoading ? (
                   <p className="ap-loading">Loading…</p>
                 ) : reports.length === 0 ? (
@@ -1244,6 +1435,7 @@ export default function AdminPanel() {
                           <th>Address</th>
                           <th>Reporter</th>
                           <th>Created</th>
+                          <th>Actions</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1267,6 +1459,30 @@ export default function AdminPanel() {
                             <td>{report?.location?.address || <span className="ap-muted">—</span>}</td>
                             <td>{resolveReporterName(report)}</td>
                             <td>{report.createdAt ? new Date(report.createdAt).toLocaleString() : <span className="ap-muted">—</span>}</td>
+                            <td className="ap-table-actions">
+                              <div className="ap-report-row-actions" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
+                                <button
+                                  type="button"
+                                  className="ap-report-action-btn"
+                                  onClick={() => handleArchiveReport(report)}
+                                  disabled={archivingReportId === report.id || deletingReportId === report.id || String(report?.status || '').toLowerCase() === 'archived'}
+                                >
+                                  {archivingReportId === report.id
+                                    ? 'Archiving…'
+                                    : String(report?.status || '').toLowerCase() === 'archived'
+                                      ? 'Archived'
+                                      : 'Archive'}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="ap-report-action-btn ap-report-action-btn-danger"
+                                  onClick={() => handleDeleteReport(report)}
+                                  disabled={deletingReportId === report.id || archivingReportId === report.id}
+                                >
+                                  {deletingReportId === report.id ? 'Deleting…' : 'Delete'}
+                                </button>
+                              </div>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -1306,6 +1522,29 @@ export default function AdminPanel() {
                     ) : (
                       <p className="ap-muted">No image attachment for this report.</p>
                     )}
+                  </div>
+
+                  <div className="ap-report-modal-actions">
+                    <button
+                      type="button"
+                      className="ap-report-action-btn"
+                      onClick={() => handleArchiveReport(selectedReport)}
+                      disabled={archivingReportId === selectedReport.id || deletingReportId === selectedReport.id || String(selectedReport?.status || '').toLowerCase() === 'archived'}
+                    >
+                      {archivingReportId === selectedReport.id
+                        ? 'Archiving…'
+                        : String(selectedReport?.status || '').toLowerCase() === 'archived'
+                          ? 'Archived'
+                          : 'Archive'}
+                    </button>
+                    <button
+                      type="button"
+                      className="ap-report-action-btn ap-report-action-btn-danger"
+                      onClick={() => handleDeleteReport(selectedReport)}
+                      disabled={deletingReportId === selectedReport.id || archivingReportId === selectedReport.id}
+                    >
+                      {deletingReportId === selectedReport.id ? 'Deleting…' : 'Delete'}
+                    </button>
                   </div>
                 </AppModal>
               )}
@@ -1830,8 +2069,8 @@ export default function AdminPanel() {
                               <td className="ap-table-actions">
                                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                                   {!u.verified && (
-                                    <button onClick={() => handleResendVerification(u)} className="ap-btn-sm ap-btn-primary" style={{ width: 'auto', padding: '0.25rem 0.75rem' }}>
-                                      Resend Verification
+                                    <button onClick={() => handleResendVerification(u)} disabled={resendingVerificationUid === u.uid} className="ap-btn-sm ap-btn-primary" style={{ width: 'auto', padding: '0.25rem 0.75rem' }}>
+                                      {resendingVerificationUid === u.uid ? 'Resending…' : 'Resend Verification'}
                                     </button>
                                   )}
                                   <button onClick={() => handleEditStart(u)} className="ap-btn-outline ap-btn-sm">Edit</button>
