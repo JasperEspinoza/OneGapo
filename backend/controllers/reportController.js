@@ -538,6 +538,7 @@ async function updateReportStatus(req, res, next) {
         uid: requesterUid,
         role,
         email: req.user.email || '',
+        location: req.user.location || '',
       },
       progressNote: progressNote || null,
       resolutionPhotos,
@@ -550,6 +551,7 @@ async function updateReportStatus(req, res, next) {
         uid: requesterUid,
         role,
         email: req.user.email || '',
+        location: req.user.location || '',
       },
       auditTrail: admin.firestore.FieldValue.arrayUnion(auditEntry),
     };
@@ -563,6 +565,7 @@ async function updateReportStatus(req, res, next) {
           uid: requesterUid,
           role,
           email: req.user.email || '',
+          location: req.user.location || '',
         },
       };
     }
