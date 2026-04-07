@@ -1,6 +1,7 @@
 import './AdminPanel.css';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import jsPDF from 'jspdf';
 import AppModal from '../components/AppModal';
 import ReportLocationMap from '../components/ReportLocationMap';
 import { useAuth } from '../context/AuthContext';
@@ -261,6 +262,54 @@ function extractBarangayFromReport(report) {
   return '';
 }
 
+function formatDurationMinutes(value) {
+  const minutes = Number(value);
+  if (!Number.isFinite(minutes) || minutes < 0) return '—';
+  if (minutes < 1) return '< 1m';
+
+  const roundedMinutes = Math.round(minutes);
+  if (roundedMinutes < 60) {
+    return `${roundedMinutes}m`;
+  }
+
+  const hours = Math.floor(roundedMinutes / 60);
+  const remainingMinutes = roundedMinutes % 60;
+  if (hours < 24) {
+    return remainingMinutes ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
+  }
+
+  const days = Math.floor(hours / 24);
+  const remainingHours = hours % 24;
+  if (remainingHours) {
+    return `${days}d ${remainingHours}h`;
+  }
+
+  return `${days}d`;
+}
+
+function escapeCsvValue(value) {
+  const text = String(value ?? '');
+  if (/[",\n]/.test(text)) {
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+  return text;
+}
+
+function downloadCsvFile(fileName, headers, rows) {
+  const headerLine = headers.map((header) => escapeCsvValue(header)).join(',');
+  const bodyLines = rows.map((row) => row.map((value) => escapeCsvValue(value)).join(','));
+  const csvText = [headerLine, ...bodyLines].join('\n');
+  const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 export default function AdminPanel() {
   const { currentUser, userClaims, logout } = useAuth();
   const { openSettings } = useSettingsModal();
@@ -341,6 +390,20 @@ export default function AdminPanel() {
   const [reports,        setReports]        = useState([]);
   const [reportsLoading, setReportsLoading] = useState(false);
   const [reportsError,   setReportsError]   = useState('');
+  const [performanceData, setPerformanceData] = useState({
+    summary: {
+      totalReports: 0,
+      resolvedReports: 0,
+      pendingReports: 0,
+      resolutionRate: 0,
+      averageMttrMinutes: null,
+    },
+    barangayRows: [],
+    branchRows: [],
+    generatedAt: '',
+  });
+  const [performanceLoading, setPerformanceLoading] = useState(false);
+  const [performanceError, setPerformanceError] = useState('');
   const [reportActionError, setReportActionError] = useState('');
   const [archivingReportId, setArchivingReportId] = useState('');
   const [deletingReportId, setDeletingReportId] = useState('');
@@ -358,6 +421,9 @@ export default function AdminPanel() {
   const [filterBranch, setFilterBranch] = useState('all');
   const [reportTypeFilter, setReportTypeFilter] = useState('all');
   const [reportBarangayFilter, setReportBarangayFilter] = useState('all');
+  const [analyticsSearchQuery, setAnalyticsSearchQuery] = useState('');
+  const [analyticsStatusFilter, setAnalyticsStatusFilter] = useState('all');
+  const [analyticsBranchTypeFilter, setAnalyticsBranchTypeFilter] = useState('all');
 
   // ── UI state ────────────────────────────────────────────
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -438,6 +504,35 @@ export default function AdminPanel() {
     }
   }, [api]);
 
+  const loadPerformance = useCallback(async () => {
+    setPerformanceLoading(true);
+    setPerformanceError('');
+    try {
+      const res = await api('/api/reports/performance');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to load performance metrics.');
+
+      setPerformanceData({
+        summary: {
+          totalReports: Number(data?.summary?.totalReports || 0),
+          resolvedReports: Number(data?.summary?.resolvedReports || 0),
+          pendingReports: Number(data?.summary?.pendingReports || 0),
+          resolutionRate: Number(data?.summary?.resolutionRate || 0),
+          averageMttrMinutes: Number.isFinite(Number(data?.summary?.averageMttrMinutes))
+            ? Number(data.summary.averageMttrMinutes)
+            : null,
+        },
+        barangayRows: Array.isArray(data?.barangayRows) ? data.barangayRows : [],
+        branchRows: Array.isArray(data?.branchRows) ? data.branchRows : [],
+        generatedAt: String(data?.generatedAt || ''),
+      });
+    } catch (err) {
+      setPerformanceError(err.message || 'Failed to load performance metrics.');
+    } finally {
+      setPerformanceLoading(false);
+    }
+  }, [api]);
+
   const loadNotifications = useCallback(async ({ silent = false } = {}) => {
     if (!silent) {
       setNotifLoading(true);
@@ -466,7 +561,8 @@ export default function AdminPanel() {
     if (['dashboard', 'accounts', 'users', 'analytics', 'branches'].includes(activeSection)) loadUsers();
     if (['roles', 'accounts'].includes(activeSection)) loadRoles();
     if (['dashboard', 'reports'].includes(activeSection)) loadReports();
-  }, [activeSection, loadUsers, loadRoles, loadReports]);
+    if (activeSection === 'analytics') loadPerformance();
+  }, [activeSection, loadUsers, loadRoles, loadReports, loadPerformance]);
 
   useEffect(() => {
     if (activeSection !== 'dashboard') return undefined;
@@ -574,6 +670,234 @@ export default function AdminPanel() {
     () => reportOperators.filter((u) => u.role === 'admin' || (u.permissions || []).includes('create_announcements')),
     [reportOperators]
   );
+
+  const reportAnalyticsSummary = useMemo(() => ({
+    ...performanceData.summary,
+    averageMttrLabel: formatDurationMinutes(performanceData.summary.averageMttrMinutes),
+  }), [performanceData]);
+
+  const barangayPerformanceRows = useMemo(
+    () => (Array.isArray(performanceData.barangayRows) ? performanceData.barangayRows : []),
+    [performanceData]
+  );
+
+  const branchPerformanceRows = useMemo(
+    () => (Array.isArray(performanceData.branchRows) ? performanceData.branchRows : []),
+    [performanceData]
+  );
+
+  const filteredBarangayPerformanceRows = useMemo(() => {
+    const search = analyticsSearchQuery.trim().toLowerCase();
+
+    return barangayPerformanceRows.filter((row) => {
+      const name = String(row?.name || '').toLowerCase();
+      if (search && !name.includes(search)) {
+        return false;
+      }
+
+      if (analyticsStatusFilter === 'with_reports') {
+        return Number(row?.totalReports || 0) > 0;
+      }
+      if (analyticsStatusFilter === 'resolved_only') {
+        return Number(row?.resolvedReports || 0) > 0;
+      }
+      if (analyticsStatusFilter === 'pending_only') {
+        return Number(row?.pendingReports || 0) > 0;
+      }
+
+      return true;
+    });
+  }, [barangayPerformanceRows, analyticsSearchQuery, analyticsStatusFilter]);
+
+  const filteredBranchPerformanceRows = useMemo(() => {
+    const search = analyticsSearchQuery.trim().toLowerCase();
+
+    return branchPerformanceRows.filter((row) => {
+      const name = String(row?.name || '').toLowerCase();
+      const rowType = String(row?.type || 'public').toLowerCase();
+      if (search && !name.includes(search)) {
+        return false;
+      }
+
+      if (analyticsBranchTypeFilter !== 'all' && rowType !== analyticsBranchTypeFilter) {
+        return false;
+      }
+
+      if (analyticsStatusFilter === 'with_reports') {
+        return Number(row?.totalReports || 0) > 0;
+      }
+      if (analyticsStatusFilter === 'resolved_only') {
+        return Number(row?.resolvedReports || 0) > 0;
+      }
+      if (analyticsStatusFilter === 'pending_only') {
+        return Number(row?.pendingReports || 0) > 0;
+      }
+
+      return true;
+    });
+  }, [branchPerformanceRows, analyticsSearchQuery, analyticsStatusFilter, analyticsBranchTypeFilter]);
+
+  const combinedPerformanceRows = useMemo(() => {
+    const barangayRows = filteredBarangayPerformanceRows.map((row) => ({
+      scope: 'Barangay',
+      name: row.name,
+      type: 'n/a',
+      totalReports: row.totalReports,
+      resolvedReports: row.resolvedReports,
+      pendingReports: row.pendingReports,
+      averageMttrMinutes: row.averageMttrMinutes,
+      resolutionRate: row.resolutionRate,
+    }));
+
+    const branchRows = filteredBranchPerformanceRows.map((row) => ({
+      scope: 'Branch',
+      name: row.name,
+      type: row.type || 'public',
+      totalReports: row.totalReports,
+      resolvedReports: row.resolvedReports,
+      pendingReports: row.pendingReports,
+      averageMttrMinutes: row.averageMttrMinutes,
+      resolutionRate: row.resolutionRate,
+    }));
+
+    return [...barangayRows, ...branchRows].sort((a, b) => {
+      if (a.scope !== b.scope) return a.scope.localeCompare(b.scope);
+      return String(a.name || '').localeCompare(String(b.name || ''));
+    });
+  }, [filteredBarangayPerformanceRows, filteredBranchPerformanceRows]);
+
+  const exportCombinedPerformanceCsv = useCallback(() => {
+    const rows = combinedPerformanceRows.map((row) => [
+      row.scope,
+      row.name,
+      row.type,
+      row.totalReports,
+      row.resolvedReports,
+      row.pendingReports,
+      formatDurationMinutes(row.averageMttrMinutes),
+      `${Number(row.resolutionRate || 0).toFixed(1)}%`,
+    ]);
+    downloadCsvFile('mttr-location.csv', ['Scope', 'Location', 'Type', 'Reports', 'Resolved', 'Pending', 'MTTR', 'Resolution Rate'], rows);
+  }, [combinedPerformanceRows]);
+
+  const exportBarangayCsv = useCallback(() => {
+    const rows = filteredBarangayPerformanceRows.map((row) => [
+      row.name,
+      row.totalReports,
+      row.resolvedReports,
+      row.pendingReports,
+      formatDurationMinutes(row.averageMttrMinutes),
+      `${Number(row.resolutionRate || 0).toFixed(1)}%`,
+    ]);
+    downloadCsvFile('mttr-barangay.csv', ['Barangay', 'Reports', 'Resolved', 'Pending', 'MTTR', 'Resolution Rate'], rows);
+  }, [filteredBarangayPerformanceRows]);
+
+  const exportBranchCsv = useCallback(() => {
+    const rows = filteredBranchPerformanceRows.map((row) => [
+      row.name,
+      row.type || 'public',
+      row.totalReports,
+      row.resolvedReports,
+      row.pendingReports,
+      formatDurationMinutes(row.averageMttrMinutes),
+      `${Number(row.resolutionRate || 0).toFixed(1)}%`,
+    ]);
+    downloadCsvFile('mttr-branch.csv', ['Branch', 'Type', 'Reports', 'Resolved', 'Pending', 'MTTR', 'Resolution Rate'], rows);
+  }, [filteredBranchPerformanceRows]);
+
+  const exportAnalyticsPdf = useCallback(() => {
+    const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+    const margin = 40;
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    let y = margin;
+
+    const writeLine = (text, options = {}) => {
+      const fontSize = options.fontSize || 10;
+      const lineHeight = options.lineHeight || Math.round(fontSize * 1.4);
+      doc.setFont('helvetica', options.bold ? 'bold' : 'normal');
+      doc.setFontSize(fontSize);
+
+      const lines = doc.splitTextToSize(String(text), pageWidth - (margin * 2));
+      lines.forEach((line) => {
+        if (y > pageHeight - margin) {
+          doc.addPage();
+          y = margin;
+        }
+        doc.text(line, margin, y);
+        y += lineHeight;
+      });
+    };
+
+    const addSectionGap = () => {
+      y += 6;
+      if (y > pageHeight - margin) {
+        doc.addPage();
+        y = margin;
+      }
+    };
+
+    writeLine('OneGapo Analytics Export', { bold: true, fontSize: 15, lineHeight: 22 });
+    writeLine(`Generated: ${new Date().toLocaleString()}`);
+    writeLine(
+      `Active filters - Search: ${analyticsSearchQuery || 'none'} | Report filter: ${analyticsStatusFilter} | Branch type: ${analyticsBranchTypeFilter}`,
+      { fontSize: 9 }
+    );
+
+    addSectionGap();
+    writeLine('Summary', { bold: true, fontSize: 12, lineHeight: 18 });
+    writeLine(`Total reports: ${reportAnalyticsSummary.totalReports}`);
+    writeLine(`Resolved reports: ${reportAnalyticsSummary.resolvedReports}`);
+    writeLine(`Pending reports: ${reportAnalyticsSummary.pendingReports}`);
+    writeLine(`Resolution rate: ${Number(reportAnalyticsSummary.resolutionRate || 0).toFixed(1)}%`);
+    writeLine(`Average MTTR: ${reportAnalyticsSummary.averageMttrLabel}`);
+
+    addSectionGap();
+    writeLine('Barangay MTTR', { bold: true, fontSize: 12, lineHeight: 18 });
+    if (filteredBarangayPerformanceRows.length === 0) {
+      writeLine('No rows available for current filters.');
+    } else {
+      filteredBarangayPerformanceRows.forEach((row) => {
+        writeLine(
+          `${row.name}: reports ${row.totalReports}, resolved ${row.resolvedReports}, pending ${row.pendingReports}, MTTR ${formatDurationMinutes(row.averageMttrMinutes)}, resolution ${Number(row.resolutionRate || 0).toFixed(1)}%`
+        );
+      });
+    }
+
+    addSectionGap();
+    writeLine('Branch MTTR', { bold: true, fontSize: 12, lineHeight: 18 });
+    if (filteredBranchPerformanceRows.length === 0) {
+      writeLine('No rows available for current filters.');
+    } else {
+      filteredBranchPerformanceRows.forEach((row) => {
+        writeLine(
+          `${row.name} (${row.type || 'public'}): reports ${row.totalReports}, resolved ${row.resolvedReports}, pending ${row.pendingReports}, MTTR ${formatDurationMinutes(row.averageMttrMinutes)}, resolution ${Number(row.resolutionRate || 0).toFixed(1)}%`
+        );
+      });
+    }
+
+    addSectionGap();
+    writeLine('Branch Directory', { bold: true, fontSize: 12, lineHeight: 18 });
+    if (branches.length === 0) {
+      writeLine('No branch records available.');
+    } else {
+      branches.forEach((branch) => {
+        const assignedStaffCount = users.filter((user) => user.branchId === branch.id).length;
+        writeLine(`${branch.name} (${branch.type}): staff assigned ${assignedStaffCount}`);
+      });
+    }
+
+    doc.save('analytics-statistics.pdf');
+  }, [
+    analyticsBranchTypeFilter,
+    analyticsSearchQuery,
+    analyticsStatusFilter,
+    branches,
+    filteredBarangayPerformanceRows,
+    filteredBranchPerformanceRows,
+    reportAnalyticsSummary,
+    users,
+  ]);
 
   const residentReportMarkers = useMemo(
     () => reports
@@ -2208,8 +2532,88 @@ export default function AdminPanel() {
             <div className="ap-section">
               <div className="ap-section-heading">
                 <div>
-                  <h2 className="ap-section-title">Analytics</h2>
-                  <p className="ap-section-sub">System-wide statistics and breakdowns</p>
+                  <h2 className="ap-section-title">Statistics &amp; Reports</h2>
+                  <p className="ap-section-sub">MTTR performance by barangay and branch</p>
+                </div>
+                <div className="ap-section-actions">
+                  <button
+                    type="button"
+                    onClick={exportAnalyticsPdf}
+                    disabled={branchLoading || usersLoading || performanceLoading}
+                    className="ap-btn-outline ap-btn-sm"
+                  >
+                    Export PDF
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { loadBranches(); loadUsers(); loadPerformance(); }}
+                    disabled={branchLoading || usersLoading || performanceLoading}
+                    className="ap-btn-outline ap-btn-sm"
+                  >
+                    {(branchLoading || usersLoading || performanceLoading) ? 'Loading…' : 'Refresh data'}
+                  </button>
+                </div>
+              </div>
+
+              {performanceError ? <div role="alert" className="auth-error">{performanceError}</div> : null}
+
+              <div className="ap-card">
+                <div className="ap-card-header">
+                  <h3 className="ap-card-title">Search &amp; Filter</h3>
+                </div>
+                <div className="ap-filters-row">
+                  <div>
+                    <label htmlFor="analytics-search" className="form-label">Search area</label>
+                    <input
+                      id="analytics-search"
+                      type="text"
+                      className="form-input"
+                      placeholder="Search barangay or branch"
+                      value={analyticsSearchQuery}
+                      onChange={(event) => setAnalyticsSearchQuery(event.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="analytics-status-filter" className="form-label">Report filter</label>
+                    <select
+                      id="analytics-status-filter"
+                      className="form-select"
+                      value={analyticsStatusFilter}
+                      onChange={(event) => setAnalyticsStatusFilter(event.target.value)}
+                    >
+                      <option value="all">All rows</option>
+                      <option value="with_reports">With reports</option>
+                      <option value="resolved_only">With resolved</option>
+                      <option value="pending_only">With pending</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="analytics-branch-type-filter" className="form-label">Branch type</label>
+                    <select
+                      id="analytics-branch-type-filter"
+                      className="form-select"
+                      value={analyticsBranchTypeFilter}
+                      onChange={(event) => setAnalyticsBranchTypeFilter(event.target.value)}
+                    >
+                      <option value="all">All types</option>
+                      <option value="public">Public</option>
+                      <option value="private">Private</option>
+                    </select>
+                  </div>
+                  {(analyticsSearchQuery || analyticsStatusFilter !== 'all' || analyticsBranchTypeFilter !== 'all') ? (
+                    <button
+                      type="button"
+                      className="ap-btn-outline ap-btn-sm"
+                      style={{ alignSelf: 'flex-end' }}
+                      onClick={() => {
+                        setAnalyticsSearchQuery('');
+                        setAnalyticsStatusFilter('all');
+                        setAnalyticsBranchTypeFilter('all');
+                      }}
+                    >
+                      Clear filters
+                    </button>
+                  ) : null}
                 </div>
               </div>
 
@@ -2217,50 +2621,105 @@ export default function AdminPanel() {
                 <div className="ap-stat-card">
                   <div className="ap-stat-top">
                     <div className="ap-stat-icon ap-stat-icon-blue">
-                      {ICONS.people}
+                      {ICONS.report}
                     </div>
                   </div>
-                  <p className="ap-stat-label">Total Residents</p>
-                  <h3 className="ap-stat-value">{stats.totalResidents}</h3>
-                  <p className="ap-stat-meta">Registered citizens</p>
-                </div>
-
-                <div className="ap-stat-card">
-                  <div className="ap-stat-top">
-                    <div className="ap-stat-icon ap-stat-icon-purple">
-                      {ICONS.badge}
-                    </div>
-                  </div>
-                  <p className="ap-stat-label">Staff Members</p>
-                  <h3 className="ap-stat-value">{stats.totalStaff}</h3>
-                  <p className="ap-stat-meta">Active personnel</p>
-                </div>
-
-                <div className="ap-stat-card">
-                  <div className="ap-stat-top">
-                    <div className="ap-stat-icon ap-stat-icon-amber">
-                      {ICONS.admin_panel_settings}
-                    </div>
-                  </div>
-                  <p className="ap-stat-label">Administrators</p>
-                  <h3 className="ap-stat-value">{stats.totalAdmins}</h3>
-                  <p className="ap-stat-meta">System admins</p>
+                  <p className="ap-stat-label">Total Reports</p>
+                  <h3 className="ap-stat-value">{performanceLoading ? '…' : reportAnalyticsSummary.totalReports}</h3>
+                  <p className="ap-stat-meta">Reports tracked in the system</p>
                 </div>
 
                 <div className="ap-stat-card">
                   <div className="ap-stat-top">
                     <div className="ap-stat-icon ap-stat-icon-emerald">
+                      {ICONS.badge}
+                    </div>
+                  </div>
+                  <p className="ap-stat-label">Resolved</p>
+                  <h3 className="ap-stat-value">{performanceLoading ? '…' : reportAnalyticsSummary.resolvedReports}</h3>
+                  <p className="ap-stat-meta">{performanceLoading ? '…' : `${reportAnalyticsSummary.resolutionRate.toFixed(1)}% resolution rate`}</p>
+                </div>
+
+                <div className="ap-stat-card">
+                  <div className="ap-stat-top">
+                    <div className="ap-stat-icon ap-stat-icon-amber">
+                      {ICONS.analytics}
+                    </div>
+                  </div>
+                  <p className="ap-stat-label">Average MTTR</p>
+                  <h3 className="ap-stat-value">{performanceLoading ? '…' : reportAnalyticsSummary.averageMttrLabel}</h3>
+                  <p className="ap-stat-meta">Mean time to resolve</p>
+                </div>
+
+                <div className="ap-stat-card">
+                  <div className="ap-stat-top">
+                    <div className="ap-stat-icon ap-stat-icon-purple">
                       {ICONS.branches}
                     </div>
                   </div>
-                  <p className="ap-stat-label">Locations</p>
-                  <h3 className="ap-stat-value">{stats.totalBranches}</h3>
-                  <p className="ap-stat-meta">{stats.totalPublic} public · {stats.totalPrivate} private</p>
+                  <p className="ap-stat-label">Pending</p>
+                  <h3 className="ap-stat-value">{performanceLoading ? '…' : reportAnalyticsSummary.pendingReports}</h3>
+                  <p className="ap-stat-meta">Submitted or in review</p>
                 </div>
               </div>
 
               <div className="ap-card">
-                <h3 className="ap-card-title">Branch Breakdown</h3>
+                <div className="ap-card-header">
+                  <div>
+                    <h3 className="ap-card-title">Location MTTR</h3>
+                    <p className="ap-card-sub">Combined performance view for barangays and branches</p>
+                  </div>
+                  <button type="button" className="ap-btn-outline ap-btn-sm" onClick={exportCombinedPerformanceCsv} disabled={performanceLoading || combinedPerformanceRows.length === 0}>
+                    Export CSV
+                  </button>
+                </div>
+                {performanceLoading ? (
+                  <p className="ap-loading">Loading…</p>
+                ) : combinedPerformanceRows.length === 0 ? (
+                  <p className="ap-empty">No rows match the active filters.</p>
+                ) : (
+                  <div className="ap-table-wrap">
+                    <table className="ap-table">
+                      <thead>
+                        <tr>
+                          <th>Scope</th>
+                          <th>Location</th>
+                          <th>Type</th>
+                          <th>Reports</th>
+                          <th>Resolved</th>
+                          <th>Pending</th>
+                          <th>MTTR</th>
+                          <th>Resolution</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {combinedPerformanceRows.map((row) => (
+                          <tr key={`${row.scope}-${row.name}`}>
+                            <td>{row.scope}</td>
+                            <td><strong>{row.name}</strong></td>
+                            <td>
+                              {row.scope === 'Branch'
+                                ? <span className={`badge badge-entity-${row.type || 'public'}`}>{row.type || 'public'}</span>
+                                : <span className="ap-muted">n/a</span>}
+                            </td>
+                            <td>{row.totalReports}</td>
+                            <td>{row.resolvedReports}</td>
+                            <td>{row.pendingReports}</td>
+                            <td>{formatDurationMinutes(row.averageMttrMinutes)}</td>
+                            <td>{row.resolutionRate ? `${row.resolutionRate.toFixed(1)}%` : '0%'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              <div className="ap-card">
+                <div className="ap-card-header">
+                  <h3 className="ap-card-title">Branch Directory</h3>
+                  <p className="ap-card-sub">Staff assignment and location type</p>
+                </div>
                 {branchLoading ? (
                   <p className="ap-loading">Loading…</p>
                 ) : branches.length === 0 ? (

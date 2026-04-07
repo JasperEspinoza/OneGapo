@@ -368,7 +368,12 @@ export default function Dashboard() {
                 onPick={handleMapPick}
               />
 
-              <button type="button" className="btn-outline report-location-btn" onClick={handleUseCurrentLocation}>
+              <button
+                type="button"
+                className="btn-outline report-location-btn"
+                onClick={handleUseCurrentLocation}
+                disabled={submitting}
+              >
                 Use my current location
               </button>
 

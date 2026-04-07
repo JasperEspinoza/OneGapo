@@ -928,6 +928,18 @@
   border-left: 3px solid #1c385f;
 }
 
+.ap-analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+@media (max-width: 1100px) {
+  .ap-analytics-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .report-map-wrap {
   display: flex;
   flex-direction: column;

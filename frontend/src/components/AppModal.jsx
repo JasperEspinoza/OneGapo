@@ -24,7 +24,9 @@ export default function AppModal({ title, titleId, onClose, children }) {
       >
         <div className="app-modal-header">
           <h2 id={titleId} className="app-modal-title">{title}</h2>
-          <button type="button" onClick={onClose} className="app-modal-close" aria-label="Close dialog">X</button>
+          <button type="button" onClick={onClose} className="app-modal-close" aria-label="Close dialog">
+            <span aria-hidden="true">×</span>
+          </button>
         </div>
         <div className="app-modal-body">
           {children}

@@ -3,6 +3,326 @@ const { isCloudinaryConfigured, uploadBufferToCloudinary } = require('../service
 
 const REPORT_STATUSES = ['submitted', 'in_review', 'resolved', 'rejected'];
 const BAJAC_BAJAC_BRANCHES = new Set(['east bajac bajac', 'west bajac bajac']);
+const HIGH_PRIORITY_REPORT_CATEGORIES = new Set(['disaster', 'safety']);
+const PENDING_SLA_STATUSES = new Set(['submitted', 'in_review']);
+const SLA_SYNC_BATCH_LIMIT = 400;
+
+const TIER_TARGETS_MINUTES = {
+  1: {
+    acknowledgment: 10,
+    initialDispatch: 60,
+    inspection: null,
+    scheduledAction: null,
+    resolution: null,
+  },
+  2: {
+    acknowledgment: 60,
+    initialDispatch: null,
+    inspection: 4 * 60,
+    scheduledAction: null,
+    resolution: 48 * 60,
+  },
+  3: {
+    acknowledgment: 4 * 60,
+    initialDispatch: null,
+    inspection: null,
+    scheduledAction: 48 * 60,
+    resolution: 7 * 24 * 60,
+  },
+  4: {
+    acknowledgment: 24 * 60,
+    initialDispatch: null,
+    inspection: null,
+    scheduledAction: null,
+    resolution: 14 * 24 * 60,
+  },
+};
+
+function toMillis(timestamp) {
+  if (!timestamp) return 0;
+  if (typeof timestamp.toDate === 'function') {
+    const value = timestamp.toDate();
+    return Number.isNaN(value.getTime()) ? 0 : value.getTime();
+  }
+  if (timestamp instanceof Date) {
+    return Number.isNaN(timestamp.getTime()) ? 0 : timestamp.getTime();
+  }
+  if (typeof timestamp === 'string' || typeof timestamp === 'number') {
+    const parsed = new Date(timestamp);
+    return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+  }
+  return 0;
+}
+
+function toIsoFromMs(ms) {
+  const value = Number(ms);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  return new Date(value).toISOString();
+}
+
+function resolveReportTier({ category, title, description }) {
+  const normalizedCategory = String(category || '').trim().toLowerCase();
+  const text = `${String(title || '').toLowerCase()} ${String(description || '').toLowerCase()}`;
+
+  if (normalizedCategory === 'disaster' || /\b(live\s*wires?|flash\s*floods?)\b/i.test(text)) {
+    return 1;
+  }
+
+  if (normalizedCategory === 'safety' || /\b(burst\s*pipes?|blocked\s*roads?)\b/i.test(text)) {
+    return 2;
+  }
+
+  if (normalizedCategory === 'infrastructure' || normalizedCategory === 'sanitation' || /\b(potholes?|street\s*lights?)\b/i.test(text)) {
+    return 3;
+  }
+
+  return 4;
+}
+
+function buildInitialStageState(tier) {
+  const targets = TIER_TARGETS_MINUTES[tier] || TIER_TARGETS_MINUTES[4];
+  return {
+    acknowledgment: Number.isFinite(targets.acknowledgment) ? 'pending' : 'not_applicable',
+    initialDispatch: Number.isFinite(targets.initialDispatch) ? 'pending' : 'not_applicable',
+    inspection: Number.isFinite(targets.inspection) ? 'pending' : 'not_applicable',
+    scheduledAction: Number.isFinite(targets.scheduledAction) ? 'pending' : 'not_applicable',
+    resolution: Number.isFinite(targets.resolution) ? 'pending' : 'not_applicable',
+  };
+}
+
+function buildSlaDeadlines(tier, createdAtMs) {
+  const targets = TIER_TARGETS_MINUTES[tier] || TIER_TARGETS_MINUTES[4];
+  const toDeadline = (minutes) => {
+    if (!Number.isFinite(minutes) || minutes <= 0) return null;
+    return new Date(createdAtMs + (minutes * 60 * 1000)).toISOString();
+  };
+
+  return {
+    acknowledgmentAt: toDeadline(targets.acknowledgment),
+    initialDispatchAt: toDeadline(targets.initialDispatch),
+    inspectionAt: toDeadline(targets.inspection),
+    scheduledActionAt: toDeadline(targets.scheduledAction),
+    resolutionAt: toDeadline(targets.resolution),
+  };
+}
+
+function getNextCheckAtMs(deadlines, stageState) {
+  const pending = [
+    stageState?.acknowledgment === 'pending' ? toMillis(deadlines?.acknowledgmentAt) : 0,
+    stageState?.initialDispatch === 'pending' ? toMillis(deadlines?.initialDispatchAt) : 0,
+    stageState?.inspection === 'pending' ? toMillis(deadlines?.inspectionAt) : 0,
+    stageState?.scheduledAction === 'pending' ? toMillis(deadlines?.scheduledActionAt) : 0,
+    stageState?.resolution === 'pending' ? toMillis(deadlines?.resolutionAt) : 0,
+  ].filter((value) => value > 0);
+
+  if (pending.length === 0) return null;
+  return Math.min(...pending);
+}
+
+function createInitialSla(tier, createdAtMs) {
+  const targetsMin = TIER_TARGETS_MINUTES[tier] || TIER_TARGETS_MINUTES[4];
+  const stageState = buildInitialStageState(tier);
+  const deadlines = buildSlaDeadlines(tier, createdAtMs);
+  const nextCheckAtMs = getNextCheckAtMs(deadlines, stageState);
+
+  return {
+    tier,
+    targetsMin,
+    stageState,
+    deadlines,
+    isFlagged: false,
+    level: 'pending',
+    status: 'submitted',
+    activeStage: 'acknowledgment',
+    thresholdHours: Number((Number(targetsMin.acknowledgment || 0) / 60).toFixed(2)),
+    overdueHours: 0,
+    nextCheckAtMs,
+    nextCheckAt: toIsoFromMs(nextCheckAtMs),
+    lastCheckedAt: null,
+    trigger: 'auto_pending',
+  };
+}
+
+function getDeadlineIsoForStage(deadlines, stage) {
+  if (stage === 'acknowledgment') return deadlines?.acknowledgmentAt || null;
+  if (stage === 'initialDispatch') return deadlines?.initialDispatchAt || null;
+  if (stage === 'inspection') return deadlines?.inspectionAt || null;
+  if (stage === 'scheduledAction') return deadlines?.scheduledActionAt || null;
+  if (stage === 'resolution') return deadlines?.resolutionAt || null;
+  return null;
+}
+
+function getActiveSlaStage(report) {
+  const status = String(report?.status || 'submitted').trim().toLowerCase();
+  if (!PENDING_SLA_STATUSES.has(status)) return '';
+
+  const stageState = report?.sla?.stageState || {};
+  const ordered = ['acknowledgment', 'initialDispatch', 'inspection', 'scheduledAction', 'resolution'];
+  const pendingStage = ordered.find((key) => stageState?.[key] === 'pending');
+  if (pendingStage) return pendingStage;
+
+  const tier = Number(report?.sla?.tier || report?.tier || 4);
+  if (status === 'submitted') return 'acknowledgment';
+  if (tier === 1) return 'initialDispatch';
+  if (tier === 2) return 'inspection';
+  if (tier === 3) return 'scheduledAction';
+  return 'resolution';
+}
+
+function getPendingSlaSnapshot(report, nowMs = Date.now()) {
+  const status = String(report?.status || 'submitted').trim().toLowerCase();
+  if (!PENDING_SLA_STATUSES.has(status)) {
+    return {
+      isBreached: false,
+      status,
+      activeStage: '',
+      thresholdHours: 0,
+      overdueHours: 0,
+      breachedAt: null,
+      referenceAt: null,
+    };
+  }
+
+  const tier = Number(report?.sla?.tier || report?.tier || 4);
+  const targetsMin = report?.sla?.targetsMin || TIER_TARGETS_MINUTES[tier] || TIER_TARGETS_MINUTES[4];
+  const activeStage = getActiveSlaStage(report);
+  const deadlineIso = getDeadlineIsoForStage(report?.sla?.deadlines || {}, activeStage);
+  const deadlineMs = toMillis(deadlineIso);
+  const thresholdMinutes = Number(targetsMin?.[activeStage] || 0);
+
+  if (!activeStage || !deadlineMs || !Number.isFinite(thresholdMinutes) || thresholdMinutes <= 0) {
+    return {
+      isBreached: false,
+      status,
+      activeStage,
+      thresholdHours: 0,
+      overdueHours: 0,
+      breachedAt: null,
+      referenceAt: null,
+    };
+  }
+
+  const referenceMs = toMillis(report?.createdAt) || nowMs;
+  const overdueHours = Math.max(0, Number(((nowMs - deadlineMs) / (60 * 60 * 1000)).toFixed(2)));
+
+  return {
+    isBreached: nowMs >= deadlineMs,
+    status,
+    activeStage,
+    thresholdHours: Number((thresholdMinutes / 60).toFixed(2)),
+    overdueHours,
+    breachedAt: deadlineIso,
+    referenceAt: toIsoFromMs(referenceMs),
+  };
+}
+
+function getSlaResponseState(report) {
+  const existing = report?.sla && typeof report.sla === 'object' ? report.sla : {};
+  const snapshot = getPendingSlaSnapshot(report);
+  if (!snapshot.isBreached) {
+    return {
+      ...existing,
+      isFlagged: false,
+      overdueHours: 0,
+    };
+  }
+
+  return {
+    ...existing,
+    isFlagged: true,
+    level: 'pending',
+    status: snapshot.status,
+    activeStage: snapshot.activeStage,
+    thresholdHours: snapshot.thresholdHours,
+    referenceAt: snapshot.referenceAt,
+    breachedAt: snapshot.breachedAt,
+    overdueHours: snapshot.overdueHours,
+    trigger: 'auto_pending',
+  };
+}
+
+async function syncPendingSlaFlags(db, reports) {
+  if (!db || !Array.isArray(reports) || reports.length === 0) return;
+
+  let batch = db.batch();
+  let pendingWrites = 0;
+  const nowIso = new Date().toISOString();
+
+  const commitBatch = async () => {
+    if (pendingWrites === 0) return;
+    await batch.commit();
+    batch = db.batch();
+    pendingWrites = 0;
+  };
+
+  for (const report of reports) {
+    const reportId = String(report?.id || '').trim();
+    if (!reportId) continue;
+
+    const existing = report?.sla && typeof report.sla === 'object' ? report.sla : {};
+    const snapshot = getPendingSlaSnapshot(report);
+    const alreadyFlaggedForStage =
+      existing?.isFlagged === true &&
+      existing?.status === snapshot.status &&
+      existing?.activeStage === snapshot.activeStage;
+
+    if (!snapshot.isBreached && existing?.isFlagged !== true) {
+      continue;
+    }
+
+    const nextSla = {
+      ...existing,
+      lastCheckedAt: nowIso,
+      status: snapshot.status,
+      activeStage: snapshot.activeStage,
+      thresholdHours: snapshot.thresholdHours,
+      referenceAt: snapshot.referenceAt,
+      breachedAt: snapshot.breachedAt,
+      overdueHours: snapshot.overdueHours,
+      trigger: 'auto_pending',
+    };
+
+    let updatePayload;
+    if (snapshot.isBreached) {
+      nextSla.isFlagged = true;
+      nextSla.level = 'pending';
+
+      updatePayload = {
+        sla: nextSla,
+      };
+
+      if (!alreadyFlaggedForStage) {
+        updatePayload.auditTrail = admin.firestore.FieldValue.arrayUnion({
+          type: 'sla_flagged',
+          changedAt: nowIso,
+          changedBy: {
+            uid: 'system',
+            role: 'system',
+            email: 'system@onegapo.local',
+          },
+          progressNote: `Auto-flagged as pending. Stage "${snapshot.activeStage}" exceeded SLA target of ${snapshot.thresholdHours} hour(s).`,
+        });
+      }
+    } else {
+      nextSla.isFlagged = false;
+      nextSla.overdueHours = 0;
+      nextSla.clearedAt = nowIso;
+      nextSla.clearReason = 'status_updated_or_within_threshold';
+      updatePayload = {
+        sla: nextSla,
+      };
+    }
+
+    batch.update(db.collection('reports').doc(reportId), updatePayload);
+    pendingWrites += 1;
+
+    if (pendingWrites >= SLA_SYNC_BATCH_LIMIT) {
+      await commitBatch();
+    }
+  }
+
+  await commitBatch();
+}
 
 const COVERAGE_ALIASES = new Map([
   ['asinan', 'Asinan'],
@@ -34,6 +354,29 @@ const COVERAGE_ALIASES = new Map([
   ['subic bay freeport zone', 'SBMA Freeport Zone'],
   ['subic bay metropolitan authority', 'SBMA Freeport Zone'],
 ]);
+
+const METRICS_BARANGAYS = [
+  'Asinan',
+  'New Asinan',
+  'Banicain',
+  'Barretto',
+  'East Bajac-Bajac',
+  'West Bajac-Bajac',
+  'East Tapinac',
+  'West Tapinac',
+  'Gordon Heights',
+  'Kababae',
+  'New Kababae',
+  'Kalaklan',
+  'Kalalake',
+  'New Kalalake',
+  'Mabayuan',
+  'New Cabalan',
+  'Old Cabalan',
+  'New Ilalim',
+  'Pag-asa',
+  'Sta. Rita',
+];
 
 function normalizeToken(value) {
   return String(value || '')
@@ -86,7 +429,6 @@ function extractCoverageFromAddress(address) {
 
   return canonicalCoverageName(rawAddress);
 }
-
 function getReportCoverage(report) {
   const directBarangay = canonicalCoverageName(report?.location?.barangay || report?.barangay || '');
   if (directBarangay) return directBarangay;
@@ -126,7 +468,6 @@ function isReportInCoverage(report, coverageName) {
       return true;
     }
 
-    // Legacy addresses sometimes include only "Bajac-Bajac" with no east/west qualifier.
     if (BAJAC_BAJAC_BRANCHES.has(scopeToken) && reportTokens.has('bajac bajac')) {
       return true;
     }
@@ -223,7 +564,6 @@ function canManageReportLifecycle(reqUser) {
     return true;
   }
 
-  // Branch admins are modeled as staff accounts with archive_reports permission.
   if (role === 'staff' && hasPermission(reqUser, 'archive_reports')) {
     return true;
   }
@@ -241,20 +581,269 @@ function toNotificationDto(doc) {
   };
 }
 
+function getReportResolvedAtMs(report) {
+  if (String(report?.status || '').toLowerCase() !== 'resolved') {
+    return 0;
+  }
+
+  const directResolvedAt = toMillis(report?.resolution?.resolvedAt);
+  if (directResolvedAt) {
+    return directResolvedAt;
+  }
+
+  const auditTrail = Array.isArray(report?.auditTrail) ? report.auditTrail : [];
+  const latestResolvedEntry = auditTrail
+    .slice()
+    .sort((a, b) => toMillis(b?.changedAt) - toMillis(a?.changedAt))
+    .find((entry) => String(entry?.toStatus || '').toLowerCase() === 'resolved');
+
+  if (latestResolvedEntry) {
+    return toMillis(latestResolvedEntry.changedAt);
+  }
+
+  return toMillis(report?.updatedAt);
+}
+
+function getReportMttrMinutes(report) {
+  const createdAtMs = toMillis(report?.createdAt);
+  const resolvedAtMs = getReportResolvedAtMs(report);
+
+  if (!createdAtMs || !resolvedAtMs || resolvedAtMs < createdAtMs) {
+    return null;
+  }
+
+  return (resolvedAtMs - createdAtMs) / 60000;
+}
+
+function getReportBranchCoverageName(report) {
+  return String(
+    report?.forwarding?.to?.branchName ||
+    report?.branchName ||
+    report?.location?.branchName ||
+    report?.location?.barangay ||
+    ''
+  ).trim();
+}
+
+function buildPerformanceRows(locations, reports, getLocationName, getReportCoverageName = getLocationName, getExtraFields = () => ({})) {
+  const rowsByName = new Map();
+
+  locations.forEach((location) => {
+    const name = String(getLocationName(location) || '').trim();
+    if (!name) return;
+
+    rowsByName.set(name, {
+      name,
+      ...getExtraFields(location),
+      totalReports: 0,
+      resolvedReports: 0,
+      pendingReports: 0,
+      mttrCount: 0,
+      mttrTotalMinutes: 0,
+    });
+  });
+
+  reports.forEach((report) => {
+    const name = String(getReportCoverageName(report) || '').trim();
+    if (!name) return;
+
+    if (!rowsByName.has(name)) {
+      rowsByName.set(name, {
+        name,
+        ...getExtraFields({ name }),
+        totalReports: 0,
+        resolvedReports: 0,
+        pendingReports: 0,
+        mttrCount: 0,
+        mttrTotalMinutes: 0,
+      });
+    }
+
+    const row = rowsByName.get(name);
+    row.totalReports += 1;
+
+    const status = String(report?.status || 'submitted').trim().toLowerCase();
+    if (status === 'resolved') {
+      row.resolvedReports += 1;
+      const mttrMinutes = getReportMttrMinutes(report);
+      if (Number.isFinite(mttrMinutes)) {
+        row.mttrCount += 1;
+        row.mttrTotalMinutes += mttrMinutes;
+      }
+    }
+
+    if (status === 'submitted' || status === 'in_review') {
+      row.pendingReports += 1;
+    }
+  });
+
+  return Array.from(rowsByName.values())
+    .map((row) => {
+      const averageMttrMinutes = row.mttrCount > 0 ? row.mttrTotalMinutes / row.mttrCount : null;
+      return {
+        name: row.name,
+        type: row.type || null,
+        totalReports: row.totalReports,
+        resolvedReports: row.resolvedReports,
+        pendingReports: row.pendingReports,
+        resolutionRate: row.totalReports > 0 ? (row.resolvedReports / row.totalReports) * 100 : 0,
+        averageMttrMinutes,
+      };
+    })
+    .sort((a, b) => b.totalReports - a.totalReports || a.name.localeCompare(b.name));
+}
+
+async function getPerformanceMetrics(req, res, next) {
+  try {
+    const role = req.user?.role;
+    if (role !== 'staff' && role !== 'admin') {
+      return res.status(403).json({ error: 'Only staff and admins can access performance metrics.' });
+    }
+
+    const db = admin.firestore();
+
+    let reportSnap;
+    try {
+      reportSnap = await db.collection('reports').limit(800).get();
+    } catch (queryErr) {
+      console.warn('[getPerformanceMetrics] Primary report query failed, using fallback scan:', queryErr.message || queryErr);
+      reportSnap = await db.collection('reports').get();
+    }
+
+    const rawReports = reportSnap.docs
+      .map((doc) => {
+        const data = safeDocData(doc);
+        return {
+          id: data.id || doc.id,
+          ...data,
+          createdAt: toIso(data.createdAt),
+          updatedAt: toIso(data.updatedAt),
+        };
+      })
+      .filter((report) => Boolean(report && report.id));
+
+    await syncPendingSlaFlags(db, rawReports);
+
+    let reports = rawReports;
+    if (role === 'staff') {
+      reports = rawReports.filter((report) => {
+        try {
+          return canStaffAccessReport(report, req.user);
+        } catch {
+          return false;
+        }
+      });
+    }
+
+    let branchDocs = [];
+    try {
+      const branchSnap = await db.collection('branches').orderBy('name').get();
+      branchDocs = branchSnap.docs.map((doc) => ({
+        id: doc.id,
+        ...(doc.data() || {}),
+      }));
+    } catch {
+      const fallbackBranchSnap = await db.collection('branches').get();
+      branchDocs = fallbackBranchSnap.docs.map((doc) => ({
+        id: doc.id,
+        ...(doc.data() || {}),
+      }));
+    }
+
+    const normalizedBranches = branchDocs.map((branch) => ({
+      id: branch.id,
+      name: String(branch.name || '').trim(),
+      type: String(branch.type || 'public').trim().toLowerCase() || 'public',
+    }));
+
+    const barangaySeed = new Map();
+    METRICS_BARANGAYS.forEach((name) => barangaySeed.set(name, { name }));
+    normalizedBranches
+      .filter((branch) => branch.type === 'public' && branch.name)
+      .forEach((branch) => barangaySeed.set(branch.name, { name: branch.name }));
+
+    const barangayRows = buildPerformanceRows(
+      Array.from(barangaySeed.values()),
+      reports,
+      (location) => location.name,
+      (report) => getReportCoverage(report)
+    );
+
+    const branchRows = buildPerformanceRows(
+      normalizedBranches,
+      reports,
+      (branch) => branch.name,
+      (report) => canonicalCoverageName(getReportBranchCoverageName(report)) || getReportCoverage(report),
+      (branch) => ({ type: branch.type || 'public' })
+    );
+
+    const totalReports = reports.length;
+    const resolvedReports = reports.filter((report) => String(report?.status || '').toLowerCase() === 'resolved').length;
+    const pendingReports = reports.filter((report) => {
+      const status = String(report?.status || '').toLowerCase();
+      return status === 'submitted' || status === 'in_review';
+    }).length;
+
+    const resolvedMttrValues = reports
+      .filter((report) => String(report?.status || '').toLowerCase() === 'resolved')
+      .map((report) => getReportMttrMinutes(report))
+      .filter((value) => Number.isFinite(value));
+
+    const averageMttrMinutes = resolvedMttrValues.length > 0
+      ? resolvedMttrValues.reduce((sum, value) => sum + value, 0) / resolvedMttrValues.length
+      : null;
+
+    return res.json({
+      summary: {
+        totalReports,
+        resolvedReports,
+        pendingReports,
+        resolutionRate: totalReports > 0 ? (resolvedReports / totalReports) * 100 : 0,
+        averageMttrMinutes,
+      },
+      barangayRows,
+      branchRows,
+      generatedAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+function isEmergencyEscalation({ report, note }) {
+  const category = String(report?.category || '').trim().toLowerCase();
+  if (HIGH_PRIORITY_REPORT_CATEGORIES.has(category)) {
+    return true;
+  }
+
+  const noteText = String(note || '').trim().toLowerCase();
+  if (!noteText) {
+    return false;
+  }
+
+  return /(emergency|urgent|escalat|high[\s-]?priority)/i.test(noteText);
+}
+
 async function notifyUsersForForwarding({ db, recipients, report, targetBranch, actor, note }) {
   if (!Array.isArray(recipients) || recipients.length === 0) {
     return;
   }
 
   const batch = db.batch();
-  const title = `Report forwarded to ${targetBranch.name}`;
-  const message = `${actor.email || actor.uid || 'An operator'} forwarded "${report.title || report.id}".`;
+  const emergencyEscalation = isEmergencyEscalation({ report, note });
+  const title = emergencyEscalation
+    ? `Emergency escalation to ${targetBranch.name}`
+    : `Report forwarded to ${targetBranch.name}`;
+  const message = emergencyEscalation
+    ? `${actor.email || actor.uid || 'An operator'} escalated "${report.title || report.id}" as high priority.`
+    : `${actor.email || actor.uid || 'An operator'} forwarded "${report.title || report.id}".`;
 
   for (const recipient of recipients) {
     const ref = db.collection('notifications').doc();
     batch.set(ref, {
       recipientUid: recipient.uid,
-      type: 'report_forwarded',
+      type: emergencyEscalation ? 'report_emergency_escalation' : 'report_forwarded',
+      priority: emergencyEscalation ? 'high' : 'normal',
       title,
       message,
       isRead: false,
@@ -262,7 +851,66 @@ async function notifyUsersForForwarding({ db, recipients, report, targetBranch, 
       metadata: {
         targetBranchId: targetBranch.id,
         targetBranchName: targetBranch.name,
+        reportCategory: String(report?.category || '').trim().toLowerCase() || null,
+        alertCategory: emergencyEscalation ? 'emergency' : 'general',
         note: note || null,
+      },
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  }
+
+  await batch.commit();
+}
+
+async function notifyUsersForEmergencySubmission({ db, report, reporter }) {
+  const category = String(report?.category || '').trim().toLowerCase();
+  if (!HIGH_PRIORITY_REPORT_CATEGORIES.has(category)) {
+    return;
+  }
+
+  const coverage = String(getReportCoverage(report) || report?.location?.barangay || report?.location?.address || '').trim();
+  const areaLabel = coverage || 'assigned area';
+
+  const staffSnap = await db.collection('users').where('role', '==', 'staff').get();
+  const staffRecipients = staffSnap.docs
+    .map((doc) => doc.data())
+    .filter((user) => user?.uid && canStaffAccessReport(report, user))
+    .map((user) => ({ uid: user.uid }));
+
+  const adminSnap = await db.collection('users').where('role', '==', 'admin').get();
+  const adminRecipients = adminSnap.docs
+    .map((doc) => doc.data())
+    .filter((user) => user?.uid)
+    .map((user) => ({ uid: user.uid }));
+
+  const recipientMap = new Map();
+  for (const recipient of [...staffRecipients, ...adminRecipients]) {
+    recipientMap.set(recipient.uid, recipient);
+  }
+
+  if (recipientMap.size === 0) {
+    return;
+  }
+
+  const batch = db.batch();
+  const title = `Emergency in ${areaLabel}: ${report.title || report.id}`;
+  const message = `${reporter?.email || 'A resident'} submitted a high-priority ${category} report for ${areaLabel}.`;
+
+  for (const recipient of recipientMap.values()) {
+    const ref = db.collection('notifications').doc();
+    batch.set(ref, {
+      recipientUid: recipient.uid,
+      type: 'report_emergency_submitted',
+      priority: 'high',
+      title,
+      message,
+      isRead: false,
+      reportId: report.id,
+      metadata: {
+        reportCategory: category,
+        alertCategory: 'emergency',
+        alertArea: areaLabel,
+        coverage,
       },
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
@@ -296,6 +944,8 @@ async function createReport(req, res, next) {
     }
 
     const files = Array.isArray(req.files) ? req.files : [];
+    const tier = resolveReportTier({ category, title, description });
+    const createdAtMs = Date.now();
 
     if (files.length > 0 && !isCloudinaryConfigured()) {
       return res.status(503).json({
@@ -342,11 +992,33 @@ async function createReport(req, res, next) {
         role,
       },
       attachments,
+      tier,
+      lifecycle: {
+        acknowledgedAt: null,
+        dispatchedAt: null,
+        inspectedAt: null,
+        scheduledActionAt: null,
+        resolvedAt: null,
+      },
+      sla: createInitialSla(tier, createdAtMs),
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     };
 
     await reportRef.set(payload);
+
+    try {
+      await notifyUsersForEmergencySubmission({
+        db,
+        report: payload,
+        reporter: {
+          uid: requesterUid,
+          email: req.user?.email || '',
+        },
+      });
+    } catch (notifErr) {
+      console.warn('[createReport] Failed to create emergency notifications:', notifErr.message || notifErr);
+    }
 
     return res.status(201).json({
       message: 'Report submitted successfully.',
@@ -383,11 +1055,24 @@ async function listOwnReports(req, res, next) {
       snap = { docs: filteredDocs };
     }
 
-    const reports = snap.docs
+    const rawReports = snap.docs
+      .map((doc) => {
+        const data = safeDocData(doc);
+        return {
+          id: data.id || doc.id,
+          ...data,
+          createdAt: toIso(data.createdAt),
+          updatedAt: toIso(data.updatedAt),
+        };
+      })
+      .filter((report) => Boolean(report && report.id));
+
+    await syncPendingSlaFlags(db, rawReports);
+
+    const reports = rawReports
       .map((doc) => ({
-        ...doc.data(),
-        createdAt: toIso(doc.data().createdAt),
-        updatedAt: toIso(doc.data().updatedAt),
+        ...doc,
+        sla: getSlaResponseState(doc),
       }))
       .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 
@@ -418,7 +1103,7 @@ async function listReportsForOperators(req, res, next) {
       snap = await db.collection('reports').get();
     }
 
-    let reports = snap.docs
+    const rawReports = snap.docs
       .map((doc) => {
         const data = safeDocData(doc);
         return {
@@ -428,7 +1113,15 @@ async function listReportsForOperators(req, res, next) {
           updatedAt: toIso(data.updatedAt),
         };
       })
-      .filter((report) => Boolean(report && report.id))
+      .filter((report) => Boolean(report && report.id));
+
+    await syncPendingSlaFlags(db, rawReports);
+
+    let reports = rawReports
+      .map((report) => ({
+        ...report,
+        sla: getSlaResponseState(report),
+      }))
       .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 
     if (role === 'staff') {
@@ -530,10 +1223,90 @@ async function updateReportStatus(req, res, next) {
       });
     }
 
+    const nowIso = new Date().toISOString();
+    const tier = Number(currentReport?.tier || currentReport?.sla?.tier || resolveReportTier({
+      category: currentReport?.category,
+      title: currentReport?.title,
+      description: currentReport?.description,
+    }));
+    const createdAtMs = toMillis(currentReport?.createdAt) || Date.now();
+    const fallbackSla = createInitialSla(tier, createdAtMs);
+    const existingSla = currentReport?.sla && typeof currentReport.sla === 'object' ? currentReport.sla : fallbackSla;
+    const stageState = {
+      ...buildInitialStageState(tier),
+      ...(existingSla.stageState || {}),
+    };
+    const deadlines = existingSla.deadlines || buildSlaDeadlines(tier, createdAtMs);
+
+    const lifecycle = {
+      acknowledgedAt: null,
+      dispatchedAt: null,
+      inspectedAt: null,
+      scheduledActionAt: null,
+      resolvedAt: null,
+      ...(currentReport?.lifecycle && typeof currentReport.lifecycle === 'object' ? currentReport.lifecycle : {}),
+    };
+
+    if (status !== 'submitted' && stageState.acknowledgment === 'pending') {
+      stageState.acknowledgment = 'met';
+      if (!lifecycle.acknowledgedAt) {
+        lifecycle.acknowledgedAt = nowIso;
+      }
+    }
+
+    if (status === 'in_review') {
+      if (tier === 1 && stageState.initialDispatch === 'pending') {
+        stageState.initialDispatch = 'met';
+        if (!lifecycle.dispatchedAt) {
+          lifecycle.dispatchedAt = nowIso;
+        }
+      }
+
+      if (tier === 2 && stageState.inspection === 'pending') {
+        stageState.inspection = 'met';
+        if (!lifecycle.inspectedAt) {
+          lifecycle.inspectedAt = nowIso;
+        }
+      }
+
+      if (tier === 3 && stageState.scheduledAction === 'pending') {
+        stageState.scheduledAction = 'met';
+        if (!lifecycle.scheduledActionAt) {
+          lifecycle.scheduledActionAt = nowIso;
+        }
+      }
+    }
+
+    if ((status === 'resolved' || status === 'rejected') && stageState.resolution === 'pending') {
+      stageState.resolution = 'met';
+      if (!lifecycle.resolvedAt) {
+        lifecycle.resolvedAt = nowIso;
+      }
+    }
+
+    const previewReport = {
+      ...currentReport,
+      status,
+      tier,
+      lifecycle,
+      sla: {
+        ...existingSla,
+        tier,
+        targetsMin: existingSla.targetsMin || TIER_TARGETS_MINUTES[tier] || TIER_TARGETS_MINUTES[4],
+        stageState,
+        deadlines,
+      },
+    };
+    const snapshot = getPendingSlaSnapshot(previewReport);
+
+    const nextCheckAtMs = PENDING_SLA_STATUSES.has(status)
+      ? getNextCheckAtMs(deadlines, stageState)
+      : null;
+
     const auditEntry = {
       fromStatus: previousStatus,
       toStatus: status,
-      changedAt: new Date().toISOString(),
+      changedAt: nowIso,
       changedBy: {
         uid: requesterUid,
         role,
@@ -546,6 +1319,29 @@ async function updateReportStatus(req, res, next) {
 
     const updates = {
       status,
+      tier,
+      lifecycle,
+      sla: {
+        ...existingSla,
+        tier,
+        targetsMin: existingSla.targetsMin || TIER_TARGETS_MINUTES[tier] || TIER_TARGETS_MINUTES[4],
+        stageState,
+        deadlines,
+        isFlagged: snapshot.isBreached,
+        level: snapshot.isBreached ? 'pending' : null,
+        status: snapshot.status,
+        activeStage: snapshot.activeStage,
+        thresholdHours: snapshot.thresholdHours,
+        referenceAt: snapshot.referenceAt,
+        breachedAt: snapshot.breachedAt,
+        overdueHours: snapshot.overdueHours,
+        nextCheckAtMs,
+        nextCheckAt: toIsoFromMs(nextCheckAtMs),
+        lastCheckedAt: nowIso,
+        trigger: 'auto_pending',
+        clearedAt: snapshot.isBreached ? null : nowIso,
+        clearReason: snapshot.isBreached ? null : 'status_updated_or_within_threshold',
+      },
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       lastUpdatedBy: {
         uid: requesterUid,
@@ -560,7 +1356,7 @@ async function updateReportStatus(req, res, next) {
       updates.resolution = {
         note: progressNote || null,
         photos: resolutionPhotos,
-        resolvedAt: new Date().toISOString(),
+        resolvedAt: nowIso,
         resolvedBy: {
           uid: requesterUid,
           role,
@@ -969,6 +1765,7 @@ module.exports = {
   createReport,
   listOwnReports,
   listReportsForOperators,
+  getPerformanceMetrics,
   updateReportStatus,
   archiveReport,
   deleteReport,

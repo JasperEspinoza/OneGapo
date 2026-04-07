@@ -5,6 +5,7 @@ const {
   createReport,
   listOwnReports,
   listReportsForOperators,
+  getPerformanceMetrics,
   updateReportStatus,
   archiveReport,
   deleteReport,
@@ -53,6 +54,7 @@ const uploadResolutionEvidence = multer({
 router.post('/', verifyToken, upload.array('attachments', 6), createReport);
 router.get('/me', verifyToken, listOwnReports);
 router.get('/', verifyToken, listReportsForOperators);
+router.get('/performance', verifyToken, requireStaffOrAdmin, getPerformanceMetrics);
 router.get('/forward-targets', verifyToken, requireStaffOrAdmin, listForwardTargets);
 router.patch('/:reportId/forward', verifyToken, requireStaffOrAdmin, forwardReport);
 router.patch('/:reportId/archive', verifyToken, requireStaffOrAdmin, archiveReport);

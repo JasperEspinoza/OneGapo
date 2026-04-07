@@ -36,6 +36,7 @@ function normalizeStatus(status) {
   return String(status || 'submitted').replace('_', ' ');
 }
 
+
 function getMediaUrl(media) {
   if (!media || typeof media !== 'object') return '';
   return (
@@ -172,7 +173,9 @@ function buildResidentTicketUpdates(report) {
         detail: forwardedDetail,
         actor: getTicketActorLabel(entry),
       });
+      return;
     }
+
   });
 
   return updates
@@ -842,7 +845,12 @@ export default function ResidentHub() {
                 helpText="Tap the map to pin location."
               />
 
-              <button type="button" className="btn-outline resident-location-btn" onClick={handleUseCurrentLocation}>
+              <button
+                type="button"
+                className="btn-outline resident-location-btn"
+                onClick={handleUseCurrentLocation}
+                disabled={submitting}
+              >
                 Use current location
               </button>
 

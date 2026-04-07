@@ -1,6 +1,6 @@
 import './AdminPanel.css';
 import './StaffPanel.css';
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useSettingsModal } from '../context/SettingsModalContext';
@@ -28,7 +28,7 @@ const NAV_ITEMS = [
   { id: 'team', label: 'Branch Staff', icon: 'groups' },
 ];
 
-const REPORTS_SYNC_INTERVAL_MS = 8000;
+const REPORTS_SYNC_INTERVAL_MS = 2000;
 
 function formatDate(value) {
   if (!value) return 'Unknown date';
@@ -44,6 +44,20 @@ function normalizeStatus(status) {
 function getStatusClass(status) {
   const key = String(status || 'submitted').toLowerCase();
   return `ss-status ss-status-${key}`;
+}
+
+function formatAuditEntry(entry) {
+  if (entry?.type === 'archived') {
+    return `Archived from ${normalizeStatus(entry.fromStatus)} on ${formatDate(entry.changedAt)}`;
+  }
+
+  if (entry?.type === 'forwarded') {
+    return `Forwarded on ${formatDate(entry.changedAt)}`;
+  }
+
+  const fromStatus = normalizeStatus(entry?.fromStatus);
+  const toStatus = normalizeStatus(entry?.toStatus);
+  return `${fromStatus} -> ${toStatus} on ${formatDate(entry?.changedAt)}`;
 }
 
 function getReportPreviewImage(report) {
@@ -87,6 +101,74 @@ function getReportPreviewImage(report) {
   );
 }
 
+function isEmergencyNotification(notification) {
+  const type = String(notification?.type || '').trim().toLowerCase();
+  const priority = String(notification?.priority || '').trim().toLowerCase();
+  const category = String(notification?.metadata?.alertCategory || '').trim().toLowerCase();
+  const reportCategory = String(notification?.metadata?.reportCategory || '').trim().toLowerCase();
+  const title = String(notification?.title || '').trim().toLowerCase();
+  const message = String(notification?.message || '').trim().toLowerCase();
+
+  if (priority === 'high' || category === 'emergency') {
+    return true;
+  }
+
+  if (reportCategory === 'disaster' || reportCategory === 'safety') {
+    return true;
+  }
+
+  if (/(emergency|urgent|high[\s-]?priority|critical)/i.test(`${title} ${message}`)) {
+    return true;
+  }
+
+  return type.includes('emergency');
+}
+
+function isEmergencyReport(report) {
+  const category = String(report?.category || '').trim().toLowerCase();
+  if (category === 'disaster' || category === 'safety') {
+    return true;
+  }
+
+  const title = String(report?.title || '').trim().toLowerCase();
+  const description = String(report?.description || '').trim().toLowerCase();
+  return /(emergency|urgent|critical|high[\s-]?priority)/i.test(`${title} ${description}`);
+}
+
+function notificationTimestamp(notification) {
+  const value = notification?.createdAt;
+  const ms = value ? new Date(value).getTime() : 0;
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+function playEmergencyAlertTone() {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+
+    const ctx = new AudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(980, ctx.currentTime);
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.14, ctx.currentTime + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.32);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.33);
+
+    window.setTimeout(() => {
+      ctx.close().catch(() => {});
+    }, 450);
+  } catch {
+    // Ignore audio API failures and keep UI alerts working.
+  }
+}
+
 export default function StaffPanel() {
   const { currentUser, userClaims, logout } = useAuth();
   const { openSettings } = useSettingsModal();
@@ -112,6 +194,9 @@ export default function StaffPanel() {
   const [reportsLoading, setReportsLoading] = useState(false);
   const [reportsError, setReportsError] = useState('');
   const [reportStatusFilter, setReportStatusFilter] = useState('all');
+  const [mapFocusReportId, setMapFocusReportId] = useState('');
+  const [mapAutoRouteRequestKey, setMapAutoRouteRequestKey] = useState(0);
+  const [dismissedEmergencyBannerId, setDismissedEmergencyBannerId] = useState('');
   const [updatingReportId, setUpdatingReportId] = useState('');
   const [reportActionError, setReportActionError] = useState('');
   const [selectedReport, setSelectedReport] = useState(null);
@@ -128,6 +213,9 @@ export default function StaffPanel() {
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifLoading, setNotifLoading] = useState(false);
   const [notifError, setNotifError] = useState('');
+  const [emergencyAlert, setEmergencyAlert] = useState(null);
+  const seenEmergencyIdsRef = useRef(new Set());
+  const emergencyAlertDismissRef = useRef(0);
 
   const api = useCallback(async (url, options = {}) => {
     const idToken = await currentUser.getIdToken();
@@ -534,6 +622,93 @@ export default function StaffPanel() {
     [notifications]
   );
 
+  const unreadEmergencyCount = useMemo(
+    () => notifications.filter((item) => !item?.isRead && isEmergencyNotification(item)).length,
+    [notifications]
+  );
+
+  const unreadEmergencyNotifications = useMemo(
+    () => notifications.filter((item) => !item?.isRead && isEmergencyNotification(item)),
+    [notifications]
+  );
+
+  const latestUnreadEmergency = useMemo(
+    () => unreadEmergencyNotifications
+      .slice()
+      .sort((a, b) => notificationTimestamp(b) - notificationTimestamp(a))[0] || null,
+    [unreadEmergencyNotifications]
+  );
+
+  const emergencyAlertArea = latestUnreadEmergency?.metadata?.alertArea || latestUnreadEmergency?.metadata?.coverage || location;
+
+  const prioritizedNotifications = useMemo(() => {
+    return [...notifications].sort((a, b) => {
+      const aEmergency = isEmergencyNotification(a);
+      const bEmergency = isEmergencyNotification(b);
+      const aUnread = !a?.isRead;
+      const bUnread = !b?.isRead;
+
+      if (aEmergency !== bEmergency) return bEmergency ? 1 : -1;
+      if (aUnread !== bUnread) return bUnread ? 1 : -1;
+      return notificationTimestamp(b) - notificationTimestamp(a);
+    });
+  }, [notifications]);
+
+  const emergencyNotifications = useMemo(
+    () => prioritizedNotifications.filter((item) => isEmergencyNotification(item)),
+    [prioritizedNotifications]
+  );
+
+  const regularNotifications = useMemo(
+    () => prioritizedNotifications.filter((item) => !isEmergencyNotification(item)),
+    [prioritizedNotifications]
+  );
+
+  useEffect(() => {
+    const unreadEmergency = notifications
+      .filter((item) => !item?.isRead && isEmergencyNotification(item))
+      .sort((a, b) => notificationTimestamp(b) - notificationTimestamp(a));
+
+    if (unreadEmergency.length === 0) {
+      return;
+    }
+
+    const latest = unreadEmergency[0];
+    if (!latest?.id || seenEmergencyIdsRef.current.has(latest.id)) {
+      return;
+    }
+
+    seenEmergencyIdsRef.current.add(latest.id);
+    setNotifOpen(true);
+    setEmergencyAlert({
+      id: latest.id,
+      title: latest.title || 'Emergency escalation',
+      message: latest.message || 'A new high-priority report requires immediate attention.',
+    });
+
+    playEmergencyAlertTone();
+    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+      navigator.vibrate([120, 80, 120]);
+    }
+
+    if (emergencyAlertDismissRef.current) {
+      window.clearTimeout(emergencyAlertDismissRef.current);
+    }
+
+    emergencyAlertDismissRef.current = window.setTimeout(() => {
+      setEmergencyAlert(null);
+      emergencyAlertDismissRef.current = 0;
+    }, 9000);
+  }, [notifications]);
+
+  useEffect(() => {
+    return () => {
+      if (emergencyAlertDismissRef.current) {
+        window.clearTimeout(emergencyAlertDismissRef.current);
+      }
+    };
+  }, []);
+
   const handleNotificationOpen = async () => {
     const nextOpen = !notifOpen;
     setNotifOpen(nextOpen);
@@ -599,6 +774,53 @@ export default function StaffPanel() {
         attachments: Array.isArray(report.attachments) ? report.attachments : [],
       }));
   }, [visibleReports]);
+
+  const emergencyReports = useMemo(
+    () => reports.filter((report) => isEmergencyReport(report)),
+    [reports]
+  );
+
+  const latestEmergencyReport = useMemo(
+    () => emergencyReports
+      .slice()
+      .sort((a, b) => notificationTimestamp(b) - notificationTimestamp(a))[0] || null,
+    [emergencyReports]
+  );
+
+  const emergencyReportArea = latestEmergencyReport?.location?.barangay
+    || latestEmergencyReport?.location?.address
+    || latestUnreadEmergency?.metadata?.alertArea
+    || latestUnreadEmergency?.metadata?.coverage
+    || location;
+
+  const currentEmergencyBannerId = String(
+    latestEmergencyReport?.id
+      || latestUnreadEmergency?.id
+      || emergencyAlert?.id
+      || 'emergency-fallback'
+  );
+
+  const shouldShowEmergencyBanner = Boolean(
+    latestEmergencyReport || latestUnreadEmergency || emergencyAlert
+  ) && dismissedEmergencyBannerId !== currentEmergencyBannerId;
+
+  const handleEmergencyBannerClick = useCallback(() => {
+    const notificationReportId = String(latestUnreadEmergency?.metadata?.reportId || '').trim();
+    const targetReport = latestEmergencyReport
+      || (notificationReportId ? reports.find((report) => String(report?.id || '') === notificationReportId) : null)
+      || null;
+
+    setActiveSection('reports');
+    setSidebarOpen(false);
+    setReportStatusFilter('all');
+    setSearchQuery('');
+
+    if (!targetReport?.id) return;
+
+    const targetReportId = String(targetReport.id);
+    setMapFocusReportId(targetReportId);
+    setMapAutoRouteRequestKey((prev) => prev + 1);
+  }, [latestEmergencyReport, latestUnreadEmergency?.metadata?.reportId, reports]);
 
   const reportStats = useMemo(() => {
     const submitted = reports.filter((r) => r.status === 'submitted').length;
@@ -698,26 +920,61 @@ export default function StaffPanel() {
             <div className="ap-notif-wrap">
               <button
                 type="button"
-                className="ap-notif-btn"
+                className={`ap-notif-btn${unreadEmergencyCount > 0 ? ' ss-notif-btn-emergency' : ''}`}
                 title="Notifications"
                 onClick={handleNotificationOpen}
                 aria-label="Notifications"
               >
-                <span className="material-symbols-outlined" aria-hidden="true">notifications</span>
+                <svg className="ss-notif-bell-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+                  <path
+                    d="M15 18H9M18 16V11C18 7.686 15.314 5 12 5C8.686 5 6 7.686 6 11V16L4 18V19H20V18L18 16ZM13.73 19C13.554 19.606 12.999 20 12.365 20H11.635C11.001 20 10.446 19.606 10.27 19"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
                 {unreadNotificationsCount > 0 ? (
                   <span className="ap-notif-badge" aria-hidden="true">{unreadNotificationsCount > 9 ? '9+' : unreadNotificationsCount}</span>
                 ) : null}
               </button>
               {notifOpen ? (
                 <div className="ap-notif-menu" role="menu" aria-label="Notifications list">
-                  <div className="ap-notif-menu-header">Notifications</div>
+                  <div className="ap-notif-menu-header">
+                    Notifications
+                    {unreadEmergencyCount > 0 ? (
+                      <span className="ss-notif-header-emergency">{unreadEmergencyCount} emergency</span>
+                    ) : null}
+                  </div>
                   {notifLoading ? <p className="ap-notif-empty">Loading…</p> : null}
                   {!notifLoading && notifError ? <p className="ap-notif-empty">{notifError}</p> : null}
                   {!notifLoading && !notifError && notifications.length === 0 ? (
                     <p className="ap-notif-empty">No notifications yet.</p>
                   ) : null}
+                  {!notifLoading && !notifError && emergencyNotifications.length > 0 ? (
+                    <div className="ss-notif-section-label">Emergency alerts</div>
+                  ) : null}
                   {!notifLoading && !notifError
-                    ? notifications.slice(0, 8).map((item) => (
+                    ? emergencyNotifications.slice(0, 4).map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          className={`ap-notif-item${item.isRead ? '' : ' ap-notif-item-unread'} ss-notif-item-emergency`}
+                          onClick={() => handleMarkNotificationRead(item.id)}
+                        >
+                          <span className="ss-notif-emergency-tag">Emergency</span>
+                          <span className="ap-notif-item-title">{item.title || 'Notification'}</span>
+                          <span className="ap-notif-item-message">{item.message || ''}</span>
+                        </button>
+                      ))
+                    : null}
+                  {!notifLoading && !notifError && regularNotifications.length > 0 ? (
+                    <div className="ss-notif-section-label">Other notifications</div>
+                  ) : null}
+                  {!notifLoading && !notifError
+                    ? regularNotifications
+                      .slice(0, Math.max(0, 8 - Math.min(4, emergencyNotifications.length)))
+                      .map((item) => (
                         <button
                           key={item.id}
                           type="button"
@@ -743,6 +1000,50 @@ export default function StaffPanel() {
         </header>
 
         <div className="ap-content">
+          {shouldShowEmergencyBanner ? (
+            <div
+              className="ss-emergency-alert"
+              role="button"
+              tabIndex={0}
+              aria-label="Open emergency report on map"
+              onClick={handleEmergencyBannerClick}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  handleEmergencyBannerClick();
+                }
+              }}
+            >
+              <span className="material-symbols-outlined ss-emergency-alert-icon" aria-hidden="true">warning</span>
+              <div className="ss-emergency-alert-copy">
+                <div className="ss-emergency-alert-title-row">
+                  <strong className="ss-emergency-alert-title">
+                    {(latestEmergencyReport?.title || latestUnreadEmergency?.title || emergencyAlert?.title || 'Emergency alert')}
+                  </strong>
+                  <span className="ss-emergency-alert-pill">Urgent</span>
+                </div>
+                <p className="ss-emergency-alert-message">
+                  {emergencyReportArea ? <span className="ss-emergency-alert-area">{emergencyReportArea}</span> : null}
+                  {latestEmergencyReport
+                    ? `A ${String(latestEmergencyReport.category || 'disaster')} report requires immediate attention.`
+                    : latestUnreadEmergency?.message || emergencyAlert?.message || 'A high-priority report requires immediate attention.'}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="ss-emergency-alert-dismiss"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setDismissedEmergencyBannerId(currentEmergencyBannerId);
+                  setEmergencyAlert(null);
+                }}
+                aria-label="Dismiss emergency alert"
+              >
+                <span className="material-symbols-outlined" aria-hidden="true">close</span>
+              </button>
+            </div>
+          ) : null}
+
           {activeSection === 'overview' && (
             <section className="ap-section">
               <div className="ap-section-heading">
@@ -823,10 +1124,14 @@ export default function StaffPanel() {
                       helpText="Showing reports returned for your assigned branch/barangay coverage."
                       preserveViewOnRefresh
                       enableFullscreenBarangayFilter={false}
+                      enableCategoryFilter
+                      enableHeatmapToggle
                       statusOptions={STATUS_OPTIONS}
                       canUpdateStatus={canUpdateReports}
                       updatingStatusForId={updatingReportId}
                       onStatusChange={handleRequestStatusUpdate}
+                      focusMarkerId={mapFocusReportId}
+                      autoRouteRequestKey={mapAutoRouteRequestKey}
                     />
                   </div>
 
@@ -860,7 +1165,7 @@ export default function StaffPanel() {
                         {visibleReports.map((report) => (
                           <article
                             key={report.id}
-                            className="ss-report-card ap-report-row-clickable"
+                            className={`ss-report-card ap-report-row-clickable${isEmergencyReport(report) ? ' ss-report-card-emergency' : ''}`}
                             role="button"
                             tabIndex={0}
                             onClick={() => setSelectedReport(report)}
@@ -1026,7 +1331,7 @@ export default function StaffPanel() {
                               .sort((a, b) => new Date(b.changedAt || 0) - new Date(a.changedAt || 0))
                               .map((entry, index) => (
                                 <li key={`${entry.changedAt || 'audit'}-${index}`}>
-                                  {`${normalizeStatus(entry.fromStatus)} -> ${normalizeStatus(entry.toStatus)} on ${formatDate(entry.changedAt)}`}
+                                  {formatAuditEntry(entry)}
                                   {entry?.progressNote ? ` | Note: ${entry.progressNote}` : ''}
                                   {Array.isArray(entry?.resolutionPhotos) && entry.resolutionPhotos.length > 0
                                     ? ` | Photos: ${entry.resolutionPhotos.length}`

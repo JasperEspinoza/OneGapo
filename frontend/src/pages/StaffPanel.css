@@ -115,9 +115,10 @@
 .ss-report-actions-grid {
   display: grid;
   grid-template-columns: auto minmax(12rem, 1fr) auto minmax(12rem, 1fr);
-  align-items: center;
-  gap: 0.4rem 0.6rem;
-  flex: 1;
+  position: sticky;
+  top: 0.75rem;
+  z-index: 5;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
 }
 
 .ss-row-select {
@@ -125,6 +126,14 @@
   min-height: 2rem;
 }
 
+.ss-report-card-emergency {
+  border-color: var(--color-danger-border);
+  background: color-mix(in srgb, var(--color-danger-bg) 30%, var(--color-surface));
+}
+
+.ss-report-card-emergency .ss-report-title {
+  color: var(--color-danger-text);
+}
 .ss-forward-btn {
   min-width: 7.5rem;
 }
@@ -235,6 +244,206 @@
   width: fit-content;
 }
 
+.ss-notif-btn-emergency {
+  color: var(--color-danger-text);
+  animation: ss-emergency-pulse 1.3s ease-in-out infinite;
+}
+
+.ss-notif-bell-icon {
+  width: 1.35rem;
+  height: 1.35rem;
+  display: block;
+}
+
+.ss-notif-btn-emergency:hover {
+  color: var(--color-danger-text);
+  background-color: var(--color-danger-bg);
+}
+
+.ss-notif-header-emergency {
+  margin-left: 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--color-danger-text);
+}
+
+.ss-notif-section-label {
+  margin: 0.25rem 0.35rem 0.15rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  letter-spacing: 0.02em;
+}
+
+.ss-notif-item-emergency {
+  border: 1px solid var(--color-danger-border);
+  background: var(--color-danger-bg);
+}
+
+.ss-notif-item-emergency:hover {
+  background: color-mix(in srgb, var(--color-danger-bg) 85%, var(--color-surface));
+}
+
+.ss-notif-item-emergency .ap-notif-item-title {
+  color: var(--color-danger-text);
+}
+
+.ss-notif-emergency-tag {
+  width: fit-content;
+  font-size: 0.67rem;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--color-danger-text);
+  border: 1px solid var(--color-danger-border);
+  border-radius: 0.3rem;
+  padding: 0.16rem 0.3rem;
+  background: var(--color-surface);
+}
+
+.ss-emergency-alert {
+  position: sticky;
+  top: 0.4rem;
+  z-index: 6;
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  border: 1px solid var(--color-danger-border);
+  border-left: 0.45rem solid var(--color-danger-text);
+  background: var(--color-danger-bg);
+  color: var(--color-text);
+  border-radius: 0.65rem;
+  padding: 0.95rem 1rem;
+  margin: 0 0 1rem;
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.ss-emergency-alert:hover {
+  border-color: var(--color-danger-text);
+}
+
+.ss-emergency-alert:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring), var(--shadow-sm);
+}
+
+.ss-emergency-alert-icon {
+  font-size: 1.1rem;
+  color: var(--color-danger-text);
+  width: 1.9rem;
+  height: 1.9rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-danger-text) 12%, transparent);
+  flex-shrink: 0;
+}
+
+.ss-emergency-alert-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.ss-emergency-alert-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.ss-emergency-alert-title {
+  font-size: 0.95rem;
+  line-height: 1.2;
+  color: var(--color-danger-text);
+}
+
+.ss-emergency-alert-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.25rem;
+  padding: 0 0.45rem;
+  border-radius: 0.375rem;
+  border: 1px solid var(--color-danger-border);
+  background: var(--color-surface);
+  color: var(--color-danger-text);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.ss-emergency-alert-message {
+  margin: 0;
+  font-size: 0.83rem;
+  line-height: 1.45;
+  color: var(--color-text-muted);
+}
+
+.ss-emergency-alert-area {
+  display: inline-block;
+  margin-right: 0.35rem;
+  font-weight: 700;
+  color: var(--color-danger-text);
+}
+
+.ss-emergency-alert-dismiss {
+  margin-left: auto;
+  border: 1px solid var(--color-danger-border);
+  background: var(--color-surface);
+  color: var(--color-danger-text);
+  cursor: pointer;
+  padding: 0.42rem;
+  border-radius: 0.45rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  min-width: 2rem;
+  min-height: 2rem;
+}
+
+.ss-emergency-alert-dismiss:hover {
+  background: var(--color-surface-muted);
+  border-color: var(--color-danger-text);
+}
+
+.theme-dark .ss-emergency-alert {
+  background: #2a171a;
+  border-color: #7f1d1d;
+  border-left-color: #ef4444;
+}
+
+.theme-dark .ss-emergency-alert-message {
+  color: var(--color-text-soft);
+}
+
+.theme-dark .ss-emergency-alert-pill {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #7f1d1d;
+}
+
+.ss-emergency-alert-dismiss .material-symbols-outlined {
+  font-size: 1.05rem;
+}
+
+@keyframes ss-emergency-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.65;
+  }
+}
+
 @media (max-width: 640px) {
   .ss-controls-inline {
     width: 100%;
@@ -279,5 +488,14 @@
   .ss-report-forwarding-row {
     grid-template-columns: 1fr;
     gap: 0.15rem;
+  }
+
+  .ss-emergency-alert {
+    align-items: flex-start;
+    padding-right: 0.85rem;
+  }
+
+  .ss-emergency-alert-dismiss {
+    margin-top: 0.05rem;
   }
 }
