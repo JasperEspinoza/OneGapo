@@ -11,11 +11,7 @@ function isPrimaryAdmin(user) {
   );
 }
 
-/**
- * Middleware: verifyToken
- * Validates the Firebase ID token from the Authorization header.
- * On success, attaches the decoded token payload to `req.user`.
- */
+
 async function verifyToken(req, res, next) {
   const authHeader = req.headers.authorization;
 

@@ -33,6 +33,9 @@ const REPORT_CATEGORY_COLOR_BY_KEY = REPORT_CATEGORY_LEGEND.reduce((acc, item) =
   return acc;
 }, {});
 
+const MAXIMIZE_ICON_LIGHT = '/assets/maximize-svgrepo-com.svg';
+const MAXIMIZE_ICON_DARK = '/assets/maximize-svgrepo-com%20(1).svg';
+
 function LocationMarker({ position, onPick }) {
   if (!onPick) {
     return position ? (
@@ -419,6 +422,12 @@ function MarkerDetailsSidebar({
 
   const previewImage = getMarkerPreviewImage(marker);
   const markerStatus = String(marker?.status || 'submitted').toLowerCase();
+  const filteredStatusOptions = statusOptions.filter(
+    (option) => option.value !== 'submitted' && option.value !== 'in_review'
+  );
+  const markerStatusSelection = filteredStatusOptions.some((option) => option.value === markerStatus)
+    ? markerStatus
+    : '';
   const isStatusUpdating = Boolean(updatingStatusForId && updatingStatusForId === marker.id);
 
   return (
@@ -443,11 +452,12 @@ function MarkerDetailsSidebar({
             <select
               id={`report-map-status-${marker.id}`}
               className="form-select report-map-status-select"
-              value={markerStatus}
+              value={markerStatusSelection}
               onChange={(event) => onStatusChange?.(marker.id, event.target.value)}
               disabled={isStatusUpdating}
             >
-              {statusOptions.map((option) => (
+              <option value="" disabled>Select next status</option>
+              {filteredStatusOptions.map((option) => (
                 <option key={option.value} value={option.value}>{option.label}</option>
               ))}
             </select>
@@ -537,9 +547,30 @@ export default function ReportLocationMap({
   const [routeError, setRouteError] = useState('');
   const [heatmapEnabled, setHeatmapEnabled] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [isDarkTheme, setIsDarkTheme] = useState(false);
   const sidebarCloseTimeoutRef = useRef(null);
   const lastAppliedFocusIdRef = useRef('');
   const lastAutoRouteRequestKeyRef = useRef(0);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const body = document.body;
+
+    const syncTheme = () => {
+      const darkEnabled = root.classList.contains('theme-dark') || body.classList.contains('theme-dark');
+      setIsDarkTheme(darkEnabled);
+    };
+
+    syncTheme();
+
+    const observer = new MutationObserver(syncTheme);
+    observer.observe(root, { attributes: true, attributeFilter: ['class'] });
+    observer.observe(body, { attributes: true, attributeFilter: ['class'] });
+
+    return () => observer.disconnect();
+  }, []);
+
+  const maximizeIconSrc = isDarkTheme ? MAXIMIZE_ICON_DARK : MAXIMIZE_ICON_LIGHT;
 
   const selectedPosition = Number.isFinite(lat) && Number.isFinite(lng)
     ? [lat, lng]
@@ -721,6 +752,14 @@ export default function ReportLocationMap({
 
     setSidebarClosing(false);
     setActiveMarker(marker);
+
+    const markerId = String(marker?.id || '').trim();
+    const markerStatus = String(marker?.status || '').trim().toLowerCase();
+    const canAutoTransition = typeof onStatusChange === 'function';
+
+    if (canAutoTransition && markerId && markerStatus === 'submitted') {
+      onStatusChange(markerId, 'in_review');
+    }
   };
 
   const handleSidebarClose = () => {
@@ -890,29 +929,12 @@ export default function ReportLocationMap({
                 aria-label="Open full screen map"
                 title="Open full screen map"
               >
-                <svg
+                <img
+                  src={maximizeIconSrc}
                   className="report-map-icon-svg"
-                  viewBox="0 0 24 24"
+                  alt=""
                   aria-hidden="true"
-                  focusable="false"
-                >
-                  <path
-                    d="M9 3H3v6M15 3h6v6M9 21H3v-6M21 21h-6v-6"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="3"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  <path
-                    d="M9 9 3 3M15 9 21 3M9 15 3 21M15 15 21 21"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.6"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
+                />
               </button>
             </div>
             <MapCanvas
@@ -983,7 +1005,6 @@ export default function ReportLocationMap({
                   ) : null}
                   {enableFullscreenBarangayFilter ? (
                     <div className="report-map-filter-group">
-                    <label htmlFor="fullscreen-barangay-filter" className="report-map-filter-label">Barangay</label>
                     <select
                       id="fullscreen-barangay-filter"
                       className="form-select report-map-filter-select"

@@ -167,6 +167,20 @@ function getReportCategoryLabel(category) {
   return normalized.replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function getReportStatusKey(status) {
+  return String(status || 'submitted').trim().toLowerCase().replace(/\s+/g, '_');
+}
+
+function getReportStatusLabel(status) {
+  const normalized = getReportStatusKey(status).replace(/_/g, ' ');
+  return normalized.replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function getReportStatusClassName(status) {
+  const statusKey = getReportStatusKey(status);
+  return `ap-report-status ap-report-status-${statusKey}`;
+}
+
 function toTitleCase(value) {
   return String(value || '')
     .toLowerCase()
@@ -408,6 +422,7 @@ export default function AdminPanel() {
   const [archivingReportId, setArchivingReportId] = useState('');
   const [deletingReportId, setDeletingReportId] = useState('');
   const [selectedReport, setSelectedReport] = useState(null);
+  const [expandedReportImage, setExpandedReportImage] = useState(null);
   const reportsPollingRef = useRef(false);
 
   // Notifications state
@@ -620,6 +635,11 @@ export default function AdminPanel() {
     [notifications]
   );
 
+  const visibleNotifications = useMemo(
+    () => notifications.filter((item) => !item?.isRead),
+    [notifications]
+  );
+
   const handleNotificationOpen = async () => {
     const nextOpen = !notifOpen;
     setNotifOpen(nextOpen);
@@ -644,6 +664,25 @@ export default function AdminPanel() {
     } catch {
       // Do not block admin workflow for notification read failures.
     }
+  };
+
+  const handleClearNotifications = async () => {
+    const unreadIds = notifications
+      .filter((item) => !item?.isRead)
+      .map((item) => item.id)
+      .filter(Boolean);
+
+    if (unreadIds.length === 0) return;
+
+    setNotifications((prev) => prev.map((item) => ({ ...item, isRead: true })));
+
+    await Promise.allSettled(
+      unreadIds.map((notificationId) =>
+        api(`/api/reports/notifications/${notificationId}/read`, {
+          method: 'PATCH',
+        })
+      )
+    );
   };
 
   const stats = useMemo(() => ({
@@ -738,17 +777,6 @@ export default function AdminPanel() {
   }, [branchPerformanceRows, analyticsSearchQuery, analyticsStatusFilter, analyticsBranchTypeFilter]);
 
   const combinedPerformanceRows = useMemo(() => {
-    const barangayRows = filteredBarangayPerformanceRows.map((row) => ({
-      scope: 'Barangay',
-      name: row.name,
-      type: 'n/a',
-      totalReports: row.totalReports,
-      resolvedReports: row.resolvedReports,
-      pendingReports: row.pendingReports,
-      averageMttrMinutes: row.averageMttrMinutes,
-      resolutionRate: row.resolutionRate,
-    }));
-
     const branchRows = filteredBranchPerformanceRows.map((row) => ({
       scope: 'Branch',
       name: row.name,
@@ -760,11 +788,10 @@ export default function AdminPanel() {
       resolutionRate: row.resolutionRate,
     }));
 
-    return [...barangayRows, ...branchRows].sort((a, b) => {
-      if (a.scope !== b.scope) return a.scope.localeCompare(b.scope);
+    return branchRows.sort((a, b) => {
       return String(a.name || '').localeCompare(String(b.name || ''));
     });
-  }, [filteredBarangayPerformanceRows, filteredBranchPerformanceRows]);
+  }, [filteredBranchPerformanceRows]);
 
   const exportCombinedPerformanceCsv = useCallback(() => {
     const rows = combinedPerformanceRows.map((row) => [
@@ -1447,11 +1474,11 @@ export default function AdminPanel() {
                   <div className="ap-notif-menu-header">Notifications</div>
                   {notifLoading ? <p className="ap-notif-empty">Loading…</p> : null}
                   {!notifLoading && notifError ? <p className="ap-notif-empty">{notifError}</p> : null}
-                  {!notifLoading && !notifError && notifications.length === 0 ? (
+                  {!notifLoading && !notifError && visibleNotifications.length === 0 ? (
                     <p className="ap-notif-empty">No notifications yet.</p>
                   ) : null}
                   {!notifLoading && !notifError
-                    ? notifications.slice(0, 8).map((item) => (
+                    ? visibleNotifications.slice(0, 8).map((item) => (
                         <button
                           key={item.id}
                           type="button"
@@ -1463,6 +1490,18 @@ export default function AdminPanel() {
                         </button>
                       ))
                     : null}
+                  {!notifLoading && !notifError ? (
+                    <div className="ap-notif-menu-footer">
+                      <button
+                        type="button"
+                        className="ap-notif-clear-btn"
+                        onClick={handleClearNotifications}
+                        disabled={visibleNotifications.length === 0}
+                      >
+                        Clear notifications
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
             </div>
@@ -1562,6 +1601,7 @@ export default function AdminPanel() {
                     markers={residentReportMarkers}
                     helpText={null}
                     preserveViewOnRefresh
+                    enableHeatmapToggle
                   />
                   <div className="ap-report-legend" aria-label="Report category legend">
                     {residentLegendItems.map((item) => (
@@ -1689,6 +1729,7 @@ export default function AdminPanel() {
                     markers={residentReportMarkers}
                     helpText={null}
                     preserveViewOnRefresh
+                    enableHeatmapToggle
                   />
                   <div className="ap-report-legend" aria-label="Report category legend">
                     {residentLegendItems.map((item) => (
@@ -1779,7 +1820,15 @@ export default function AdminPanel() {
                           >
                             <td>{report.title || <span className="ap-muted">—</span>}</td>
                             <td>{getReportCategoryLabel(report.category)}</td>
-                            <td>{report.status || <span className="ap-muted">—</span>}</td>
+                            <td>
+                              {report.status ? (
+                                <span className={getReportStatusClassName(report.status)}>
+                                  {getReportStatusLabel(report.status)}
+                                </span>
+                              ) : (
+                                <span className="ap-muted">—</span>
+                              )}
+                            </td>
                             <td>{report?.location?.address || <span className="ap-muted">—</span>}</td>
                             <td>{resolveReporterName(report)}</td>
                             <td>{report.createdAt ? new Date(report.createdAt).toLocaleString() : <span className="ap-muted">—</span>}</td>
@@ -1819,10 +1868,22 @@ export default function AdminPanel() {
                 <AppModal
                   title={selectedReport.title || 'Report details'}
                   titleId="report-details-title"
+                  size="wide"
                   onClose={() => setSelectedReport(null)}
                 >
                   <div className="ap-report-details-grid">
-                    <div className="ap-report-details-row"><span>Status</span><strong>{selectedReport.status || '—'}</strong></div>
+                    <div className="ap-report-details-row">
+                      <span>Status</span>
+                      <strong>
+                        {selectedReport.status ? (
+                          <span className={getReportStatusClassName(selectedReport.status)}>
+                            {getReportStatusLabel(selectedReport.status)}
+                          </span>
+                        ) : (
+                          '—'
+                        )}
+                      </strong>
+                    </div>
                     <div className="ap-report-details-row"><span>Category</span><strong>{selectedReport.category || '—'}</strong></div>
                     <div className="ap-report-details-row"><span>Reporter</span><strong>{resolveReporterName(selectedReport)}</strong></div>
                     <div className="ap-report-details-row"><span>Address</span><strong>{selectedReport?.location?.address || '—'}</strong></div>
@@ -1838,11 +1899,25 @@ export default function AdminPanel() {
                   <div className="ap-report-details-media">
                     <p className="form-label">Image</p>
                     {selectedReportPreviewImage ? (
-                      <img
-                        src={selectedReportPreviewImage}
-                        alt={selectedReport.title || 'Report attachment'}
-                        className="ap-report-modal-image"
-                      />
+                      <div className="ap-report-image-frame">
+                        <img
+                          src={selectedReportPreviewImage}
+                          alt={selectedReport.title || 'Report attachment'}
+                          className="ap-report-modal-image"
+                        />
+                        <div className="ap-report-media-actions">
+                          <button
+                            type="button"
+                            className="ap-btn-outline ap-btn-sm ap-report-image-enlarge-btn"
+                            onClick={() => setExpandedReportImage({
+                              src: selectedReportPreviewImage,
+                              alt: selectedReport.title || 'Report attachment',
+                            })}
+                          >
+                            Enlarge image
+                          </button>
+                        </div>
+                      </div>
                     ) : (
                       <p className="ap-muted">No image attachment for this report.</p>
                     )}
@@ -1872,6 +1947,23 @@ export default function AdminPanel() {
                   </div>
                 </AppModal>
               )}
+
+              {expandedReportImage?.src ? (
+                <AppModal
+                  title="Submitted image"
+                  titleId="admin-expanded-report-image-title"
+                  size="wide"
+                  onClose={() => setExpandedReportImage(null)}
+                >
+                  <div className="ap-report-image-modal-content">
+                    <img
+                      src={expandedReportImage.src}
+                      alt={expandedReportImage.alt}
+                      className="ap-report-modal-image ap-report-modal-image-large"
+                    />
+                  </div>
+                </AppModal>
+              ) : null}
             </div>
           )}
 
@@ -1961,18 +2053,19 @@ export default function AdminPanel() {
                         <tr>
                           <th>Name</th>
                           <th>Type</th>
-                          <th>Staff Assigned</th>
+                          <th>Head Staff</th>
                           <th></th>
                         </tr>
                       </thead>
                       <tbody>
                         {filteredBranches.map((b) => {
-                          const count = users.filter((u) => u.branchId === b.id).length;
+                          const branchStaff = users.filter((u) => u.branchId === b.id);
+                          const headStaff = branchStaff.length > 0 ? branchStaff[0] : null;
                           return (
                             <tr key={b.id}>
                               <td>{b.name}</td>
                               <td><span className={`badge badge-entity-${b.type}`}>{b.type}</span></td>
-                              <td>{count > 0 ? count : <span className="ap-muted">None</span>}</td>
+                              <td>{headStaff ? (headStaff.fullName || headStaff.email) : <span className="ap-muted">None</span>}</td>
                               <td className="ap-table-actions">
                                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                                   <button onClick={() => handleBranchEditStart(b)} className="ap-btn-outline ap-btn-sm">Edit</button>
@@ -2667,7 +2760,7 @@ export default function AdminPanel() {
                 <div className="ap-card-header">
                   <div>
                     <h3 className="ap-card-title">Location MTTR</h3>
-                    <p className="ap-card-sub">Combined performance view for barangays and branches</p>
+                    <p className="ap-card-sub">Branch performance metrics by location</p>
                   </div>
                   <button type="button" className="ap-btn-outline ap-btn-sm" onClick={exportCombinedPerformanceCsv} disabled={performanceLoading || combinedPerformanceRows.length === 0}>
                     Export CSV
@@ -2698,9 +2791,7 @@ export default function AdminPanel() {
                             <td>{row.scope}</td>
                             <td><strong>{row.name}</strong></td>
                             <td>
-                              {row.scope === 'Branch'
-                                ? <span className={`badge badge-entity-${row.type || 'public'}`}>{row.type || 'public'}</span>
-                                : <span className="ap-muted">n/a</span>}
+                              <span className={`badge badge-entity-${row.type || 'public'}`}>{row.type || 'public'}</span>
                             </td>
                             <td>{row.totalReports}</td>
                             <td>{row.resolvedReports}</td>
@@ -2731,17 +2822,18 @@ export default function AdminPanel() {
                         <tr>
                           <th>Branch / Barangay</th>
                           <th>Type</th>
-                          <th>Staff Assigned</th>
+                          <th>Head Staff</th>
                         </tr>
                       </thead>
                       <tbody>
                         {branches.map((b) => {
-                          const count = users.filter((u) => u.branchId === b.id).length;
+                          const branchStaff = users.filter((u) => u.branchId === b.id);
+                          const headStaff = branchStaff.length > 0 ? branchStaff[0] : null;
                           return (
                             <tr key={b.id}>
                               <td>{b.name}</td>
                               <td><span className={`badge badge-entity-${b.type}`}>{b.type}</span></td>
-                              <td>{count > 0 ? count : <span className="ap-muted">None</span>}</td>
+                              <td>{headStaff ? (headStaff.fullName || headStaff.email) : <span className="ap-muted">None</span>}</td>
                             </tr>
                           );
                         })}

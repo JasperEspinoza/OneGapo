@@ -11,6 +11,8 @@ const {
   deleteReport,
   listForwardTargets,
   forwardReport,
+  markReportDuplicate,
+  revokeReportDuplicate,
   listNotifications,
   markNotificationRead,
 } = require('../controllers/reportController');
@@ -57,6 +59,8 @@ router.get('/', verifyToken, listReportsForOperators);
 router.get('/performance', verifyToken, requireStaffOrAdmin, getPerformanceMetrics);
 router.get('/forward-targets', verifyToken, requireStaffOrAdmin, listForwardTargets);
 router.patch('/:reportId/forward', verifyToken, requireStaffOrAdmin, forwardReport);
+router.post('/:reportId/duplicate', verifyToken, requireStaffOrAdmin, markReportDuplicate);
+router.delete('/:reportId/duplicate', verifyToken, requireStaffOrAdmin, revokeReportDuplicate);
 router.patch('/:reportId/archive', verifyToken, requireStaffOrAdmin, archiveReport);
 router.delete('/:reportId', verifyToken, requireStaffOrAdmin, deleteReport);
 router.get('/notifications', verifyToken, requireStaffOrAdmin, listNotifications);

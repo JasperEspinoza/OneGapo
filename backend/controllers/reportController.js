@@ -510,6 +510,104 @@ function safeDocData(doc) {
   }
 }
 
+function normalizeReportRecord(data, id) {
+  return {
+    id: data?.id || id,
+    ...data,
+    createdAt: toIso(data?.createdAt),
+    updatedAt: toIso(data?.updatedAt),
+  };
+}
+
+function isDuplicateChildReport(report) {
+  return Boolean(String(report?.duplicateOfReportId || '').trim());
+}
+
+async function fetchReportRecordById(db, reportId, cache) {
+  const key = String(reportId || '').trim();
+  if (!key) {
+    return null;
+  }
+
+  if (cache.has(key)) {
+    return cache.get(key);
+  }
+
+  const fetchPromise = db.collection('reports').doc(key).get().then((snap) => {
+    if (!snap.exists) {
+      return null;
+    }
+
+    return normalizeReportRecord(safeDocData(snap), snap.id);
+  });
+
+  cache.set(key, fetchPromise);
+  return fetchPromise;
+}
+
+async function hydrateDuplicateReport(db, report, cache = new Map(), chain = new Set()) {
+  if (!report || !isDuplicateChildReport(report)) {
+    return {
+      ...report,
+      duplicateOfReportId: String(report?.duplicateOfReportId || '').trim() || null,
+      duplicateOfReport: null,
+      isDuplicateChild: false,
+    };
+  }
+
+  const reportId = String(report?.id || '').trim();
+  const motherReportId = String(report?.duplicateOfReportId || '').trim();
+
+  if (!motherReportId || motherReportId === reportId || chain.has(motherReportId)) {
+    return {
+      ...report,
+      duplicateOfReportId: motherReportId || null,
+      duplicateOfReport: null,
+      isDuplicateChild: true,
+      duplicateResolutionError: 'duplicate_cycle_detected',
+    };
+  }
+
+  const motherReport = await fetchReportRecordById(db, motherReportId, cache);
+  if (!motherReport) {
+    return {
+      ...report,
+      duplicateOfReportId: motherReportId,
+      duplicateOfReport: null,
+      isDuplicateChild: true,
+      duplicateResolutionError: 'duplicate_source_missing',
+    };
+  }
+
+  const nextChain = new Set(chain);
+  if (reportId) {
+    nextChain.add(reportId);
+  }
+
+  const hydratedMother = await hydrateDuplicateReport(db, motherReport, cache, nextChain);
+
+  return {
+    ...report,
+    duplicateOfReportId: hydratedMother.id,
+    duplicateOfReport: {
+      id: hydratedMother.id,
+      title: hydratedMother.title || '',
+      status: hydratedMother.status || '',
+      category: hydratedMother.category || '',
+      createdAt: hydratedMother.createdAt || '',
+      updatedAt: hydratedMother.updatedAt || '',
+    },
+    isDuplicateChild: true,
+    status: hydratedMother.status || report.status,
+    resolution: hydratedMother.resolution || report.resolution,
+  };
+}
+
+async function hydrateReportsWithDuplicates(db, reports) {
+  const cache = new Map();
+  return Promise.all(reports.map((report) => hydrateDuplicateReport(db, report, cache)));
+}
+
 function parseCoordinate(value, label) {
   const num = Number(value);
   if (!Number.isFinite(num)) {
@@ -711,22 +809,14 @@ async function getPerformanceMetrics(req, res, next) {
     }
 
     const rawReports = reportSnap.docs
-      .map((doc) => {
-        const data = safeDocData(doc);
-        return {
-          id: data.id || doc.id,
-          ...data,
-          createdAt: toIso(data.createdAt),
-          updatedAt: toIso(data.updatedAt),
-        };
-      })
+      .map((doc) => normalizeReportRecord(safeDocData(doc), doc.id))
       .filter((report) => Boolean(report && report.id));
 
     await syncPendingSlaFlags(db, rawReports);
 
-    let reports = rawReports;
+    let reports = rawReports.filter((report) => !isDuplicateChildReport(report));
     if (role === 'staff') {
-      reports = rawReports.filter((report) => {
+      reports = reports.filter((report) => {
         try {
           return canStaffAccessReport(report, req.user);
         } catch {
@@ -979,6 +1069,7 @@ async function createReport(req, res, next) {
       description,
       category,
       status: 'submitted',
+      duplicateOfReportId: null,
       location: {
         latitude: lat,
         longitude: lng,
@@ -1069,7 +1160,9 @@ async function listOwnReports(req, res, next) {
 
     await syncPendingSlaFlags(db, rawReports);
 
-    const reports = rawReports
+    const hydratedReports = await hydrateReportsWithDuplicates(db, rawReports);
+
+    const reports = hydratedReports
       .map((doc) => ({
         ...doc,
         sla: getSlaResponseState(doc),
@@ -1104,20 +1197,14 @@ async function listReportsForOperators(req, res, next) {
     }
 
     const rawReports = snap.docs
-      .map((doc) => {
-        const data = safeDocData(doc);
-        return {
-          id: data.id || doc.id,
-          ...data,
-          createdAt: toIso(data.createdAt),
-          updatedAt: toIso(data.updatedAt),
-        };
-      })
+      .map((doc) => normalizeReportRecord(safeDocData(doc), doc.id))
       .filter((report) => Boolean(report && report.id));
 
     await syncPendingSlaFlags(db, rawReports);
 
-    let reports = rawReports
+    let hydratedReports = await hydrateReportsWithDuplicates(db, rawReports);
+
+    hydratedReports = hydratedReports
       .map((report) => ({
         ...report,
         sla: getSlaResponseState(report),
@@ -1132,7 +1219,7 @@ async function listReportsForOperators(req, res, next) {
         });
       }
 
-      reports = reports.filter((report) => {
+      hydratedReports = hydratedReports.filter((report) => {
         try {
           return canStaffAccessReport(report, req.user);
         } catch {
@@ -1141,7 +1228,7 @@ async function listReportsForOperators(req, res, next) {
       });
     }
 
-    return res.json(reports);
+    return res.json(hydratedReports);
   } catch (err) {
     if (!err.status) {
       console.error('[listReportsForOperators] Unexpected error, returning empty list:', err.message || err);
@@ -1678,6 +1765,157 @@ async function forwardReport(req, res, next) {
   }
 }
 
+async function markReportDuplicate(req, res, next) {
+  try {
+    const requesterUid = getRequesterUid(req);
+    const role = req.user?.role;
+    if (role !== 'staff' && role !== 'admin') {
+      return res.status(403).json({ error: 'Only staff and admins can mark duplicate reports.' });
+    }
+
+    const reportId = String(req.params?.reportId || '').trim();
+    const motherReportId = String(req.body?.motherReportId || '').trim();
+
+    if (!reportId) {
+      return res.status(400).json({ error: 'reportId is required.' });
+    }
+
+    if (!motherReportId) {
+      return res.status(400).json({ error: 'motherReportId is required.' });
+    }
+
+    if (motherReportId === reportId) {
+      return res.status(400).json({ error: 'A report cannot be a duplicate of itself.' });
+    }
+
+    const db = admin.firestore();
+    const reportRef = db.collection('reports').doc(reportId);
+    const motherRef = db.collection('reports').doc(motherReportId);
+
+    const [reportSnap, motherSnap] = await Promise.all([reportRef.get(), motherRef.get()]);
+    if (!reportSnap.exists) {
+      return res.status(404).json({ error: 'Report not found.' });
+    }
+
+    if (!motherSnap.exists) {
+      return res.status(404).json({ error: 'Mother report not found.' });
+    }
+
+    const report = normalizeReportRecord(safeDocData(reportSnap), reportSnap.id);
+    const motherReport = normalizeReportRecord(safeDocData(motherSnap), motherSnap.id);
+
+    if (role === 'staff') {
+      if (!canStaffAccessReport(report, req.user)) {
+        return res.status(403).json({ error: 'You can only update reports inside your assigned branch/barangay coverage.' });
+      }
+
+      if (!canStaffAccessReport(motherReport, req.user)) {
+        return res.status(403).json({ error: 'You can only link to a mother report inside your assigned branch/barangay coverage.' });
+      }
+    }
+
+    const duplicateOfReportId = motherReport.id;
+    const auditEntry = {
+      type: 'duplicate_linked',
+      changedAt: new Date().toISOString(),
+      changedBy: {
+        uid: requesterUid,
+        role,
+        email: req.user?.email || '',
+      },
+      duplicateOfReportId,
+    };
+
+    await reportRef.update({
+      duplicateOfReportId,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      lastUpdatedBy: {
+        uid: requesterUid,
+        role,
+        email: req.user?.email || '',
+      },
+      auditTrail: admin.firestore.FieldValue.arrayUnion(auditEntry),
+    });
+
+    const updatedSnap = await reportRef.get();
+    const updated = normalizeReportRecord(safeDocData(updatedSnap), updatedSnap.id);
+    const hydrated = await hydrateDuplicateReport(db, updated);
+
+    return res.json({
+      message: 'Report marked as duplicate successfully.',
+      report: hydrated,
+    });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+async function revokeReportDuplicate(req, res, next) {
+  try {
+    const requesterUid = getRequesterUid(req);
+    const role = req.user?.role;
+    if (role !== 'staff' && role !== 'admin') {
+      return res.status(403).json({ error: 'Only staff and admins can revoke duplicate reports.' });
+    }
+
+    const reportId = String(req.params?.reportId || '').trim();
+    if (!reportId) {
+      return res.status(400).json({ error: 'reportId is required.' });
+    }
+
+    const db = admin.firestore();
+    const reportRef = db.collection('reports').doc(reportId);
+    const reportSnap = await reportRef.get();
+
+    if (!reportSnap.exists) {
+      return res.status(404).json({ error: 'Report not found.' });
+    }
+
+    const report = normalizeReportRecord(safeDocData(reportSnap), reportSnap.id);
+
+    if (role === 'staff' && !canStaffAccessReport(report, req.user)) {
+      return res.status(403).json({ error: 'You can only update reports inside your assigned branch/barangay coverage.' });
+    }
+
+    const currentMotherReportId = String(report?.duplicateOfReportId || '').trim();
+    if (!currentMotherReportId) {
+      return res.status(400).json({ error: 'This report is not currently marked as duplicate.' });
+    }
+
+    const auditEntry = {
+      type: 'duplicate_unlinked',
+      changedAt: new Date().toISOString(),
+      changedBy: {
+        uid: requesterUid,
+        role,
+        email: req.user?.email || '',
+      },
+      duplicateOfReportId: currentMotherReportId,
+    };
+
+    await reportRef.update({
+      duplicateOfReportId: null,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      lastUpdatedBy: {
+        uid: requesterUid,
+        role,
+        email: req.user?.email || '',
+      },
+      auditTrail: admin.firestore.FieldValue.arrayUnion(auditEntry),
+    });
+
+    const updatedSnap = await reportRef.get();
+    const updated = normalizeReportRecord(safeDocData(updatedSnap), updatedSnap.id);
+
+    return res.json({
+      message: 'Report duplication revoked successfully.',
+      report: updated,
+    });
+  } catch (err) {
+    return next(err);
+  }
+}
+
 async function listNotifications(req, res, next) {
   try {
     const requesterUid = getRequesterUid(req);
@@ -1771,6 +2009,8 @@ module.exports = {
   deleteReport,
   listForwardTargets,
   forwardReport,
+  markReportDuplicate,
+  revokeReportDuplicate,
   listNotifications,
   markNotificationRead,
 };

@@ -1,22 +1,32 @@
 import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 
-export default function AppModal({ title, titleId, onClose, children }) {
+export default function AppModal({ title, titleId, onClose, children, size = 'default' }) {
+  const modalClassName = size === 'wide' ? 'app-modal app-modal-wide' : 'app-modal';
+
   useEffect(() => {
     const { body } = document;
     const previousOverflow = body.style.overflow;
+    const previousPaddingRight = body.style.paddingRight;
+    
+    // Calculate scrollbar width to prevent layout shift
+    const scrollbarWidth = window.innerWidth - body.clientWidth;
 
     body.style.overflow = 'hidden';
+    if (scrollbarWidth > 0) {
+      body.style.paddingRight = `${scrollbarWidth}px`;
+    }
 
     return () => {
       body.style.overflow = previousOverflow;
+      body.style.paddingRight = previousPaddingRight;
     };
   }, []);
 
   return createPortal(
     <div className="app-modal-overlay" onClick={onClose}>
       <div
-        className="app-modal"
+        className={modalClassName}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}

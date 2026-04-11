@@ -985,6 +985,7 @@ export default function ResidentHub() {
           <AppModal
             title={activeApprovalReport.title || 'Resolved report'}
             titleId="resident-approval-image-title"
+            size="wide"
             onClose={() => setActiveApprovalReport(null)}
           >
             {(() => {
@@ -1027,6 +1028,7 @@ export default function ResidentHub() {
           <AppModal
             title={activeTicketReport.title || 'Ticket details'}
             titleId="resident-ticket-modal-title"
+            size="wide"
             onClose={() => setActiveTicketReport(null)}
           >
             {(() => {
