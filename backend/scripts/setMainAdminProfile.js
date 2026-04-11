@@ -9,21 +9,13 @@
 
 require('dotenv').config();
 const admin = require('../config/firebaseAdmin');
+const { ALLOWED_PERMISSIONS } = require('../constants/rbac');
 
 const ADMIN_EMAIL = 'onegapo2026@gmail.com';
 const MAIN_ADMIN_BRANCH_NAME = 'Main Admin';
 const MAIN_ADMIN_BRANCH_TYPE = 'private';
 const MAIN_ADMIN_ROLE_NAME = 'Main Admin';
-const ADMIN_PERMISSIONS = [
-  'view_reports',
-  'update_reports',
-  'close_reports',
-  'archive_reports',
-  'create_announcements',
-  'add_branches',
-  'add_roles',
-  'add_staffs',
-];
+const ADMIN_PERMISSIONS = ALLOWED_PERMISSIONS;
 
 async function ensureBranch(db) {
   const snap = await db.collection('branches').where('name', '==', MAIN_ADMIN_BRANCH_NAME).limit(1).get();

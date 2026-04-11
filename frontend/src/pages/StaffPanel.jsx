@@ -2,17 +2,18 @@ import './AdminPanel.css';
 import './StaffPanel.css';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { io } from 'socket.io-client';
 import { useAuth } from '../context/AuthContext';
 import { useSettingsModal } from '../context/SettingsModalContext';
 import ReportLocationMap from '../components/ReportLocationMap';
 import AppModal from '../components/AppModal';
+import OneGapoLogo from '../components/OneGapoLogo';
 
 const PERMISSION_LABELS = {
   view_reports:         'View reports',
   update_reports:       'Update status',
   close_reports:        'Resolve reports',
   archive_reports:      'Archive reports',
-  create_announcements: 'Post announcements',
 };
 
 const STATUS_OPTIONS = [
@@ -27,13 +28,21 @@ const STAFF_STATUS_UPDATE_OPTIONS = STATUS_OPTIONS.filter(
   (option) => option.value !== 'submitted' && option.value !== 'in_review'
 );
 
+const REPORT_CLASSIFICATION_OPTIONS = [
+  { value: 'infrastructure', label: 'Infrastructure' },
+  { value: 'safety', label: 'Public Safety' },
+  { value: 'sanitation', label: 'Sanitation' },
+  { value: 'disaster', label: 'Disaster / Emergency' },
+  { value: 'general', label: 'General Concern' },
+];
+
 const NAV_ITEMS = [
   { id: 'overview', label: 'Overview', icon: 'dashboard' },
   { id: 'reports', label: 'Reports', icon: 'assignment' },
   { id: 'team', label: 'Branch Staff', icon: 'groups' },
 ];
 
-const REPORTS_SYNC_INTERVAL_MS = 2000;
+const REPORTS_SYNC_INTERVAL_MS = 10000;
 
 function formatDate(value) {
   if (!value) return 'Unknown date';
@@ -203,6 +212,7 @@ export default function StaffPanel() {
   const canViewReports = effectivePermissions.includes('view_reports') || effectivePermissions.includes('update_reports') || effectivePermissions.includes('close_reports') || effectivePermissions.includes('archive_reports');
   const canUpdateReports = effectivePermissions.includes('update_reports') || effectivePermissions.includes('close_reports');
   const canManageReportLifecycle = role === 'admin' || effectivePermissions.includes('archive_reports');
+  const canManageStaff = effectivePermissions.includes('add_staffs');
 
   const [activeSection, setActiveSection] = useState('overview');
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -215,6 +225,7 @@ export default function StaffPanel() {
   const [reportsLoading, setReportsLoading] = useState(false);
   const [reportsError, setReportsError] = useState('');
   const [reportStatusFilter, setReportStatusFilter] = useState('all');
+  const [reportClassificationFilter, setReportClassificationFilter] = useState('all');
   const [mapFocusReportId, setMapFocusReportId] = useState('');
   const [mapAutoRouteRequestKey, setMapAutoRouteRequestKey] = useState(0);
   const [dismissedEmergencyBannerId, setDismissedEmergencyBannerId] = useState('');
@@ -236,6 +247,8 @@ export default function StaffPanel() {
   const [duplicateModalError, setDuplicateModalError] = useState('');
   const [archivingReportId, setArchivingReportId] = useState('');
   const [deletingReportId, setDeletingReportId] = useState('');
+  const [confirmDialog, setConfirmDialog] = useState(null);
+  const [confirmDialogLoading, setConfirmDialogLoading] = useState(false);
 
   const [notifications, setNotifications] = useState([]);
   const [notifOpen, setNotifOpen] = useState(false);
@@ -299,6 +312,10 @@ export default function StaffPanel() {
   }, [api, canViewReports]);
 
   const loadBranchStaff = useCallback(async () => {
+    if (!canManageStaff) {
+      setBranchStaff([]);
+      return;
+    }
     if (!userClaims?.branchId) return;
     setStaffLoading(true);
     setStaffError('');
@@ -312,9 +329,13 @@ export default function StaffPanel() {
     } finally {
       setStaffLoading(false);
     }
-  }, [api, userClaims?.branchId]);
+  }, [api, canManageStaff, userClaims?.branchId]);
 
   const loadRoles = useCallback(async () => {
+    if (!canManageStaff) {
+      setRoles([]);
+      return;
+    }
     try {
       const res = await api('/api/admin/roles');
       const data = await res.json();
@@ -322,7 +343,7 @@ export default function StaffPanel() {
     } catch {
       // roles are optional, ignore errors
     }
-  }, [api]);
+  }, [api, canManageStaff]);
 
   const loadForwardTargets = useCallback(async () => {
     if (!canUpdateReports) return;
@@ -336,33 +357,106 @@ export default function StaffPanel() {
     }
   }, [api, canUpdateReports]);
 
-  const loadNotifications = useCallback(async ({ silent = false } = {}) => {
-    if (!silent) {
-      setNotifLoading(true);
-      setNotifError('');
-    }
+  const openConfirmDialog = useCallback(({ title, message, confirmLabel = 'Confirm', confirmClassName = 'ap-btn-primary', onConfirm }) => {
+    setConfirmDialog({ title, message, confirmLabel, confirmClassName, onConfirm });
+  }, []);
+
+  const closeConfirmDialog = useCallback(() => {
+    if (confirmDialogLoading) return;
+    setConfirmDialog(null);
+  }, [confirmDialogLoading]);
+
+  const handleConfirmDialogSubmit = useCallback(async () => {
+    if (!confirmDialog?.onConfirm || confirmDialogLoading) return;
+    setConfirmDialogLoading(true);
     try {
-      const res = await api('/api/reports/notifications');
-      const data = await res.json().catch(() => []);
-      if (!res.ok) throw new Error(data.error || 'Failed to load notifications.');
-      setNotifications(Array.isArray(data) ? data : []);
-    } catch (err) {
-      if (!silent) {
-        setNotifError(err.message || 'Failed to load notifications.');
-      }
+      await confirmDialog.onConfirm();
+      setConfirmDialog(null);
     } finally {
-      if (!silent) {
-        setNotifLoading(false);
-      }
+      setConfirmDialogLoading(false);
     }
-  }, [api]);
+  }, [confirmDialog, confirmDialogLoading]);
 
   useEffect(() => {
     loadBranchStaff();
     loadRoles();
     loadForwardTargets();
-    loadNotifications();
-  }, [loadBranchStaff, loadRoles, loadForwardTargets, loadNotifications]);
+  }, [loadBranchStaff, loadRoles, loadForwardTargets]);
+
+  useEffect(() => {
+    if (!currentUser || !canViewReports) {
+      setNotifications([]);
+      setNotifLoading(false);
+      setNotifError('');
+      return undefined;
+    }
+
+    let active = true;
+    let socket;
+
+    const connectRealtimeNotifications = async () => {
+      setNotifLoading(true);
+      setNotifError('');
+
+      try {
+        const idToken = await currentUser.getIdToken();
+        if (!active) return;
+
+        socket = io({
+          path: '/socket.io',
+          transports: ['websocket'],
+          auth: { token: idToken },
+        });
+
+        socket.on('connect', () => {
+          if (!active) return;
+          setNotifLoading(false);
+          setNotifError('');
+        });
+
+        socket.on('notifications:data', (payload) => {
+          if (!active) return;
+          setNotifications(Array.isArray(payload) ? payload : []);
+          setNotifLoading(false);
+          setNotifError('');
+        });
+
+        socket.on('connect_error', () => {
+          if (!active) return;
+          setNotifLoading(false);
+          setNotifError('Realtime notifications unavailable.');
+        });
+      } catch {
+        if (!active) return;
+        setNotifLoading(false);
+        setNotifError('Realtime notifications unavailable.');
+      }
+    };
+
+    connectRealtimeNotifications();
+
+    return () => {
+      active = false;
+      if (socket) {
+        socket.disconnect();
+      }
+    };
+  }, [canViewReports, currentUser]);
+
+  const visibleNavItems = useMemo(
+    () => NAV_ITEMS.filter((item) => {
+      if (item.id === 'reports') return canViewReports;
+      if (item.id === 'team') return canManageStaff;
+      return true;
+    }),
+    [canManageStaff, canViewReports]
+  );
+
+  useEffect(() => {
+    const sectionExists = visibleNavItems.some((item) => item.id === activeSection);
+    if (sectionExists) return;
+    setActiveSection(visibleNavItems[0]?.id || 'overview');
+  }, [activeSection, visibleNavItems]);
 
   useEffect(() => {
     loadReports();
@@ -396,26 +490,6 @@ export default function StaffPanel() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [activeSection, canViewReports, loadReports]);
-
-  useEffect(() => {
-    const syncNotifications = () => {
-      if (document.visibilityState !== 'visible') return;
-      loadNotifications({ silent: true });
-    };
-
-    const intervalId = window.setInterval(syncNotifications, REPORTS_SYNC_INTERVAL_MS);
-    const handleFocus = () => syncNotifications();
-    const handleVisibilityChange = () => syncNotifications();
-
-    window.addEventListener('focus', handleFocus);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-      window.clearInterval(intervalId);
-      window.removeEventListener('focus', handleFocus);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [loadNotifications]);
 
   const handleCreateBranchStaff = async (e) => {
     e.preventDefault();
@@ -573,7 +647,6 @@ export default function StaffPanel() {
         if (!prev || prev.id !== reportId) return prev;
         return { ...prev, ...(data?.report || {}) };
       });
-      await loadNotifications({ silent: true });
     } catch (err) {
       setReportActionError(err.message || 'Failed to forward report.');
     } finally {
@@ -585,8 +658,22 @@ export default function StaffPanel() {
     const reportId = String(report?.id || '').trim();
     if (!reportId) return;
 
+    const isMotherReport = reports.some(
+      (item) => String(item?.duplicateOfReportId || '').trim() === reportId
+    );
+    if (isMotherReport) {
+      setReportActionError('This report is currently a mother report and cannot be marked as duplicate.');
+      return;
+    }
+
     const defaultMotherId = String(report?.duplicateOfReportId || '').trim()
-      || String(reports.find((item) => String(item?.id || '').trim() && String(item.id) !== reportId)?.id || '').trim();
+      || String(
+        reports.find((item) => (
+          String(item?.id || '').trim()
+          && String(item.id) !== reportId
+          && !String(item?.duplicateOfReportId || '').trim()
+        ))?.id || ''
+      ).trim();
 
     setDuplicateTargetReportId(reportId);
     setDuplicateMotherReportId(defaultMotherId);
@@ -597,10 +684,18 @@ export default function StaffPanel() {
   const handleSubmitDuplicateLink = async () => {
     const reportId = String(duplicateTargetReportId || '').trim();
     const motherReportId = String(duplicateMotherReportId || '').trim();
+    const isEligibleMotherSelection = duplicateMotherReportOptions.some(
+      (report) => String(report?.id || '').trim() === motherReportId
+    );
 
     if (!reportId) return;
     if (!motherReportId) {
       setDuplicateModalError('Select a mother report.');
+      return;
+    }
+
+    if (!isEligibleMotherSelection) {
+      setDuplicateModalError('Select an eligible mother report.');
       return;
     }
 
@@ -630,7 +725,6 @@ export default function StaffPanel() {
       setDuplicateModalOpen(false);
       setDuplicateTargetReportId('');
       setDuplicateMotherReportId('');
-      await loadNotifications({ silent: true });
     } catch (err) {
       setDuplicateModalError(err.message || 'Failed to mark report as duplicate.');
     } finally {
@@ -638,7 +732,7 @@ export default function StaffPanel() {
     }
   };
 
-  const handleRevokeDuplicateLink = async (report) => {
+  const handleRevokeDuplicateLink = async (report, { skipConfirm = false } = {}) => {
     const reportId = String(report?.id || '').trim();
     if (!reportId) return;
 
@@ -649,7 +743,14 @@ export default function StaffPanel() {
     }
 
     const title = report?.title || 'this report';
-    if (!window.confirm(`Revoke duplication for "${title}"?`)) {
+    if (!skipConfirm) {
+      openConfirmDialog({
+        title: 'Revoke duplication',
+        message: `Revoke duplication for "${title}"?`,
+        confirmLabel: 'Revoke',
+        confirmClassName: 'ap-btn-danger',
+        onConfirm: () => handleRevokeDuplicateLink(report, { skipConfirm: true }),
+      });
       return;
     }
 
@@ -687,7 +788,6 @@ export default function StaffPanel() {
           duplicateSourceMissing: false,
         };
       });
-      await loadNotifications({ silent: true });
     } catch (err) {
       setReportActionError(err.message || 'Failed to revoke duplication.');
     } finally {
@@ -695,7 +795,7 @@ export default function StaffPanel() {
     }
   };
 
-  const handleArchiveReport = async (report) => {
+  const handleArchiveReport = async (report, { skipConfirm = false } = {}) => {
     const reportId = String(report?.id || '').trim();
     if (!reportId) return;
 
@@ -705,7 +805,14 @@ export default function StaffPanel() {
     }
 
     const title = report?.title || 'this report';
-    if (!window.confirm(`Archive "${title}"?`)) {
+    if (!skipConfirm) {
+      openConfirmDialog({
+        title: 'Archive report',
+        message: `Archive "${title}"?`,
+        confirmLabel: 'Archive',
+        confirmClassName: 'ap-btn-danger',
+        onConfirm: () => handleArchiveReport(report, { skipConfirm: true }),
+      });
       return;
     }
 
@@ -733,12 +840,19 @@ export default function StaffPanel() {
     }
   };
 
-  const handleDeleteReport = async (report) => {
+  const handleDeleteReport = async (report, { skipConfirm = false } = {}) => {
     const reportId = String(report?.id || '').trim();
     if (!reportId) return;
 
     const title = report?.title || 'this report';
-    if (!window.confirm(`Permanently delete "${title}"? This cannot be undone.`)) {
+    if (!skipConfirm) {
+      openConfirmDialog({
+        title: 'Delete report',
+        message: `Permanently delete "${title}"? This cannot be undone.`,
+        confirmLabel: 'Delete',
+        confirmClassName: 'ap-btn-danger',
+        onConfirm: () => handleDeleteReport(report, { skipConfirm: true }),
+      });
       return;
     }
 
@@ -877,12 +991,8 @@ export default function StaffPanel() {
     };
   }, []);
 
-  const handleNotificationOpen = async () => {
-    const nextOpen = !notifOpen;
-    setNotifOpen(nextOpen);
-    if (nextOpen) {
-      await loadNotifications();
-    }
+  const handleNotificationOpen = () => {
+    setNotifOpen((prev) => !prev);
   };
 
   const handleMarkNotificationRead = async (notificationId) => {
@@ -929,6 +1039,11 @@ export default function StaffPanel() {
       const statusMatches = reportStatusFilter === 'all' ? true : String(report?.status || '').toLowerCase() === reportStatusFilter;
       if (!statusMatches) return false;
 
+      const classificationMatches = reportClassificationFilter === 'all'
+        ? true
+        : String(report?.category || '').toLowerCase() === reportClassificationFilter;
+      if (!classificationMatches) return false;
+
       if (!q) return true;
 
       const haystack = [
@@ -942,7 +1057,7 @@ export default function StaffPanel() {
 
       return haystack.includes(q);
     });
-  }, [reports, reportStatusFilter, searchQuery]);
+  }, [reports, reportStatusFilter, reportClassificationFilter, searchQuery]);
 
   const reportMarkers = useMemo(() => {
     return visibleReports
@@ -1000,6 +1115,7 @@ export default function StaffPanel() {
     setActiveSection('reports');
     setSidebarOpen(false);
     setReportStatusFilter('all');
+    setReportClassificationFilter('all');
     setSearchQuery('');
 
     if (!targetReport?.id) return;
@@ -1027,8 +1143,20 @@ export default function StaffPanel() {
     () => reports.find((report) => String(report?.id || '').trim() === duplicateTargetReportId) || null,
     [reports, duplicateTargetReportId]
   );
+  const motherReportIds = useMemo(
+    () => new Set(
+      reports
+        .map((report) => String(report?.duplicateOfReportId || '').trim())
+        .filter(Boolean)
+    ),
+    [reports]
+  );
   const duplicateMotherReportOptions = useMemo(
-    () => reports.filter((report) => String(report?.id || '').trim() && String(report.id) !== duplicateTargetReportId),
+    () => reports.filter((report) => (
+      String(report?.id || '').trim()
+      && String(report.id) !== duplicateTargetReportId
+      && !String(report?.duplicateOfReportId || '').trim()
+    )),
     [reports, duplicateTargetReportId]
   );
   const duplicateSelectedMotherReport = useMemo(
@@ -1038,6 +1166,23 @@ export default function StaffPanel() {
   const duplicateSelectedMotherPreviewImage = duplicateSelectedMotherReport
     ? getReportPreviewImage(duplicateSelectedMotherReport)
     : null;
+  const selectedReportDuplicateChildren = useMemo(() => {
+    const motherReportId = String(selectedReport?.id || '').trim();
+    if (!motherReportId) {
+      return [];
+    }
+
+    return reports
+      .filter((report) => String(report?.duplicateOfReportId || '').trim() === motherReportId)
+      .slice()
+      .sort((a, b) => new Date(b?.createdAt || 0) - new Date(a?.createdAt || 0));
+  }, [reports, selectedReport?.id]);
+  const selectedReportCanManageStatusAndForward = Boolean(
+    selectedReport &&
+    canUpdateReports &&
+    !selectedReport?.isDuplicateChild &&
+    String(selectedReport?.status || '').toLowerCase() !== 'archived'
+  );
 
   const initials = (currentUser?.displayName || currentUser?.email || 'S')[0].toUpperCase();
   const displayName = currentUser?.displayName || currentUser?.email?.split('@')[0] || 'Staff';
@@ -1053,7 +1198,7 @@ export default function StaffPanel() {
 
       <aside className={`ap-sidebar${sidebarOpen ? ' ap-sidebar-mobile-open' : ''}`}>
         <div className="ap-sidebar-brand">
-          <div className="ap-brand-icon"><span className="material-symbols-outlined" aria-hidden="true">hub</span></div>
+          <div className="ap-brand-icon"><OneGapoLogo className="ap-brand-logo" decorative /></div>
           <div className="ap-brand-copy">
             <div className="ap-brand-name">OneGapo</div>
             <div className="ap-brand-sub">Branch Staff Console</div>
@@ -1071,7 +1216,7 @@ export default function StaffPanel() {
         </div>
 
         <nav className="ap-nav">
-          {NAV_ITEMS.map((item) => (
+          {visibleNavItems.map((item) => (
             <button
               key={item.id}
               type="button"
@@ -1236,8 +1381,7 @@ export default function StaffPanel() {
                   </strong>
                   <span className="ss-emergency-alert-pill">Urgent</span>
                 </div>
-                <p className="ss-emergency-alert-message">
-                  {emergencyReportArea ? <span className="ss-emergency-alert-area">{emergencyReportArea}</span> : null}
+                <p className="ss-emergency-alert-message"> 
                   {latestEmergencyReport
                     ? `A ${String(latestEmergencyReport.category || 'disaster')} report requires immediate attention.`
                     : latestUnreadEmergency?.message || emergencyAlert?.message || 'A high-priority report requires immediate attention.'}
@@ -1365,6 +1509,19 @@ export default function StaffPanel() {
                             <option key={option.value} value={option.value}>{option.label}</option>
                           ))}
                         </select>
+
+                        <label htmlFor="staff-classification-filter" className="ss-control-label">Classification</label>
+                        <select
+                          id="staff-classification-filter"
+                          className="form-select ss-status-filter"
+                          value={reportClassificationFilter}
+                          onChange={(event) => setReportClassificationFilter(event.target.value)}
+                        >
+                          <option value="all">All classifications</option>
+                          {REPORT_CLASSIFICATION_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                          ))}
+                        </select>
                       </div>
                     </div>
 
@@ -1482,6 +1639,39 @@ export default function StaffPanel() {
                         <p>{selectedReport.description || '—'}</p>
                       </div>
 
+                      {selectedReportDuplicateChildren.length > 0 ? (
+                        <div className="ap-report-details-description">
+                          <p className="form-label">
+                            Duplicate reports ({selectedReportDuplicateChildren.length})
+                          </p>
+                          <div className="ss-duplicate-report-list">
+                            {selectedReportDuplicateChildren.map((duplicateReport) => (
+                              <div key={duplicateReport.id} className="ss-duplicate-report-item">
+                                <div className="ss-duplicate-report-copy">
+                                  <strong>{duplicateReport.title || duplicateReport.id || 'Untitled report'}</strong>
+                                  <span>
+                                    {formatDate(duplicateReport.createdAt)}
+                                    {duplicateReport.category ? ` • ${duplicateReport.category}` : ''}
+                                  </span>
+                                </div>
+                                <div className="ss-duplicate-report-actions">
+                                  <span className={getStatusClass(duplicateReport.status)}>
+                                    {normalizeStatus(duplicateReport.status)}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    className="ap-btn-outline ap-btn-sm"
+                                    onClick={() => handleOpenReport(duplicateReport)}
+                                  >
+                                    View
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+
                       <div className="ap-report-details-description">
                         <p className="form-label">Audit trail</p>
                         {selectedReport?.forwarding && (
@@ -1573,7 +1763,7 @@ export default function StaffPanel() {
                       </div>
 
                       <div className="ap-modal-actions-section">
-                        {canUpdateReports && String(selectedReport?.status || '').toLowerCase() !== 'archived' ? (
+                        {selectedReportCanManageStatusAndForward ? (
                           <div className="ap-modal-action-group">
                             <label htmlFor="modal-report-status" className="form-label">Update status</label>
                             <select
@@ -1595,7 +1785,7 @@ export default function StaffPanel() {
                           </div>
                         ) : null}
                         
-                        {canUpdateReports && !selectedReport?.forwarding && String(selectedReport?.status || '').toLowerCase() !== 'archived' ? (
+                        {selectedReportCanManageStatusAndForward && !selectedReport?.forwarding ? (
                           <div className="ap-modal-action-group">
                             <label htmlFor="modal-report-forward" className="form-label">Forward to</label>
                             <div className="ap-modal-action-row">
@@ -1631,16 +1821,24 @@ export default function StaffPanel() {
 
                         {canUpdateReports && String(selectedReport?.status || '').toLowerCase() !== 'archived' ? (
                           <div className="ap-modal-action-group">
-                            <label className="form-label">Duplicate handling</label>
                             <div className="ap-modal-action-row">
-                              <button
-                                type="button"
-                                className="ap-btn-outline"
-                                onClick={() => handleOpenDuplicateModal(selectedReport)}
-                                disabled={duplicatingReportId === selectedReport.id || revokingDuplicateReportId === selectedReport.id}
-                              >
-                                {duplicatingReportId === selectedReport.id ? 'Linking…' : 'Mark as duplicate'}
-                              </button>
+                              {selectedReport?.isDuplicateChild ? (
+                                <div className="ss-duplicate-status" role="status" aria-live="polite">
+                                  <span className="ss-duplicate-status-label">Duplicate of</span>
+                                  <strong className="ss-duplicate-status-value">
+                                    {selectedReport?.duplicateOfReport?.title || selectedReport?.duplicateOfReport?.id || 'Unknown report'}
+                                  </strong>
+                                </div>
+                              ) : !motherReportIds.has(String(selectedReport?.id || '').trim()) ? (
+                                <button
+                                  type="button"
+                                  className="ap-btn-outline"
+                                  onClick={() => handleOpenDuplicateModal(selectedReport)}
+                                  disabled={duplicatingReportId === selectedReport.id || revokingDuplicateReportId === selectedReport.id}
+                                >
+                                  {duplicatingReportId === selectedReport.id ? 'Linking…' : 'Mark as duplicate'}
+                                </button>
+                              ) : null}
                               {selectedReport?.isDuplicateChild ? (
                                 <button
                                   type="button"
@@ -1657,6 +1855,36 @@ export default function StaffPanel() {
                       </div>
                     </AppModal>
                   )}
+
+                  {confirmDialog ? (
+                    <AppModal
+                      title={confirmDialog.title || 'Confirm action'}
+                      titleId="staff-confirm-dialog-title"
+                      onClose={closeConfirmDialog}
+                    >
+                      <div className="ap-form">
+                        <p>{confirmDialog.message}</p>
+                        <div className="ap-modal-button-group">
+                          <button
+                            type="button"
+                            className={confirmDialog.confirmClassName || 'ap-btn-primary'}
+                            onClick={handleConfirmDialogSubmit}
+                            disabled={confirmDialogLoading}
+                          >
+                            {confirmDialogLoading ? 'Processing...' : confirmDialog.confirmLabel || 'Confirm'}
+                          </button>
+                          <button
+                            type="button"
+                            className="ap-btn-outline"
+                            onClick={closeConfirmDialog}
+                            disabled={confirmDialogLoading}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    </AppModal>
+                  ) : null}
 
                   {expandedReportImage?.src ? (
                     <AppModal
@@ -1711,6 +1939,9 @@ export default function StaffPanel() {
                               </option>
                             ))}
                           </select>
+                          {duplicateMotherReportOptions.length === 0 ? (
+                            <p className="ap-muted">No eligible mother reports available.</p>
+                          ) : null}
                         </div>
 
                         <div>
@@ -1737,7 +1968,11 @@ export default function StaffPanel() {
                             type="button"
                             className="ap-btn-primary"
                             onClick={handleSubmitDuplicateLink}
-                            disabled={duplicatingReportId === duplicateTargetReport.id || !duplicateMotherReportId}
+                            disabled={
+                              duplicatingReportId === duplicateTargetReport.id
+                              || !duplicateMotherReportId
+                              || duplicateMotherReportOptions.length === 0
+                            }
                           >
                             {duplicatingReportId === duplicateTargetReport.id ? 'Linking...' : 'Confirm duplicate'}
                           </button>

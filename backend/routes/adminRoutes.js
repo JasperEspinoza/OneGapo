@@ -1,15 +1,13 @@
 const { Router } = require('express');
-const { verifyToken, requireAdmin, requireStaffOrAdmin } = require('../middleware/authMiddleware');
+const { verifyToken, requirePermission } = require('../middleware/authMiddleware');
 const { createStaff, createBranchStaff, listBranchStaff, listUsers, updateStaff, deleteUser, resendVerification } = require('../controllers/adminController');
 
 const router = Router();
 
-// Staff-accessible routes (staff can manage staff within their own branch)
-router.post('/branch-staff', verifyToken, requireStaffOrAdmin, createBranchStaff);
-router.get('/branch-staff',  verifyToken, requireStaffOrAdmin, listBranchStaff);
+router.post('/branch-staff', verifyToken, requirePermission('add_staffs'), createBranchStaff);
+router.get('/branch-staff', verifyToken, requirePermission('add_staffs'), listBranchStaff);
 
-// All remaining admin routes require admin token
-router.use(verifyToken, requireAdmin);
+router.use(verifyToken, requirePermission('add_staffs'));
 
 router.post('/create-staff',           createStaff);
 router.get('/users',                   listUsers);

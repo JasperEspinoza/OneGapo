@@ -25,6 +25,18 @@
   color: var(--color-text);
 }
 
+.resident-brand-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.resident-brand-logo {
+  width: 1.5rem;
+  height: 1.5rem;
+  flex-shrink: 0;
+}
+
 .resident-sub {
   font-size: 0.75rem;
   color: var(--color-text-muted);
@@ -719,9 +731,9 @@
 }
 
 .theme-dark .resident-shell .report-status-rejected {
-  background: #4a1f2f;
-  border-color: #a22953;
-  color: #fecdd3;
+  background: var(--status-rejected-bg);
+  border-color: var(--status-rejected-border);
+  color: var(--status-rejected-text);
 }
 
 .theme-dark .resident-bottom-nav {

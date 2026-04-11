@@ -22,11 +22,31 @@ const Unauthorized = () => (
   </div>
 );
 
+const ADMIN_WORKSPACE_PERMISSIONS = ['add_branches', 'add_roles', 'add_staffs'];
+const REPORT_WORKSPACE_PERMISSIONS = ['view_reports', 'update_reports', 'close_reports', 'archive_reports'];
+
 const HomeRoute = () => {
   const { userClaims } = useAuth();
+  const role = userClaims?.role;
+  const permissions = Array.isArray(userClaims?.permissions) ? userClaims.permissions : [];
+  const canAccessAdminWorkspace =
+    role === 'admin' ||
+    permissions.some((permission) => ADMIN_WORKSPACE_PERMISSIONS.includes(permission));
+  const canAccessReportWorkspace =
+    role === 'admin' ||
+    role === 'staff' ||
+    permissions.some((permission) => REPORT_WORKSPACE_PERMISSIONS.includes(permission));
 
-  if (userClaims?.role === 'resident') {
+  if (role === 'resident') {
     return <Navigate to="/resident" replace />;
+  }
+
+  if (canAccessAdminWorkspace) {
+    return <Navigate to="/admin" replace />;
+  }
+
+  if (canAccessReportWorkspace) {
+    return <Navigate to="/staff" replace />;
   }
 
   return <Dashboard />;
@@ -55,12 +75,28 @@ function App() {
             </Route>
 
             {/* ── Staff + Admin ─────────────────────────────────── */}
-            <Route element={<ProtectedRoute allowedRoles={['staff']} showNav={false} />}>
+            <Route
+              element={(
+                <ProtectedRoute
+                  allowedRoles={['staff', 'admin']}
+                  allowedPermissionsAny={REPORT_WORKSPACE_PERMISSIONS}
+                  showNav={false}
+                />
+              )}
+            >
               <Route path="/staff" element={<StaffPanel />} />
             </Route>
 
             {/* ── Admin only ────────────────────────────────────── */}
-            <Route element={<ProtectedRoute allowedRoles={['admin']} requirePrimaryAdmin={true} showNav={false} />}>
+            <Route
+              element={(
+                <ProtectedRoute
+                  allowedRoles={['admin', 'staff']}
+                  allowedPermissionsAny={[...ADMIN_WORKSPACE_PERMISSIONS, ...REPORT_WORKSPACE_PERMISSIONS]}
+                  showNav={false}
+                />
+              )}
+            >
               <Route path="/admin" element={<AdminPanel />} />
             </Route>
 

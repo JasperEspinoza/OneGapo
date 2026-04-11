@@ -263,9 +263,16 @@ async function updateBranch(req, res, next) {
     const { id } = req.params;
     if (!id) return res.status(400).json({ error: 'Branch id is required.' });
 
-    const { name, type } = req.body;
+    const { name, type, staffEmail } = req.body;
     const updates = {};
     const db = admin.firestore();
+
+    if (staffEmail !== undefined && staffEmail !== null && String(staffEmail).trim() !== '') {
+      const normalized = String(staffEmail).trim().toLowerCase();
+      if (!EMAIL_REGEX.test(normalized)) {
+        return res.status(400).json({ error: 'Invalid staff email address format.' });
+      }
+    }
 
     if (name !== undefined) {
       const trimmedName = String(name).trim();
@@ -304,9 +311,114 @@ async function updateBranch(req, res, next) {
 
     await docRef.update(updates);
 
-    const updated = { id, ...snap.data(), ...updates, updatedAt: undefined };
+    const finalBranchName = updates.name || String(snap.data()?.name || '');
+    const finalBranchType = updates.type || String(snap.data()?.type || 'public');
+
+    let staffReassignment = null;
+    const normalizedStaffEmail = String(staffEmail || '').trim().toLowerCase();
+    if (normalizedStaffEmail) {
+      const existingUserSnap = await db
+        .collection('users')
+        .where('email', '==', normalizedStaffEmail)
+        .limit(1)
+        .get();
+
+      if (!existingUserSnap.empty) {
+        const existingDoc = existingUserSnap.docs[0];
+        const existingUser = existingDoc.data() || {};
+        const targetUid = String(existingUser.uid || existingDoc.id || '').trim();
+
+        await existingDoc.ref.set(
+          {
+            uid: targetUid,
+            role: 'staff',
+            branchId: id,
+            branchName: finalBranchName,
+            entityType: finalBranchType,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedBy: req.user.uid,
+          },
+          { merge: true }
+        );
+
+        const authUser = await admin.auth().getUser(targetUid);
+        const existingClaims = authUser.customClaims || {};
+        await admin.auth().setCustomUserClaims(targetUid, {
+          ...existingClaims,
+          role: 'staff',
+          branchId: id,
+          location: finalBranchName,
+          entityType: finalBranchType,
+        });
+
+        staffReassignment = {
+          uid: targetUid,
+          email: normalizedStaffEmail,
+          created: false,
+        };
+      } else {
+        const userRecord = await admin.auth().createUser({
+          email: normalizedStaffEmail,
+          emailVerified: false,
+        });
+
+        await admin.auth().setCustomUserClaims(userRecord.uid, {
+          role: 'staff',
+          branchId: id,
+          location: finalBranchName,
+          entityType: finalBranchType,
+          permissions: [],
+          verified: false,
+        });
+
+        await db.collection('users').doc(userRecord.uid).set({
+          uid: userRecord.uid,
+          fullName: '',
+          email: normalizedStaffEmail,
+          role: 'staff',
+          branchId: id,
+          branchName: finalBranchName,
+          entityType: finalBranchType,
+          customRoleId: null,
+          customRoleName: null,
+          permissions: [],
+          verified: false,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          createdBy: req.user.uid,
+        });
+
+        const resetLink = await admin.auth().generatePasswordResetLink(normalizedStaffEmail);
+        const emailResults = await Promise.allSettled([
+          sendPasswordResetEmail(normalizedStaffEmail, resetLink, finalBranchName),
+          sendAccountVerificationEmail(userRecord.uid, normalizedStaffEmail, { branchName: finalBranchName }),
+        ]);
+
+        const emailDelivery = summarizeEmailDeliveries({
+          passwordReset: emailResults[0],
+          verification: emailResults[1],
+        });
+
+        staffReassignment = {
+          uid: userRecord.uid,
+          email: normalizedStaffEmail,
+          created: true,
+          emailDelivery: emailDelivery.summary,
+        };
+      }
+    }
+
+    const updated = {
+      id,
+      ...snap.data(),
+      ...updates,
+      updatedAt: undefined,
+      staffReassignment,
+    };
     return res.json(updated);
   } catch (err) {
+    if (err.code === 'auth/email-already-exists') {
+      return res.status(409).json({ error: 'A user with this staff email already exists.' });
+    }
     return next(err);
   }
 }

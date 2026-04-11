@@ -7,18 +7,10 @@ const {
   getVerificationStatus,
   sendAccountVerificationEmail,
 } = require('../services/verificationService');
-
-const ALLOWED_ROLES = ['staff', 'admin'];
-const ALLOWED_PERMISSIONS = [
-  'view_reports',
-  'update_reports',
-  'close_reports',
-  'archive_reports',
-  'create_announcements',
-  'add_branches',
-  'add_roles',
-  'add_staffs',
-];
+const {
+  ALLOWED_ROLES,
+  sanitizePermissions,
+} = require('../constants/rbac');
 const PRIMARY_ADMIN_EMAIL = 'onegapo2026@gmail.com';
 
 // Basic email regex — prevents obviously malformed addresses from reaching Firebase
@@ -35,7 +27,7 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  *   - password    {string}   Minimum 8 characters.
  *   - role        {string}   Either "staff" or "admin".
  *   - branchId    {string}   Firestore document ID of the branch.
- *   - permissions {string[]} Subset of ALLOWED_PERMISSIONS.
+ *   - customRoleId {string?} Firestore role document ID; permissions are inherited from this role.
  *
  * Protected: verifyToken + requireAdmin middleware must run first.
  */
@@ -82,7 +74,7 @@ async function createStaff(req, res, next) {
         return res.status(404).json({ error: 'Custom role not found.' });
       }
       const roleData = roleSnap.data();
-      sanitizedPerms = (roleData.permissions || []).filter((p) => ALLOWED_PERMISSIONS.includes(p));
+      sanitizedPerms = sanitizePermissions(roleData.permissions || []);
       customRoleName = roleData.name;
     }
 
@@ -210,7 +202,7 @@ async function listUsers(req, res, next) {
  * Request body (all fields optional; omit to leave unchanged):
  *   - role        {string}   'staff' or 'admin'
  *   - branchId    {string}   Firestore branch document ID
- *   - permissions {string[]} Replacement permission set
+ *   - customRoleId {string?} Firestore role document ID; updates inherited permissions
  *
  * Protected: verifyToken + requireAdmin middleware must run first.
  */
@@ -265,7 +257,7 @@ async function updateStaff(req, res, next) {
           return res.status(404).json({ error: 'Custom role not found.' });
         }
         const roleData = roleSnap.data();
-        const sanitized = (roleData.permissions || []).filter((p) => ALLOWED_PERMISSIONS.includes(p));
+        const sanitized = sanitizePermissions(roleData.permissions || []);
         firestoreUpdates.customRoleId   = customRoleId;
         firestoreUpdates.customRoleName = roleData.name;
         firestoreUpdates.permissions    = sanitized;
@@ -440,7 +432,7 @@ async function createBranchStaff(req, res, next) {
         return res.status(404).json({ error: 'Custom role not found.' });
       }
       const roleData = roleSnap.data();
-      sanitizedPerms = (roleData.permissions || []).filter((p) => ALLOWED_PERMISSIONS.includes(p));
+      sanitizedPerms = sanitizePermissions(roleData.permissions || []);
       customRoleName = roleData.name;
     }
 

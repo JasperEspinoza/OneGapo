@@ -8,18 +8,10 @@
 
 require('dotenv').config();
 const admin = require('../config/firebaseAdmin');
+const { ALLOWED_PERMISSIONS } = require('../constants/rbac');
 
 const ADMIN_EMAIL = 'onegapo2026@gmail.com';
-const ADMIN_PERMISSIONS = [
-  'view_reports',
-  'update_reports',
-  'close_reports',
-  'archive_reports',
-  'create_announcements',
-  'add_branches',
-  'add_roles',
-  'add_staffs',
-];
+const ADMIN_PERMISSIONS = ALLOWED_PERMISSIONS;
 
 async function main() {
   // Look up the user by email

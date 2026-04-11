@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const multer = require('multer');
 const { verifyToken, requireStaffOrAdmin } = require('../middleware/authMiddleware');
+const { createUserScopedRateLimiter } = require('../middleware/firestoreRateLimitMiddleware');
 const {
   createReport,
   listOwnReports,
@@ -18,6 +19,34 @@ const {
 } = require('../controllers/reportController');
 
 const router = Router();
+
+const rateLimitResidentReportsRead = createUserScopedRateLimiter({
+  windowMs: 60 * 1000,
+  maxRequests: 20,
+  keyPrefix: 'reports-me',
+  message: 'Rate limit reached for reports. Please retry shortly.',
+});
+
+const rateLimitOperatorReportsRead = createUserScopedRateLimiter({
+  windowMs: 60 * 1000,
+  maxRequests: 16,
+  keyPrefix: 'reports-operators',
+  message: 'Rate limit reached for operator reports. Please retry shortly.',
+});
+
+const rateLimitPerformanceRead = createUserScopedRateLimiter({
+  windowMs: 60 * 1000,
+  maxRequests: 8,
+  keyPrefix: 'reports-performance',
+  message: 'Rate limit reached for performance metrics. Please retry shortly.',
+});
+
+const rateLimitNotificationsRead = createUserScopedRateLimiter({
+  windowMs: 60 * 1000,
+  maxRequests: 10,
+  keyPrefix: 'reports-notifications',
+  message: 'Rate limit reached for notifications. Please retry shortly.',
+});
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -54,16 +83,16 @@ const uploadResolutionEvidence = multer({
 });
 
 router.post('/', verifyToken, upload.array('attachments', 6), createReport);
-router.get('/me', verifyToken, listOwnReports);
-router.get('/', verifyToken, listReportsForOperators);
-router.get('/performance', verifyToken, requireStaffOrAdmin, getPerformanceMetrics);
+router.get('/me', verifyToken, rateLimitResidentReportsRead, listOwnReports);
+router.get('/', verifyToken, rateLimitOperatorReportsRead, listReportsForOperators);
+router.get('/performance', verifyToken, requireStaffOrAdmin, rateLimitPerformanceRead, getPerformanceMetrics);
 router.get('/forward-targets', verifyToken, requireStaffOrAdmin, listForwardTargets);
 router.patch('/:reportId/forward', verifyToken, requireStaffOrAdmin, forwardReport);
 router.post('/:reportId/duplicate', verifyToken, requireStaffOrAdmin, markReportDuplicate);
 router.delete('/:reportId/duplicate', verifyToken, requireStaffOrAdmin, revokeReportDuplicate);
 router.patch('/:reportId/archive', verifyToken, requireStaffOrAdmin, archiveReport);
 router.delete('/:reportId', verifyToken, requireStaffOrAdmin, deleteReport);
-router.get('/notifications', verifyToken, requireStaffOrAdmin, listNotifications);
+router.get('/notifications', verifyToken, requireStaffOrAdmin, rateLimitNotificationsRead, listNotifications);
 router.patch('/notifications/:notificationId/read', verifyToken, requireStaffOrAdmin, markNotificationRead);
 router.patch('/:reportId/status', verifyToken, uploadResolutionEvidence.array('resolutionPhotos', 4), updateReportStatus);
 

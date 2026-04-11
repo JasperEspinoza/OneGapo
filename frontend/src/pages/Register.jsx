@@ -7,6 +7,7 @@ import {
 import { Link, useNavigate, Navigate } from 'react-router-dom';
 import { auth } from '../config/firebase';
 import { useAuth } from '../context/AuthContext';
+import OneGapoLogo from '../components/OneGapoLogo';
 
 function getErrorMessage(code) {
   switch (code) {
@@ -94,7 +95,7 @@ export default function Register() {
     <div className="auth-page">
       <div className="auth-card">
         <div className="auth-header">
-          <span className="auth-logo">G</span>
+          <OneGapoLogo className="auth-logo" alt="OneGapo" />
           <h1 className="auth-title">Create account</h1>
           <p className="auth-subtitle">Join OneGapo as a resident to report and track issues in your community</p>
         </div>

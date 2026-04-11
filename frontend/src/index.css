@@ -18,8 +18,8 @@
 
 :root {
   --color-bg: #f4f6f8;
-  --color-bg-gradient-a: rgba(20, 23, 31, 0.045);
-  --color-bg-gradient-b: rgba(15, 118, 110, 0.07);
+  --color-bg-gradient-a: rgba(28, 56, 95, 0.045);
+  --color-bg-gradient-b: rgba(45, 95, 163, 0.08);
   --color-text: #0f172a;
   --color-text-soft: #1f2937;
   --color-text-muted: #667085;
@@ -29,9 +29,9 @@
   --color-surface-muted: #f1f4f8;
   --color-surface-soft: #f8fafc;
   --color-overlay: rgba(15, 23, 42, 0.5);
-  --color-primary: #0f766e;
-  --color-primary-strong: #0b5e57;
-  --color-primary-soft: #c8f5ef;
+  --color-primary: #1c385f;
+  --color-primary-strong: #2d5fa3;
+  --color-primary-soft: #dbe7f5;
   --color-success-bg: #edfdf5;
   --color-success-border: #86efac;
   --color-success-text: #166534;
@@ -46,7 +46,7 @@
   --color-sidebar-item-hover-text: #ffffff;
   --color-sidebar-item-active-bg: rgba(255, 255, 255, 0.14);
   --color-sidebar-item-active-text: #ffffff;
-  --color-sidebar-accent: #2dd4bf;
+  --color-sidebar-accent: #2d5fa3;
   --status-submitted-bg: #eef2ff;
   --status-submitted-border: #c7d2fe;
   --status-submitted-text: #3730a3;
@@ -68,7 +68,7 @@
 .theme-dark {
   --color-bg: #111417;
   --color-bg-gradient-a: rgba(255, 255, 255, 0.02);
-  --color-bg-gradient-b: rgba(45, 212, 191, 0.05);
+  --color-bg-gradient-b: rgba(74, 122, 201, 0.07);
   --color-text: #eef2f6;
   --color-text-soft: #d4dde7;
   --color-text-muted: #97a4b5;
@@ -78,9 +78,9 @@
   --color-surface-muted: #141920;
   --color-surface-soft: #1d232b;
   --color-overlay: rgba(4, 7, 10, 0.72);
-  --color-primary: #29c3b0;
-  --color-primary-strong: #58ddcc;
-  --color-primary-soft: #173833;
+  --color-primary: #7aa2f7;
+  --color-primary-strong: #a5c1f8;
+  --color-primary-soft: #1d2940;
   --color-success-bg: rgba(20, 83, 45, 0.38);
   --color-success-border: #22c55e;
   --color-success-text: #bbf7d0;
@@ -93,9 +93,9 @@
   --color-sidebar-item: #c2ceda;
   --color-sidebar-item-hover-bg: #1b2532;
   --color-sidebar-item-hover-text: #f3f4f6;
-  --color-sidebar-item-active-bg: #234441;
-  --color-sidebar-item-active-text: #e6fffb;
-  --color-sidebar-accent: #29c3b0;
+  --color-sidebar-item-active-bg: #263a5a;
+  --color-sidebar-item-active-text: #f0f7ff;
+  --color-sidebar-accent: #7aa2f7;
   --status-submitted-bg: #1d2433;
   --status-submitted-border: #48566d;
   --status-submitted-text: #d5def0;
@@ -384,11 +384,46 @@ img, svg {
 }
 
 .navbar-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
   font-size: 1.25rem;
   font-weight: 800;
   color: var(--color-text);
   letter-spacing: -0.03em;
   flex-shrink: 0;
+}
+
+.navbar-brand-logo {
+  width: 1.6rem;
+  height: 1.6rem;
+  flex-shrink: 0;
+}
+
+.onegapo-logo {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.onegapo-logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.onegapo-logo-dark {
+  display: none;
+}
+
+.theme-dark .onegapo-logo-light {
+  display: none;
+}
+
+.theme-dark .onegapo-logo-dark {
+  display: block;
 }
 
 .navbar-actions {
@@ -1225,7 +1260,7 @@ img, svg {
 .badge-verified   { background-color: #dcfce7; color: #166534; }
 .badge-unverified { background-color: #fee2e2; color: #991b1b; }
 .badge-forwarded   { background-color: #e0e7ff; color: #3730a3; }
-.badge-duplicate   { background-color: #fff4e6; color: #9a3412; border: 1px solid #fdba74; }
+.badge-duplicate   { background-color: #f3e8ff; color: #7e22ce; border: 1px solid #d8b4fe; }
 
 /* --------------------------------------------------------------------------
    Generic page wrapper
@@ -1388,8 +1423,7 @@ img, svg {
 .theme-dark .resident-card,
 .theme-dark .staff-access-card,
 .theme-dark .ap-card,
-.theme-dark .ap-stat-card,
-.theme-dark .ap-quick-card {
+.theme-dark .ap-stat-card {
   background-color: var(--color-surface);
   border-color: var(--color-border);
 }

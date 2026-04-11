@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useSettingsModal } from '../context/SettingsModalContext';
 import ReportLocationMap from '../components/ReportLocationMap';
 import AppModal from '../components/AppModal';
+import OneGapoLogo from '../components/OneGapoLogo';
 
 const REPORT_CATEGORIES = [
   { value: 'infrastructure', label: 'Infrastructure' },
@@ -515,7 +516,7 @@ export default function ResidentHub() {
         return;
       }
       if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-        showSubmitFeedback('error', 'Latitude/Longitude values are out of range.');
+        showSubmitFeedback('error', 'Selected map location is out of range.');
         return;
       }
 
@@ -600,7 +601,10 @@ export default function ResidentHub() {
     <main className="resident-shell">
       <header className="resident-topbar">
         <div>
-          <p className="resident-brand">OneGapo</p>
+          <div className="resident-brand-wrap">
+            <OneGapoLogo className="resident-brand-logo" decorative />
+            <p className="resident-brand">OneGapo</p>
+          </div>
           <p className="resident-sub">Resident reporting</p>
         </div>
         <div className="resident-topbar-actions">
@@ -853,37 +857,6 @@ export default function ResidentHub() {
               >
                 Use current location
               </button>
-
-              <div className="report-location-grid">
-                <div>
-                  <label className="form-label" htmlFor="resident-latitude">Latitude</label>
-                  <input
-                    id="resident-latitude"
-                    name="latitude"
-                    type="number"
-                    step="0.000001"
-                    className="form-input"
-                    value={form.latitude}
-                    onChange={handleInputChange}
-                    required
-                    disabled={submitting}
-                  />
-                </div>
-                <div>
-                  <label className="form-label" htmlFor="resident-longitude">Longitude</label>
-                  <input
-                    id="resident-longitude"
-                    name="longitude"
-                    type="number"
-                    step="0.000001"
-                    className="form-input"
-                    value={form.longitude}
-                    onChange={handleInputChange}
-                    required
-                    disabled={submitting}
-                  />
-                </div>
-              </div>
 
               <div>
                 <label className="form-label" htmlFor="resident-address">Address (optional)</label>

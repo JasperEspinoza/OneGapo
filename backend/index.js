@@ -1,6 +1,8 @@
 require('dotenv').config();
+const http = require('http');
 const express = require('express');
 const cors = require('cors');
+const { initSocketServer } = require('./realtime/socketServer');
 
 const adminRoutes  = require('./routes/adminRoutes');
 const authRoutes   = require('./routes/authRoutes');
@@ -10,6 +12,7 @@ const reportRoutes = require('./routes/reportRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const server = http.createServer(app);
 
 const allowedOrigin = process.env.FRONTEND_URL
   ? process.env.FRONTEND_URL
@@ -48,6 +51,8 @@ app.use((err, _req, res, _next) => {
   });
 });
 
-app.listen(PORT, () => {
+initSocketServer(server, { allowedOrigin });
+
+server.listen(PORT, () => {
   console.log(`OneGapo backend listening on http://localhost:${PORT}`);
 });

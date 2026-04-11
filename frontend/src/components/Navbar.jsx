@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useSettingsModal } from '../context/SettingsModalContext';
+import OneGapoLogo from './OneGapoLogo';
 
 const ICONS = {
     menu: (
@@ -17,6 +18,14 @@ export default function Navbar() {
   const { openSettings } = useSettingsModal();
   const navigate = useNavigate();
   const role = userClaims?.role;
+  const permissions = Array.isArray(userClaims?.permissions) ? userClaims.permissions : [];
+  const canAccessReports =
+    role === 'admin' ||
+    role === 'staff' ||
+    permissions.some((permission) => ['view_reports', 'update_reports', 'close_reports', 'archive_reports'].includes(permission));
+  const canAccessAdminWorkspace =
+    role === 'admin' ||
+    permissions.some((permission) => ['add_branches', 'add_roles', 'add_staffs'].includes(permission));
   const [menuOpen, setMenuOpen] = useState(false);
 
   const handleLogout = async () => {
@@ -34,14 +43,17 @@ export default function Navbar() {
 
   return (
     <nav className="navbar">
-      <Link to="/" className="navbar-brand" onClick={closeMenu}>OneGapo</Link>
+      <Link to="/" className="navbar-brand" onClick={closeMenu}>
+        <OneGapoLogo className="navbar-brand-logo" decorative />
+        <span>OneGapo</span>
+      </Link>
 
       {/* Desktop links */}
       <div className="navbar-desktop">
-        {(role === 'staff' || role === 'admin') && (
+        {canAccessReports && (
           <Link to="/staff" className="navbar-link">Reports</Link>
         )}
-        {role === 'admin' && (
+        {canAccessAdminWorkspace && (
           <Link to="/admin" className="navbar-link">Admin</Link>
         )}
         <button type="button" onClick={handleOpenSettings} className="navbar-link">
@@ -67,12 +79,12 @@ export default function Navbar() {
       {/* Mobile dropdown */}
       {menuOpen && (
         <div className="navbar-mobile-menu">
-          {(role === 'staff' || role === 'admin') && (
+          {canAccessReports && (
             <Link to="/staff" className="navbar-mobile-link" onClick={closeMenu}>
               Reports
             </Link>
           )}
-          {role === 'admin' && (
+          {canAccessAdminWorkspace && (
             <Link to="/admin" className="navbar-mobile-link" onClick={closeMenu}>
               Admin
             </Link>

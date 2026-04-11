@@ -551,6 +551,8 @@ export default function ReportLocationMap({
   const sidebarCloseTimeoutRef = useRef(null);
   const lastAppliedFocusIdRef = useRef('');
   const lastAutoRouteRequestKeyRef = useRef(0);
+  const previousActiveMarkerIdRef = useRef('');
+  const routeRequestIdRef = useRef(0);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -703,6 +705,8 @@ export default function ReportLocationMap({
 
   useEffect(() => {
     if (activeMarker) return;
+    routeRequestIdRef.current += 1;
+    previousActiveMarkerIdRef.current = '';
     setRoutePath([]);
     setRouteSummary(null);
     setRouteError('');
@@ -785,6 +789,9 @@ export default function ReportLocationMap({
       return;
     }
 
+    const requestId = routeRequestIdRef.current + 1;
+    routeRequestIdRef.current = requestId;
+
     setRouteLoading(true);
     setRouteError('');
 
@@ -798,6 +805,7 @@ export default function ReportLocationMap({
 
       const originLat = position.coords.latitude;
       const originLng = position.coords.longitude;
+      if (requestId !== routeRequestIdRef.current) return;
       setUserPosition([originLat, originLng]);
 
       const destinationLat = Number(marker.lat);
@@ -807,6 +815,7 @@ export default function ReportLocationMap({
         `https://router.project-osrm.org/route/v1/driving/${originLng},${originLat};${destinationLng},${destinationLat}?overview=full&geometries=geojson`
       );
       const data = await response.json().catch(() => ({}));
+      if (requestId !== routeRequestIdRef.current) return;
 
       if (!response.ok || data.code !== 'Ok' || !Array.isArray(data.routes) || data.routes.length === 0) {
         throw new Error('Could not generate route right now.');
@@ -831,10 +840,12 @@ export default function ReportLocationMap({
         duration: Number(bestRoute.duration),
       });
     } catch (err) {
+      if (requestId !== routeRequestIdRef.current) return;
       setRoutePath([]);
       setRouteSummary(null);
       setRouteError(err?.message || 'Failed to compute route.');
     } finally {
+      if (requestId !== routeRequestIdRef.current) return;
       setRouteLoading(false);
     }
   }, []);
@@ -842,6 +853,25 @@ export default function ReportLocationMap({
   const handleBuildRoute = async () => {
     await buildRouteForMarker(activeMarker);
   };
+
+  useEffect(() => {
+    const markerId = String(activeMarker?.id || '').trim();
+    if (!markerId) return;
+
+    const previousMarkerId = previousActiveMarkerIdRef.current;
+    if (previousMarkerId && previousMarkerId !== markerId) {
+      const hadExistingRoute = routePath.length > 1 || Boolean(routeSummary);
+      setRoutePath([]);
+      setRouteSummary(null);
+      setRouteError('');
+
+      if (hadExistingRoute) {
+        buildRouteForMarker(activeMarker);
+      }
+    }
+
+    previousActiveMarkerIdRef.current = markerId;
+  }, [activeMarker, buildRouteForMarker, routePath.length, routeSummary]);
 
   useEffect(() => {
     const markerId = String(focusMarkerId || '').trim();

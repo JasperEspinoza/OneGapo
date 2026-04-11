@@ -6,7 +6,13 @@ import { useAuth } from '../context/AuthContext';
 
 function getDestination(userClaims) {
   if (userClaims?.role === 'admin') return '/admin';
-  if (userClaims?.role === 'staff') return '/staff';
+  if (userClaims?.role === 'staff') {
+    const permissions = Array.isArray(userClaims?.permissions) ? userClaims.permissions : [];
+    const hasAdminWorkspaceAccess = permissions.some((permission) =>
+      ['add_branches', 'add_roles', 'add_staffs'].includes(permission)
+    );
+    return hasAdminWorkspaceAccess ? '/admin' : '/staff';
+  }
   return '/';
 }
 

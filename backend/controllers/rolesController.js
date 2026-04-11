@@ -1,15 +1,42 @@
 const admin = require('../config/firebaseAdmin');
+const { sanitizePermissions } = require('../constants/rbac');
 
-const ALLOWED_PERMISSIONS = [
-  'view_reports',
-  'update_reports',
-  'close_reports',
-  'archive_reports',
-  'create_announcements',
-  'add_branches',
-  'add_roles',
-  'add_staffs',
-];
+async function syncRoleMembers(db, roleId, roleName, permissions, updatedBy) {
+  const roleMembersSnap = await db.collection('users').where('customRoleId', '==', roleId).get();
+  if (roleMembersSnap.empty) return 0;
+
+  const users = roleMembersSnap.docs;
+  await Promise.all(
+    users.map(async (userDoc) => {
+      const uid = userDoc.id;
+
+      await userDoc.ref.set(
+        {
+          customRoleName: roleName,
+          permissions,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedBy,
+        },
+        { merge: true }
+      );
+
+      try {
+        const authUser = await admin.auth().getUser(uid);
+        const existingClaims = authUser.customClaims || {};
+        await admin.auth().setCustomUserClaims(uid, {
+          ...existingClaims,
+          permissions,
+        });
+      } catch (error) {
+        if (error?.code !== 'auth/user-not-found') {
+          throw error;
+        }
+      }
+    })
+  );
+
+  return users.length;
+}
 
 /**
  * POST /api/admin/roles
@@ -28,7 +55,7 @@ async function createRole(req, res, next) {
       return res.status(400).json({ error: 'Role name cannot be blank.' });
     }
 
-    const sanitizedPerms = permissions.filter((p) => ALLOWED_PERMISSIONS.includes(p));
+    const sanitizedPerms = sanitizePermissions(permissions);
 
     const db = admin.firestore();
 
@@ -92,7 +119,7 @@ async function updateRole(req, res, next) {
     }
 
     if (permissions !== undefined) {
-      updates.permissions = permissions.filter((p) => ALLOWED_PERMISSIONS.includes(p));
+      updates.permissions = sanitizePermissions(permissions);
     }
 
     if (Object.keys(updates).length === 0) {
@@ -109,8 +136,16 @@ async function updateRole(req, res, next) {
 
     await docRef.update(updates);
 
+    const roleName = updates.name || snap.data().name;
+    const rolePermissions = updates.permissions || sanitizePermissions(snap.data().permissions || []);
+
+    let syncedUsers = 0;
+    if (name !== undefined || permissions !== undefined) {
+      syncedUsers = await syncRoleMembers(db, id, roleName, rolePermissions, req.user.uid);
+    }
+
     const updated = { id, ...snap.data(), ...updates, updatedAt: undefined };
-    return res.json(updated);
+    return res.json({ ...updated, syncedUsers });
   } catch (err) {
     return next(err);
   }

@@ -41,19 +41,16 @@
 }
 
 .auth-logo {
-	display: flex;
+	display: inline-flex;
 	align-items: center;
 	justify-content: center;
 	width: 3rem;
 	height: 3rem;
-	border-radius: 0.55rem;
-	background: var(--color-primary-strong);
-	color: #fff;
-	font-size: 1.375rem;
-	font-weight: 800;
 	margin: 0 auto 0.75rem;
-	box-shadow: none;
-	letter-spacing: -0.02em;
+}
+
+.auth-logo .onegapo-logo-img {
+	filter: drop-shadow(0 1px 2px rgba(15, 23, 42, 0.18));
 }
 
 .auth-title {

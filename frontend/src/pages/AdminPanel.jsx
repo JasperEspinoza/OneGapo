@@ -2,7 +2,9 @@ import './AdminPanel.css';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import jsPDF from 'jspdf';
+import { io } from 'socket.io-client';
 import AppModal from '../components/AppModal';
+import OneGapoLogo from '../components/OneGapoLogo';
 import ReportLocationMap from '../components/ReportLocationMap';
 import { useAuth } from '../context/AuthContext';
 import { useSettingsModal } from '../context/SettingsModalContext';
@@ -12,7 +14,6 @@ const PERMISSION_OPTIONS = [
   { value: 'update_reports',       label: 'Update report status' },
   { value: 'close_reports',        label: 'Close / resolve reports' },
   { value: 'archive_reports',      label: 'Archive reports' },
-  { value: 'create_announcements', label: 'Post announcements' },
   { value: 'add_branches',         label: 'Add branches' },
   { value: 'add_roles',            label: 'Add roles' },
   { value: 'add_staffs',           label: 'Add staffs' },
@@ -100,6 +101,15 @@ const REPORT_CATEGORY_META = {
   general: { label: 'General Concern', color: '#14b8a6' },
 };
 
+const REPORT_STATUS_FILTER_OPTIONS = [
+  { value: 'all', label: 'All statuses' },
+  { value: 'submitted', label: 'Submitted' },
+  { value: 'in_review', label: 'In Review' },
+  { value: 'resolved', label: 'Resolved' },
+  { value: 'rejected', label: 'Rejected' },
+  { value: 'archived', label: 'Archived' },
+];
+
 function getReportPreviewImage(report) {
   if (!Array.isArray(report?.attachments)) return null;
 
@@ -179,6 +189,151 @@ function getReportStatusLabel(status) {
 function getReportStatusClassName(status) {
   const statusKey = getReportStatusKey(status);
   return `ap-report-status ap-report-status-${statusKey}`;
+}
+
+function toActivityTimestampMs(value) {
+  const ms = value ? new Date(value).getTime() : 0;
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+function formatActivityTimestamp(value) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleString();
+}
+
+function getActivityJurisdiction(report, entry = null) {
+  const forwardedJurisdiction = String(entry?.forwarding?.to?.branchName || '').trim();
+  if (forwardedJurisdiction) return forwardedJurisdiction;
+
+  const reportForwardingJurisdiction = String(report?.forwarding?.to?.branchName || '').trim();
+  if (reportForwardingJurisdiction) return reportForwardingJurisdiction;
+
+  const barangay = extractBarangayFromReport(report);
+  if (barangay) return barangay;
+
+  const fallbackBarangay = String(report?.location?.barangay || '').trim();
+  if (fallbackBarangay) return fallbackBarangay;
+
+  return 'Unassigned';
+}
+
+function buildRecentReportActivities(reports) {
+  const activities = [];
+
+  (Array.isArray(reports) ? reports : []).forEach((report) => {
+    const reportId = String(report?.id || '').trim();
+    if (!reportId) return;
+
+    const reportTitle = String(report?.title || reportId).trim() || reportId;
+    const createdAt = String(report?.createdAt || '').trim();
+    const jurisdiction = getActivityJurisdiction(report);
+
+    if (createdAt) {
+      activities.push({
+        id: `${reportId}-submitted`,
+        type: 'submitted',
+        title: 'Report submitted',
+        reportName: reportTitle,
+        detail: 'A new report was submitted.',
+        jurisdiction,
+        timestamp: createdAt,
+      });
+    }
+
+    const auditTrail = Array.isArray(report?.auditTrail) ? report.auditTrail : [];
+    auditTrail.forEach((entry, index) => {
+      const timestamp = String(entry?.changedAt || '').trim() || String(report?.updatedAt || '').trim();
+      const entryType = String(entry?.type || '').trim().toLowerCase();
+      const fromStatus = String(entry?.fromStatus || '').trim().toLowerCase();
+      const toStatus = String(entry?.toStatus || '').trim().toLowerCase();
+      const note = String(entry?.progressNote || '').trim();
+      const entryJurisdiction = getActivityJurisdiction(report, entry);
+
+      if (toStatus) {
+        const details = [];
+        if (fromStatus && fromStatus !== toStatus) {
+          details.push(`From ${getReportStatusLabel(fromStatus)}.`);
+        }
+        if (note) details.push(note);
+
+        activities.push({
+          id: `${reportId}-status-${index}`,
+          type: 'status',
+          title: `Status changed to ${getReportStatusLabel(toStatus)}`,
+          reportName: reportTitle,
+          detail: details.join(' ').trim() || 'Report status was updated.',
+          jurisdiction: entryJurisdiction,
+          timestamp,
+        });
+        return;
+      }
+
+      if (entryType === 'forwarded') {
+        const targetBranch = String(entry?.forwarding?.to?.branchName || '').trim();
+        const details = [
+          reportTitle,
+          targetBranch ? `Forwarded to ${targetBranch}.` : '',
+          note,
+        ].filter(Boolean).join(' - ');
+
+        activities.push({
+          id: `${reportId}-forwarded-${index}`,
+          type: 'forwarded',
+          title: 'Report forwarded',
+          reportName: reportTitle,
+          detail: details || 'Report was forwarded to a new jurisdiction.',
+          jurisdiction: entryJurisdiction,
+          timestamp,
+        });
+        return;
+      }
+
+      if (entryType === 'duplicate_linked') {
+        activities.push({
+          id: `${reportId}-duplicate-linked-${index}`,
+          type: 'duplicate',
+          title: 'Report marked as duplicate',
+          reportName: reportTitle,
+          detail: 'Linked to another existing report.',
+          jurisdiction: entryJurisdiction,
+          timestamp,
+        });
+        return;
+      }
+
+      if (entryType === 'duplicate_unlinked') {
+        activities.push({
+          id: `${reportId}-duplicate-unlinked-${index}`,
+          type: 'duplicate',
+          title: 'Duplicate link removed',
+          reportName: reportTitle,
+          detail: 'Duplicate link was removed from this report.',
+          jurisdiction: entryJurisdiction,
+          timestamp,
+        });
+        return;
+      }
+
+      if (entryType === 'archived') {
+        activities.push({
+          id: `${reportId}-archived-${index}`,
+          type: 'archived',
+          title: 'Report archived',
+          reportName: reportTitle,
+          detail: note || 'Report was archived.',
+          jurisdiction: entryJurisdiction,
+          timestamp,
+        });
+      }
+    });
+  });
+
+  return activities
+    .slice()
+    .sort((a, b) => toActivityTimestampMs(b.timestamp) - toActivityTimestampMs(a.timestamp))
+    .slice(0, 5);
 }
 
 function toTitleCase(value) {
@@ -328,6 +483,41 @@ export default function AdminPanel() {
   const { currentUser, userClaims, logout } = useAuth();
   const { openSettings } = useSettingsModal();
   const navigate = useNavigate();
+  const isPrimaryAdmin = String(currentUser?.email || '').toLowerCase() === 'onegapo2026@gmail.com';
+  const hasAdminBypass = userClaims?.role === 'admin' || isPrimaryAdmin;
+  const permissions = hasAdminBypass
+    ? PERMISSION_OPTIONS.map((option) => option.value)
+    : (Array.isArray(userClaims?.permissions) ? userClaims.permissions : []);
+
+  const canAccessReports = permissions.some((permission) =>
+    ['view_reports', 'update_reports', 'close_reports', 'archive_reports'].includes(permission)
+  );
+  const canAccessBranches = permissions.includes('add_branches');
+  const canAccessRoles = permissions.includes('add_roles');
+  const canAccessAccounts = permissions.includes('add_staffs');
+  const canAccessUsers = canAccessAccounts;
+  const canAccessAnalytics = canAccessReports;
+
+  const canAccessSection = useCallback((sectionId) => {
+    switch (sectionId) {
+      case 'dashboard':
+        return true;
+      case 'reports':
+        return canAccessReports;
+      case 'branches':
+        return canAccessBranches;
+      case 'roles':
+        return canAccessRoles;
+      case 'accounts':
+        return canAccessAccounts;
+      case 'users':
+        return canAccessUsers;
+      case 'analytics':
+        return canAccessAnalytics;
+      default:
+        return false;
+    }
+  }, [canAccessAccounts, canAccessAnalytics, canAccessBranches, canAccessReports, canAccessRoles, canAccessUsers]);
 
   const api = useCallback(async (url, options = {}) => {
     const idToken = await currentUser.getIdToken();
@@ -358,6 +548,7 @@ export default function AdminPanel() {
   const [editingBranch,    setEditingBranch]    = useState(null);
   const [editBranchName,   setEditBranchName]   = useState('');
   const [editBranchType,   setEditBranchType]   = useState('public');
+  const [editBranchStaffEmail, setEditBranchStaffEmail] = useState('');
   const [editBranchLoading, setEditBranchLoading] = useState(false);
   const [editBranchError,  setEditBranchError]  = useState('');
 
@@ -423,6 +614,28 @@ export default function AdminPanel() {
   const [deletingReportId, setDeletingReportId] = useState('');
   const [selectedReport, setSelectedReport] = useState(null);
   const [expandedReportImage, setExpandedReportImage] = useState(null);
+  const [confirmDialog, setConfirmDialog] = useState(null);
+  const [confirmDialogLoading, setConfirmDialogLoading] = useState(false);
+
+    const openConfirmDialog = useCallback(({ title, message, confirmLabel = 'Confirm', confirmClassName = 'ap-btn-primary', onConfirm }) => {
+      setConfirmDialog({ title, message, confirmLabel, confirmClassName, onConfirm });
+    }, []);
+
+    const closeConfirmDialog = useCallback(() => {
+      if (confirmDialogLoading) return;
+      setConfirmDialog(null);
+    }, [confirmDialogLoading]);
+
+    const handleConfirmDialogSubmit = useCallback(async () => {
+      if (!confirmDialog?.onConfirm || confirmDialogLoading) return;
+      setConfirmDialogLoading(true);
+      try {
+        await confirmDialog.onConfirm();
+        setConfirmDialog(null);
+      } finally {
+        setConfirmDialogLoading(false);
+      }
+    }, [confirmDialog, confirmDialogLoading]);
   const reportsPollingRef = useRef(false);
 
   // Notifications state
@@ -435,6 +648,7 @@ export default function AdminPanel() {
   const [filterRole,   setFilterRole]   = useState('all');
   const [filterBranch, setFilterBranch] = useState('all');
   const [reportTypeFilter, setReportTypeFilter] = useState('all');
+  const [reportStatusFilter, setReportStatusFilter] = useState('all');
   const [reportBarangayFilter, setReportBarangayFilter] = useState('all');
   const [analyticsSearchQuery, setAnalyticsSearchQuery] = useState('');
   const [analyticsStatusFilter, setAnalyticsStatusFilter] = useState('all');
@@ -453,6 +667,10 @@ export default function AdminPanel() {
   }, [sidebarCollapsed]);
 
   const loadBranches = useCallback(async () => {
+    if (!canAccessBranches && !canAccessAccounts) {
+      setBranches([]);
+      return;
+    }
     setBranchLoading(true);
     setBranchError('');
     try {
@@ -465,9 +683,13 @@ export default function AdminPanel() {
     } finally {
       setBranchLoading(false);
     }
-  }, [api]);
+  }, [api, canAccessAccounts, canAccessBranches]);
 
   const loadUsers = useCallback(async () => {
+    if (!canAccessAccounts && !canAccessUsers) {
+      setUsers([]);
+      return;
+    }
     setUsersLoading(true);
     setUsersError('');
     try {
@@ -480,9 +702,13 @@ export default function AdminPanel() {
     } finally {
       setUsersLoading(false);
     }
-  }, [api]);
+  }, [api, canAccessAccounts, canAccessUsers]);
 
   const loadRoles = useCallback(async () => {
+    if (!canAccessRoles && !canAccessAccounts) {
+      setRoles([]);
+      return;
+    }
     setRolesLoading(true);
     setRolesError('');
     try {
@@ -495,9 +721,13 @@ export default function AdminPanel() {
     } finally {
       setRolesLoading(false);
     }
-  }, [api]);
+  }, [api, canAccessAccounts, canAccessRoles]);
 
   const loadReports = useCallback(async (options = {}) => {
+    if (!canAccessReports) {
+      setReports([]);
+      return;
+    }
     const { silent = false } = options;
 
     if (!silent) {
@@ -517,9 +747,12 @@ export default function AdminPanel() {
         setReportsLoading(false);
       }
     }
-  }, [api]);
+  }, [api, canAccessReports]);
 
   const loadPerformance = useCallback(async () => {
+    if (!canAccessAnalytics) {
+      return;
+    }
     setPerformanceLoading(true);
     setPerformanceError('');
     try {
@@ -546,31 +779,80 @@ export default function AdminPanel() {
     } finally {
       setPerformanceLoading(false);
     }
-  }, [api]);
+  }, [api, canAccessAnalytics]);
 
-  const loadNotifications = useCallback(async ({ silent = false } = {}) => {
-    if (!silent) {
+  useEffect(() => { loadBranches(); loadRoles(); }, [loadBranches, loadRoles]);
+
+  useEffect(() => {
+    if (!currentUser || !canAccessReports) {
+      setNotifications([]);
+      setNotifLoading(false);
+      setNotifError('');
+      return undefined;
+    }
+
+    let active = true;
+    let socket;
+
+    const connectRealtimeNotifications = async () => {
       setNotifLoading(true);
       setNotifError('');
-    }
 
-    try {
-      const res = await api('/api/reports/notifications');
-      const data = await res.json().catch(() => []);
-      if (!res.ok) throw new Error(data.error || 'Failed to load notifications.');
-      setNotifications(Array.isArray(data) ? data : []);
-    } catch (err) {
-      if (!silent) {
-        setNotifError(err.message || 'Failed to load notifications.');
-      }
-    } finally {
-      if (!silent) {
+      try {
+        const idToken = await currentUser.getIdToken();
+        if (!active) return;
+
+        socket = io({
+          path: '/socket.io',
+          transports: ['websocket'],
+          auth: { token: idToken },
+        });
+
+        socket.on('connect', () => {
+          if (!active) return;
+          setNotifLoading(false);
+          setNotifError('');
+        });
+
+        socket.on('notifications:data', (payload) => {
+          if (!active) return;
+          setNotifications(Array.isArray(payload) ? payload : []);
+          setNotifLoading(false);
+          setNotifError('');
+        });
+
+        socket.on('connect_error', () => {
+          if (!active) return;
+          setNotifLoading(false);
+          setNotifError('Realtime notifications unavailable.');
+        });
+      } catch {
+        if (!active) return;
         setNotifLoading(false);
+        setNotifError('Realtime notifications unavailable.');
       }
-    }
-  }, [api]);
+    };
 
-  useEffect(() => { loadBranches(); loadRoles(); loadNotifications(); }, [loadBranches, loadRoles, loadNotifications]);
+    connectRealtimeNotifications();
+
+    return () => {
+      active = false;
+      if (socket) {
+        socket.disconnect();
+      }
+    };
+  }, [canAccessReports, currentUser]);
+
+  const visibleNavItems = useMemo(
+    () => NAV_ITEMS.filter((item) => canAccessSection(item.id)),
+    [canAccessSection]
+  );
+
+  useEffect(() => {
+    if (canAccessSection(activeSection)) return;
+    const fallbackSection = visibleNavItems[0]?.id || 'dashboard';
+    setActiveSection(fallbackSection);
+  }, [activeSection, canAccessSection, visibleNavItems]);
 
   useEffect(() => {
     if (['dashboard', 'accounts', 'users', 'analytics', 'branches'].includes(activeSection)) loadUsers();
@@ -610,26 +892,6 @@ export default function AdminPanel() {
     };
   }, [activeSection, loadReports]);
 
-  useEffect(() => {
-    const syncNotifications = () => {
-      if (document.visibilityState !== 'visible') return;
-      loadNotifications({ silent: true });
-    };
-
-    const intervalId = window.setInterval(syncNotifications, 8000);
-    const handleFocus = () => syncNotifications();
-    const handleVisibilityChange = () => syncNotifications();
-
-    window.addEventListener('focus', handleFocus);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-      window.clearInterval(intervalId);
-      window.removeEventListener('focus', handleFocus);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [loadNotifications]);
-
   const unreadNotificationsCount = useMemo(
     () => notifications.filter((item) => !item?.isRead).length,
     [notifications]
@@ -640,12 +902,8 @@ export default function AdminPanel() {
     [notifications]
   );
 
-  const handleNotificationOpen = async () => {
-    const nextOpen = !notifOpen;
-    setNotifOpen(nextOpen);
-    if (nextOpen) {
-      await loadNotifications();
-    }
+  const handleNotificationOpen = () => {
+    setNotifOpen((prev) => !prev);
   };
 
   const handleMarkNotificationRead = async (notificationId) => {
@@ -702,11 +960,6 @@ export default function AdminPanel() {
 
   const reportEnabledUsers = useMemo(
     () => reportOperators.filter((u) => u.role === 'admin' || (u.permissions || []).some((perm) => perm.includes('reports'))),
-    [reportOperators]
-  );
-
-  const announcementPublishers = useMemo(
-    () => reportOperators.filter((u) => u.role === 'admin' || (u.permissions || []).includes('create_announcements')),
     [reportOperators]
   );
 
@@ -1000,14 +1253,19 @@ export default function AdminPanel() {
           ? true
           : String(report?.category || 'general').toLowerCase() === reportTypeFilter;
 
+      const matchesStatus =
+        reportStatusFilter === 'all'
+          ? true
+          : getReportStatusKey(report?.status) === reportStatusFilter;
+
       const matchesBarangay =
         reportBarangayFilter === 'all'
           ? true
           : extractBarangayFromReport(report) === reportBarangayFilter;
 
-      return matchesType && matchesBarangay;
+      return matchesType && matchesStatus && matchesBarangay;
     });
-  }, [reports, reportTypeFilter, reportBarangayFilter]);
+  }, [reports, reportTypeFilter, reportStatusFilter, reportBarangayFilter]);
 
   // ── Handlers ────────────────────────────────────────────
   const handleCreateBranch = async (e) => {
@@ -1040,8 +1298,17 @@ export default function AdminPanel() {
     }
   };
 
-  const handleDeleteBranch = async (branch) => {
-    if (!window.confirm(`Delete "${branch.name}"? Staff assigned here will retain their current claims until re-provisioned.`)) return;
+  const handleDeleteBranch = async (branch, { skipConfirm = false } = {}) => {
+    if (!skipConfirm) {
+      openConfirmDialog({
+        title: 'Delete branch',
+        message: `Delete "${branch.name}"? Staff assigned here will retain their current claims until re-provisioned.`,
+        confirmLabel: 'Delete',
+        confirmClassName: 'ap-btn-danger',
+        onConfirm: () => handleDeleteBranch(branch, { skipConfirm: true }),
+      });
+      return;
+    }
     setBranchError('');
     try {
       const res = await api(`/api/admin/branches/${branch.id}`, { method: 'DELETE' });
@@ -1058,14 +1325,18 @@ export default function AdminPanel() {
   const toggleNewRolePerm  = (p) => setNewRolePerms((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]);
   const toggleEditRolePerm = (p) => setEditRolePerms((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]);
 
-  const handleBranchEditStart = (branch) => {
+  const handleBranchEditStart = (branch, branchAdminEmail = '') => {
     setEditingBranch(branch);
     setEditBranchName(branch.name);
     setEditBranchType(branch.type);
+    setEditBranchStaffEmail(branchAdminEmail);
     setEditBranchError('');
   };
 
-  const handleBranchEditCancel = () => setEditingBranch(null);
+  const handleBranchEditCancel = () => {
+    setEditingBranch(null);
+    setEditBranchStaffEmail('');
+  };
 
   const handleUpdateBranch = async (e) => {
     e.preventDefault();
@@ -1074,7 +1345,11 @@ export default function AdminPanel() {
     try {
       const res = await api(`/api/admin/branches/${editingBranch.id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ name: editBranchName.trim(), type: editBranchType }),
+        body: JSON.stringify({
+          name: editBranchName.trim(),
+          type: editBranchType,
+          staffEmail: editBranchStaffEmail.trim() || undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to update branch.');
@@ -1083,7 +1358,18 @@ export default function AdminPanel() {
           b.id === editingBranch.id ? { ...b, name: editBranchName.trim(), type: editBranchType } : b
         ).sort((a, b) => a.name.localeCompare(b.name))
       );
+      if (data?.staffReassignment?.email) {
+        setBranchSuccess(
+          data.staffReassignment.created
+            ? `Branch updated. New branch admin account created for ${data.staffReassignment.email}.`
+            : `Branch updated. Branch admin reassigned to ${data.staffReassignment.email}.`
+        );
+      } else {
+        setBranchSuccess('Branch updated successfully.');
+      }
+      await loadUsers();
       setEditingBranch(null);
+      setEditBranchStaffEmail('');
     } catch (err) {
       setEditBranchError(err.message);
     } finally {
@@ -1131,8 +1417,17 @@ export default function AdminPanel() {
     }
   };
 
-  const handleDeleteUser = async (user) => {
-    if (!window.confirm(`Permanently delete account for ${user.email}? This cannot be undone.`)) return;
+  const handleDeleteUser = async (user, { skipConfirm = false } = {}) => {
+    if (!skipConfirm) {
+      openConfirmDialog({
+        title: 'Delete account',
+        message: `Permanently delete account for ${user.email}? This cannot be undone.`,
+        confirmLabel: 'Delete',
+        confirmClassName: 'ap-btn-danger',
+        onConfirm: () => handleDeleteUser(user, { skipConfirm: true }),
+      });
+      return;
+    }
     setUsersError('');
     try {
       const res = await api(`/api/admin/users/${user.uid}`, { method: 'DELETE' });
@@ -1231,10 +1526,19 @@ export default function AdminPanel() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to update role.');
+      const nextRoleName = String(data?.name || editRoleName || '').trim();
+      const nextRolePerms = Array.isArray(data?.permissions) ? data.permissions : editRolePerms;
       setRoles((prev) =>
         prev.map((r) =>
-          r.id === editingRole.id ? { ...r, name: editRoleName.trim(), permissions: editRolePerms } : r
+          r.id === editingRole.id ? { ...r, name: nextRoleName, permissions: nextRolePerms } : r
         ).sort((a, b) => a.name.localeCompare(b.name))
+      );
+      setUsers((prev) =>
+        prev.map((u) => (
+          u.customRoleId === editingRole.id
+            ? { ...u, customRoleName: nextRoleName, permissions: nextRolePerms }
+            : u
+        ))
       );
       setEditingRole(null);
     } catch (err) {
@@ -1244,8 +1548,17 @@ export default function AdminPanel() {
     }
   };
 
-  const handleDeleteRole = async (role) => {
-    if (!window.confirm(`Delete role "${role.name}"? Staff with this role will retain current permissions until updated.`)) return;
+  const handleDeleteRole = async (role, { skipConfirm = false } = {}) => {
+    if (!skipConfirm) {
+      openConfirmDialog({
+        title: 'Delete role',
+        message: `Delete role "${role.name}"? Staff with this role will retain current permissions until updated.`,
+        confirmLabel: 'Delete',
+        confirmClassName: 'ap-btn-danger',
+        onConfirm: () => handleDeleteRole(role, { skipConfirm: true }),
+      });
+      return;
+    }
     setRolesError('');
     try {
       const res = await api(`/api/admin/roles/${role.id}`, { method: 'DELETE' });
@@ -1260,7 +1573,7 @@ export default function AdminPanel() {
     }
   };
 
-  const handleArchiveReport = async (report) => {
+  const handleArchiveReport = async (report, { skipConfirm = false } = {}) => {
     const reportId = String(report?.id || '').trim();
     if (!reportId) return;
 
@@ -1270,7 +1583,14 @@ export default function AdminPanel() {
     }
 
     const title = report?.title || 'this report';
-    if (!window.confirm(`Archive "${title}"?`)) {
+    if (!skipConfirm) {
+      openConfirmDialog({
+        title: 'Archive report',
+        message: `Archive "${title}"?`,
+        confirmLabel: 'Archive',
+        confirmClassName: 'ap-btn-danger',
+        onConfirm: () => handleArchiveReport(report, { skipConfirm: true }),
+      });
       return;
     }
 
@@ -1298,12 +1618,19 @@ export default function AdminPanel() {
     }
   };
 
-  const handleDeleteReport = async (report) => {
+  const handleDeleteReport = async (report, { skipConfirm = false } = {}) => {
     const reportId = String(report?.id || '').trim();
     if (!reportId) return;
 
     const title = report?.title || 'this report';
-    if (!window.confirm(`Permanently delete "${title}"? This cannot be undone.`)) {
+    if (!skipConfirm) {
+      openConfirmDialog({
+        title: 'Delete report',
+        message: `Permanently delete "${title}"? This cannot be undone.`,
+        confirmLabel: 'Delete',
+        confirmClassName: 'ap-btn-danger',
+        onConfirm: () => handleDeleteReport(report, { skipConfirm: true }),
+      });
       return;
     }
 
@@ -1367,6 +1694,11 @@ export default function AdminPanel() {
     [usersByUid]
   );
 
+  const recentReportActivities = useMemo(
+    () => buildRecentReportActivities(reports),
+    [reports]
+  );
+
   const initials    = (currentUser?.displayName || currentUser?.email || 'A')[0].toUpperCase();
   const displayName = currentUser?.displayName || currentUser?.email?.split('@')[0] || 'Admin';
   const displayRole = userClaims?.role === 'admin' ? 'Chief Administrator' : (userClaims?.role || 'Staff');
@@ -1386,7 +1718,7 @@ export default function AdminPanel() {
       <aside className={`ap-sidebar${sidebarOpen ? ' ap-sidebar-mobile-open' : ''}`}>
         <div className="ap-sidebar-brand">
           <div className="ap-brand-icon">
-            {ICONS.location_city}
+            <OneGapoLogo className="ap-brand-logo" decorative />
           </div>
           <div className="ap-brand-copy">
             <div className="ap-brand-name">OneGapo</div>
@@ -1404,7 +1736,7 @@ export default function AdminPanel() {
         </div>
 
         <nav className="ap-nav">
-          {NAV_ITEMS.map((item) => (
+          {visibleNavItems.map((item) => (
             <button
               key={item.id}
               className={`ap-nav-item${activeSection === item.id ? ' ap-nav-item-active' : ''}`}
@@ -1529,12 +1861,14 @@ export default function AdminPanel() {
                   <h2 className="ap-section-title">City Overview</h2>
                   <p className="ap-section-sub">Real-time status of civic management and infrastructure</p>
                 </div>
-                <div className="ap-section-actions">
-                  <button className="ap-btn-outline ap-btn-icon-left" onClick={() => setActiveSection('accounts')}>
-                    {ICONS.accounts}
-                    Manage Staff
-                  </button>
-                </div>
+                {canAccessAccounts ? (
+                  <div className="ap-section-actions">
+                    <button className="ap-btn-outline ap-btn-icon-left" onClick={() => setActiveSection('accounts')}>
+                      {ICONS.accounts}
+                      Manage Staff
+                    </button>
+                  </div>
+                ) : null}
               </div>
 
               {/* Stats */}
@@ -1589,7 +1923,8 @@ export default function AdminPanel() {
               </div>
 
               {/* Incident map */}
-              <div className="ap-card">
+              {canAccessReports ? (
+                <div className="ap-card">
                 <div className="ap-card-header">
                   <div>
                     <h3 className="ap-card-title">Incident Map</h3>
@@ -1619,84 +1954,88 @@ export default function AdminPanel() {
                   </div>
                 </div>
               </div>
+              ) : null}
 
               {/* Recent activity */}
               <div className="ap-card">
                 <div className="ap-card-header">
                   <h3 className="ap-card-title">Recent Activity</h3>
-                  <button className="ap-btn-outline ap-btn-sm" onClick={() => setActiveSection('users')}>
-                    View all
-                  </button>
+                  {(canAccessReports || canAccessUsers) ? (
+                    <button
+                      className="ap-btn-outline ap-btn-sm"
+                      onClick={() => setActiveSection(canAccessReports ? 'reports' : 'users')}
+                    >
+                      View all
+                    </button>
+                  ) : null}
                 </div>
-                {usersLoading ? (
-                  <p className="ap-loading">Loading…</p>
-                ) : users.length === 0 ? (
-                  <p className="ap-empty">No users yet.</p>
+                {canAccessReports ? (
+                  reportsLoading ? (
+                    <p className="ap-loading">Loading…</p>
+                  ) : recentReportActivities.length === 0 ? (
+                    <p className="ap-empty">No report activity yet.</p>
+                  ) : (
+                    <div className="ap-activity-list" role="list" aria-label="Recent report activity">
+                      {recentReportActivities.map((activity) => (
+                        <article key={activity.id} className="ap-activity-item" role="listitem">
+                          <p className="ap-activity-report">{activity.reportName}</p>
+                          <div className="ap-activity-top">
+                            <p className="ap-activity-title">{activity.title}</p>
+                          </div>
+                          {/* <p className="ap-activity-detail">{activity.detail}</p> */}
+                          <div className="ap-activity-foot">
+                            <span>{activity.jurisdiction}</span>
+                            <span>{formatActivityTimestamp(activity.timestamp)}</span>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  )
                 ) : (
-                  <div className="ap-table-wrap">
-                    <table className="ap-table">
-                      <thead>
-                        <tr>
-                          <th>User</th>
-                          <th>Location / Branch</th>
-                          <th>Role</th>
-                          <th>Entity Type</th>
-                          <th>Email</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {users.slice(0, 6).map((u) => (
-                          <tr key={u.uid}>
-                            <td>
-                              <div className="ap-table-user">
-                                <div className="ap-table-user-icon">
-                                  {(u.fullName || u.email || '?')[0].toUpperCase()}
-                                </div>
-                                <span className="ap-table-user-name">{u.fullName || u.email}</span>
-                              </div>
-                            </td>
-                            <td>{u.branchName || <span className="ap-muted">—</span>}</td>
-                            <td><span className={`badge badge-${u.role}`}>{u.role}</span></td>
-                            <td>
-                              {u.entityType
-                                ? <span className={`badge badge-entity-${u.entityType}`}>{u.entityType}</span>
-                                : <span className="ap-muted">—</span>}
-                            </td>
-                            <td className="ap-muted">{u.email}</td>
+                  usersLoading ? (
+                    <p className="ap-loading">Loading…</p>
+                  ) : users.length === 0 ? (
+                    <p className="ap-empty">No users yet.</p>
+                  ) : (
+                    <div className="ap-table-wrap">
+                      <table className="ap-table">
+                        <thead>
+                          <tr>
+                            <th>User</th>
+                            <th>Location / Branch</th>
+                            <th>Role</th>
+                            <th>Entity Type</th>
+                            <th>Email</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                        </thead>
+                        <tbody>
+                          {users.slice(0, 6).map((u) => (
+                            <tr key={u.uid}>
+                              <td>
+                                <div className="ap-table-user">
+                                  <div className="ap-table-user-icon">
+                                    {(u.fullName || u.email || '?')[0].toUpperCase()}
+                                  </div>
+                                  <span className="ap-table-user-name">{u.fullName || u.email}</span>
+                                </div>
+                              </td>
+                              <td>{u.branchName || <span className="ap-muted">—</span>}</td>
+                              <td><span className={`badge badge-${u.role}`}>{u.role}</span></td>
+                              <td>
+                                {u.entityType
+                                  ? <span className={`badge badge-entity-${u.entityType}`}>{u.entityType}</span>
+                                  : <span className="ap-muted">—</span>}
+                              </td>
+                              <td className="ap-muted">{u.email}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )
                 )}
               </div>
 
-              {/* Quick actions */}
-              <div className="ap-card">
-                <h3 className="ap-card-title">Quick Actions</h3>
-                <div className="ap-quick-grid">
-                  <button className="ap-quick-card" onClick={() => setActiveSection('branches')}>
-                    <span className="ap-quick-icon">{ICONS.branches}</span>
-                    <p className="ap-quick-title">Manage Branches</p>
-                    <p className="ap-quick-body">{stats.totalBranches} location{stats.totalBranches !== 1 ? 's' : ''} registered</p>
-                  </button>
-                  <button className="ap-quick-card" onClick={() => setActiveSection('accounts')}>
-                    <span className="ap-quick-icon">{ICONS.accounts}</span>
-                    <p className="ap-quick-title">Create Staff Account</p>
-                    <p className="ap-quick-body">Provision a new staff or admin account</p>
-                  </button>
-                  <button className="ap-quick-card" onClick={() => setActiveSection('users')}>
-                    <span className="ap-quick-icon">{ICONS.users}</span>
-                    <p className="ap-quick-title">View All Users</p>
-                    <p className="ap-quick-body">{stats.totalUsers} registered user{stats.totalUsers !== 1 ? 's' : ''}</p>
-                  </button>
-                  <button className="ap-quick-card" onClick={() => setActiveSection('reports')}>
-                    <span className="ap-quick-icon">{ICONS.report}</span>
-                    <p className="ap-quick-title">Reports Inbox</p>
-                    <p className="ap-quick-body">Review and act on incoming citizen reports</p>
-                  </button>
-                </div>
-              </div>
             </div>
           )}
 
@@ -1762,6 +2101,19 @@ export default function AdminPanel() {
                       >
                         <option value="all">All types</option>
                         {reportTypeOptions.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label htmlFor="report-status-filter" className="form-label">Status</label>
+                      <select
+                        id="report-status-filter"
+                        className="form-select"
+                        value={reportStatusFilter}
+                        onChange={(event) => setReportStatusFilter(event.target.value)}
+                      >
+                        {REPORT_STATUS_FILTER_OPTIONS.map((option) => (
                           <option key={option.value} value={option.value}>{option.label}</option>
                         ))}
                       </select>
@@ -1964,6 +2316,7 @@ export default function AdminPanel() {
                   </div>
                 </AppModal>
               ) : null}
+
             </div>
           )}
 
@@ -2068,7 +2421,7 @@ export default function AdminPanel() {
                               <td>{headStaff ? (headStaff.fullName || headStaff.email) : <span className="ap-muted">None</span>}</td>
                               <td className="ap-table-actions">
                                 <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                  <button onClick={() => handleBranchEditStart(b)} className="ap-btn-outline ap-btn-sm">Edit</button>
+                                  <button onClick={() => handleBranchEditStart(b, headStaff?.email || '')} className="ap-btn-outline ap-btn-sm">Edit</button>
                                   <button onClick={() => handleDeleteBranch(b)} className="ap-btn-danger ap-btn-sm">Delete</button>
                                 </div>
                               </td>
@@ -2111,6 +2464,19 @@ export default function AdminPanel() {
                           <option value="private">Private</option>
                         </select>
                       </div>
+                    </div>
+                    <div>
+                      <label htmlFor="edit-branch-staff-email" className="form-label">Branch admin email (optional)</label>
+                      <input
+                        id="edit-branch-staff-email"
+                        type="email"
+                        value={editBranchStaffEmail}
+                        onChange={(e) => setEditBranchStaffEmail(e.target.value)}
+                        className="form-input"
+                        placeholder="staff@onegapo.gov.ph"
+                        disabled={editBranchLoading}
+                      />
+                      <p className="ap-field-hint">Set an email to reassign this branch admin. If no account exists, one will be created.</p>
                     </div>
                     <div style={{ display: 'flex', gap: '0.75rem' }}>
                       <button
@@ -2844,6 +3210,36 @@ export default function AdminPanel() {
               </div>
             </div>
           )}
+
+          {confirmDialog ? (
+            <AppModal
+              title={confirmDialog.title || 'Confirm action'}
+              titleId="admin-confirm-dialog-title"
+              onClose={closeConfirmDialog}
+            >
+              <div className="ap-form">
+                <p>{confirmDialog.message}</p>
+                <div className="ap-modal-button-group">
+                  <button
+                    type="button"
+                    className={confirmDialog.confirmClassName || 'ap-btn-primary'}
+                    onClick={handleConfirmDialogSubmit}
+                    disabled={confirmDialogLoading}
+                  >
+                    {confirmDialogLoading ? 'Processing...' : confirmDialog.confirmLabel || 'Confirm'}
+                  </button>
+                  <button
+                    type="button"
+                    className="ap-btn-outline"
+                    onClick={closeConfirmDialog}
+                    disabled={confirmDialogLoading}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </AppModal>
+          ) : null}
 
         </div>{/* end ap-content */}
 

@@ -713,6 +713,17 @@ function getReportMttrMinutes(report) {
   return (resolvedAtMs - createdAtMs) / 60000;
 }
 
+function isResourceExhaustedError(err) {
+  const code = String(err?.code || '').toLowerCase();
+  const message = String(err?.message || err?.details || '').toLowerCase();
+  return (
+    code === '8' ||
+    code === 'resource-exhausted' ||
+    message.includes('resource_exhausted') ||
+    message.includes('quota exceeded')
+  );
+}
+
 function getReportBranchCoverageName(report) {
   return String(
     report?.forwarding?.to?.branchName ||
@@ -1804,6 +1815,24 @@ async function markReportDuplicate(req, res, next) {
     const report = normalizeReportRecord(safeDocData(reportSnap), reportSnap.id);
     const motherReport = normalizeReportRecord(safeDocData(motherSnap), motherSnap.id);
 
+    const reportChildrenSnap = await db
+      .collection('reports')
+      .where('duplicateOfReportId', '==', report.id)
+      .limit(1)
+      .get();
+
+    if (!reportChildrenSnap.empty) {
+      return res.status(400).json({
+        error: 'This report is already linked as a mother report and cannot be tagged as duplicate.',
+      });
+    }
+
+    if (String(motherReport?.duplicateOfReportId || '').trim()) {
+      return res.status(400).json({
+        error: 'The selected mother report is already a duplicate and cannot be used as a mother report.',
+      });
+    }
+
     if (role === 'staff') {
       if (!canStaffAccessReport(report, req.user)) {
         return res.status(403).json({ error: 'You can only update reports inside your assigned branch/barangay coverage.' });
@@ -1925,33 +1954,50 @@ async function listNotifications(req, res, next) {
     }
 
     const db = admin.firestore();
-    let docs = [];
+    let notifications = [];
 
     try {
       const snap = await db
         .collection('notifications')
         .where('recipientUid', '==', requesterUid)
-        .limit(100)
+        .orderBy('createdAt', 'desc')
+        .limit(50)
         .get();
-      docs = snap.docs;
-    } catch (queryErr) {
-      // Avoid hard failure when field indexes/legacy docs break filtered queries.
-      console.warn('[listNotifications] Primary query failed, using fallback scan:', queryErr.message || queryErr);
-      const fallbackSnap = await db.collection('notifications').limit(300).get();
-      docs = fallbackSnap.docs.filter((doc) => {
-        const data = safeDocData(doc);
-        return data.recipientUid === requesterUid;
-      });
-    }
 
-    const notifications = docs
-      .map(toNotificationDto)
-      .sort((a, b) => {
-        const aMs = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const bMs = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-        return bMs - aMs;
-      })
-      .slice(0, 50);
+      notifications = snap.docs.map(toNotificationDto);
+    } catch (orderedQueryErr) {
+      if (isResourceExhaustedError(orderedQueryErr)) {
+        return res.status(429).json({ error: 'Notifications are temporarily rate-limited. Please retry shortly.' });
+      }
+
+      // Use a relaxed query path when the ordered index is not ready yet.
+      console.warn('[listNotifications] Ordered query failed, using fallback path:', orderedQueryErr.message || orderedQueryErr);
+
+      try {
+        const fallbackFilteredSnap = await db
+          .collection('notifications')
+          .where('recipientUid', '==', requesterUid)
+          .limit(120)
+          .get();
+
+        notifications = fallbackFilteredSnap.docs
+          .map(toNotificationDto)
+          .sort((a, b) => {
+            const aMs = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const bMs = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+            return bMs - aMs;
+          })
+          .slice(0, 50);
+      } catch (fallbackFilteredErr) {
+        if (isResourceExhaustedError(fallbackFilteredErr)) {
+          return res.status(429).json({ error: 'Notifications are temporarily rate-limited. Please retry shortly.' });
+        }
+
+        // Avoid broad collection scans to prevent read amplification under constrained quotas.
+        console.warn('[listNotifications] Filtered fallback failed, returning empty list:', fallbackFilteredErr.message || fallbackFilteredErr);
+        notifications = [];
+      }
+    }
 
     return res.json(notifications);
   } catch (err) {

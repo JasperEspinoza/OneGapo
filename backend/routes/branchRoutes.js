@@ -1,5 +1,5 @@
 const { Router } = require('express');
-const { verifyToken, requireAdmin } = require('../middleware/authMiddleware');
+const { verifyToken, requireAnyPermission, requirePermission } = require('../middleware/authMiddleware');
 const {
 	createBranch,
 	listBranches,
@@ -10,13 +10,12 @@ const {
 
 const router = Router();
 
-// All branch routes require a valid admin token
-router.use(verifyToken, requireAdmin);
+router.use(verifyToken);
 
-router.get('/',    listBranches);
-router.post('/',   createBranch);
-router.post('/provision-defaults', provisionDefaultBranches);
-router.patch('/:id', updateBranch);
-router.delete('/:id', deleteBranch);
+router.get('/', requireAnyPermission(['add_branches', 'add_staffs']), listBranches);
+router.post('/', requirePermission('add_branches'), createBranch);
+router.post('/provision-defaults', requirePermission('add_branches'), provisionDefaultBranches);
+router.patch('/:id', requirePermission('add_branches'), updateBranch);
+router.delete('/:id', requirePermission('add_branches'), deleteBranch);
 
 module.exports = router;

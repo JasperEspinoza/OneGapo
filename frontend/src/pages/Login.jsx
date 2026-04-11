@@ -4,6 +4,17 @@ import { signInWithEmailAndPassword } from 'firebase/auth';
 import { useNavigate, Navigate, Link } from 'react-router-dom';
 import { auth } from '../config/firebase';
 import { useAuth } from '../context/AuthContext';
+import OneGapoLogo from '../components/OneGapoLogo';
+
+const PRIMARY_ADMIN_EMAIL = 'onegapo2026@gmail.com';
+
+function hasAdminWorkspaceAccess(role, permissions, email = '') {
+  return (
+    role === 'admin' ||
+    String(email || '').toLowerCase() === PRIMARY_ADMIN_EMAIL ||
+    permissions.some((permission) => ['add_branches', 'add_roles', 'add_staffs'].includes(permission))
+  );
+}
 
 function getErrorMessage(code) {
   switch (code) {
@@ -30,8 +41,15 @@ export default function Login() {
   const [error,    setError]    = useState('');
   const [loading,  setLoading]  = useState(false);
 
+  const currentPermissions = Array.isArray(userClaims?.permissions) ? userClaims.permissions : [];
+  const currentHasAdminWorkspace = hasAdminWorkspaceAccess(
+    userClaims?.role,
+    currentPermissions,
+    currentUser?.email
+  );
+
   if (currentUser) {
-    if (userClaims?.role === 'admin') return <Navigate to="/admin" replace />;
+    if (currentHasAdminWorkspace) return <Navigate to="/admin" replace />;
     if (userClaims?.role === 'staff') return <Navigate to="/staff" replace />;
     return <Navigate to="/" replace />;
   }
@@ -45,7 +63,10 @@ export default function Login() {
       const credential  = await signInWithEmailAndPassword(auth, email.trim(), password);
       const tokenResult = await credential.user.getIdTokenResult();
       const role        = tokenResult.claims.role;
-      if (role === 'admin')  navigate('/admin', { replace: true });
+      const permissions = Array.isArray(tokenResult.claims.permissions) ? tokenResult.claims.permissions : [];
+      const canAccessAdminWorkspace = hasAdminWorkspaceAccess(role, permissions, credential.user.email);
+
+      if (canAccessAdminWorkspace) navigate('/admin', { replace: true });
       else if (role === 'staff') navigate('/staff', { replace: true });
       else navigate('/', { replace: true });
     } catch (err) {
@@ -59,7 +80,7 @@ export default function Login() {
     <div className="auth-page">
       <div className="auth-card">
         <div className="auth-header">
-          <span className="auth-logo">G</span>
+          <OneGapoLogo className="auth-logo" alt="OneGapo" />
           <h1 className="auth-title">Welcome back</h1>
           <p className="auth-subtitle">Sign in to OneGapo — Citizen Reporting Platform</p>
         </div>

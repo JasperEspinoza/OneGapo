@@ -146,6 +146,79 @@
   justify-content: flex-end;
 }
 
+.ss-duplicate-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 2rem;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  background: var(--color-surface-muted);
+  max-width: 100%;
+}
+
+.ss-duplicate-status-label {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.ss-duplicate-status-value {
+  font-size: 0.82rem;
+  color: var(--color-text);
+  font-weight: 700;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ss-duplicate-report-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.ss-duplicate-report-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.7rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  background: var(--color-surface);
+}
+
+.ss-duplicate-report-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.ss-duplicate-report-copy strong {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--color-text);
+  line-height: 1.35;
+}
+
+.ss-duplicate-report-copy span {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  line-height: 1.35;
+}
+
+.ss-duplicate-report-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
 .ss-status {
   border-radius: 0.4rem;
   font-size: 0.72rem;
@@ -546,6 +619,16 @@
   .ss-controls-inline {
     width: 100%;
     justify-content: flex-start;
+
+  .ss-duplicate-report-item {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .ss-duplicate-report-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
   }
 
   .ss-status-filter,
