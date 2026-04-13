@@ -42,8 +42,6 @@ const NAV_ITEMS = [
   { id: 'team', label: 'Branch Staff', icon: 'groups' },
 ];
 
-const REPORTS_SYNC_INTERVAL_MS = 10000;
-
 function formatDate(value) {
   if (!value) return 'Unknown date';
   const dt = new Date(value);
@@ -402,9 +400,11 @@ export default function StaffPanel() {
         const idToken = await currentUser.getIdToken();
         if (!active) return;
 
-        socket = io({
+        const socketUrl = import.meta.env.VITE_SOCKET_URL || undefined;
+
+        socket = io(socketUrl, {
           path: '/socket.io',
-          transports: ['websocket'],
+          transports: ['websocket', 'polling'],
           auth: { token: idToken },
         });
 
@@ -419,6 +419,12 @@ export default function StaffPanel() {
           setNotifications(Array.isArray(payload) ? payload : []);
           setNotifLoading(false);
           setNotifError('');
+        });
+
+        socket.on('reports:data', (payload) => {
+          if (!active) return;
+          setReports(Array.isArray(payload) ? payload : []);
+          setReportsError('');
         });
 
         socket.on('connect_error', () => {
@@ -467,29 +473,6 @@ export default function StaffPanel() {
       loadReports();
     }
   }, [activeSection, loadReports]);
-
-  useEffect(() => {
-    if (!canViewReports) return undefined;
-    if (activeSection !== 'overview' && activeSection !== 'reports') return undefined;
-
-    const syncReports = () => {
-      if (document.visibilityState !== 'visible') return;
-      loadReports({ silent: true });
-    };
-
-    const intervalId = window.setInterval(syncReports, REPORTS_SYNC_INTERVAL_MS);
-    const handleFocus = () => syncReports();
-    const handleVisibilityChange = () => syncReports();
-
-    window.addEventListener('focus', handleFocus);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-      window.clearInterval(intervalId);
-      window.removeEventListener('focus', handleFocus);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [activeSection, canViewReports, loadReports]);
 
   const handleCreateBranchStaff = async (e) => {
     e.preventDefault();
@@ -1198,7 +1181,7 @@ export default function StaffPanel() {
 
       <aside className={`ap-sidebar${sidebarOpen ? ' ap-sidebar-mobile-open' : ''}`}>
         <div className="ap-sidebar-brand">
-          <div className="ap-brand-icon"><OneGapoLogo className="ap-brand-logo" decorative /></div>
+          <div className="ap-brand-icon"><OneGapoLogo className="ap-brand-logo onegapo-logo-force-dark" decorative /></div>
           <div className="ap-brand-copy">
             <div className="ap-brand-name">OneGapo</div>
             <div className="ap-brand-sub">Branch Staff Console</div>

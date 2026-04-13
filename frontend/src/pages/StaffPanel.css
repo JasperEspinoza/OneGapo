@@ -502,7 +502,7 @@
 }
 
 .ss-emergency-alert-icon {
-  font-size: 1.1rem;
+  font-size: 1.125rem;
   color: var(--color-danger-text);
   width: 1.9rem;
   height: 1.9rem;
@@ -602,7 +602,7 @@
 }
 
 .ss-emergency-alert-dismiss .material-symbols-outlined {
-  font-size: 1.05rem;
+  font-size: 1.1rem;
 }
 
 @keyframes ss-emergency-pulse {

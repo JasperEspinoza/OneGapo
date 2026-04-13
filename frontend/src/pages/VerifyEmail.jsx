@@ -142,7 +142,7 @@ export default function VerifyEmail() {
     <div className="auth-page">
       <div className="auth-card">
         <div className="auth-header">
-          <div className="verify-email-icon">📧</div>
+          <span className="verify-email-icon material-symbols-outlined" aria-hidden="true">mark_email_read</span>
           <h1 className="auth-title">Verify your email</h1>
           {token ? (
             <p className="auth-subtitle">

@@ -290,14 +290,14 @@ function HeatmapLayer({ markers, enabled }) {
 
     const heatLayers = categoryEntries.map((entry) => {
       return L.heatLayer(entry.points, {
-        radius: 24,
-        blur: 16,
+        radius: 22,
+        blur: 13,
         maxZoom: 18,
-        minOpacity: 0.2,
+        minOpacity: 0.34,
         gradient: {
-          0.15: hexToRgba(entry.color, 0.08),
-          0.45: hexToRgba(entry.color, 0.28),
-          0.75: hexToRgba(entry.color, 0.58),
+          0.12: hexToRgba(entry.color, 0.2),
+          0.38: hexToRgba(entry.color, 0.45),
+          0.68: hexToRgba(entry.color, 0.72),
           1.0: entry.color,
         },
       }).addTo(map);
@@ -334,7 +334,7 @@ function MapCanvas({ selectedPosition, safeMarkers, autoFitMarkers, tileSource, 
       <RecenterOnMarkers markers={initialMarkers} disabled={Boolean(selectedPosition)} freezeAfterFirstFit={freezeMarkerAutoFit} />
       <InvalidateMapSize expandKey={expandKey} />
       <HeatmapLayer markers={safeMarkers} enabled={showHeatmap} />
-      {safeMarkers.map((marker) => (
+      {!showHeatmap && safeMarkers.map((marker) => (
         <CircleMarker
           key={marker.id}
           center={marker.position}
@@ -1014,7 +1014,17 @@ export default function ReportLocationMap({
 
           <div className="report-map-modal-panel">
             <div className="report-map-modal-header">
-              <p className="report-map-modal-title">Map view</p>
+              <div className="report-map-modal-header-row">
+                <p className="report-map-modal-title">Map view</p>
+                <button
+                  type="button"
+                  className="btn-outline report-map-expand-btn report-map-modal-close"
+                  onClick={() => setShowFullscreenMap(false)}
+                  aria-label="Close full screen map"
+                >
+                  X
+                </button>
+              </div>
               <div className="report-map-modal-controls">
                 <div className="report-map-modal-filters">
                   {enableCategoryFilter ? (
@@ -1060,14 +1070,6 @@ export default function ReportLocationMap({
                       Heatmap: {heatmapEnabled ? 'On' : 'Off'}
                     </button>
                   ) : null}
-                  <button
-                    type="button"
-                    className="btn-outline report-map-expand-btn"
-                    onClick={() => setShowFullscreenMap(false)}
-                    aria-label="Close full screen map"
-                  >
-                    X
-                  </button>
                 </div>
               </div>
             </div>

@@ -1,11 +1,13 @@
 import './ResidentHub.css';
+import './Profile.css';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { io } from 'socket.io-client';
 import { useAuth } from '../context/AuthContext';
-import { useSettingsModal } from '../context/SettingsModalContext';
 import ReportLocationMap from '../components/ReportLocationMap';
 import AppModal from '../components/AppModal';
 import OneGapoLogo from '../components/OneGapoLogo';
+import SettingsContent from '../components/SettingsContent';
 
 const REPORT_CATEGORIES = [
   { value: 'infrastructure', label: 'Infrastructure' },
@@ -23,8 +25,6 @@ const INITIAL_FORM = {
   longitude: '',
   address: '',
 };
-
-const RESIDENT_REPORTS_SYNC_INTERVAL_MS = 8000;
 
 function formatReportDate(value) {
   if (!value) return 'Just now';
@@ -184,9 +184,44 @@ function buildResidentTicketUpdates(report) {
     .sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
 }
 
+function buildResidentNotificationEvents(reports = []) {
+  const events = [];
+
+  reports.forEach((report) => {
+    const reportId = String(report?.id || '').trim();
+    if (!reportId) return;
+
+    const reportTitle = String(report?.title || '').trim() || 'Untitled report';
+    const auditTrail = Array.isArray(report?.auditTrail) ? report.auditTrail : [];
+
+    auditTrail.forEach((entry, index) => {
+      const toStatus = String(entry?.toStatus || '').trim().toLowerCase();
+      if (!toStatus) return;
+
+      const changedAt = entry?.changedAt || report?.updatedAt || report?.createdAt || '';
+      if (!changedAt) return;
+
+      const fromStatus = String(entry?.fromStatus || '').trim().toLowerCase() || 'submitted';
+
+      events.push({
+        id: `${reportId}-${toStatus}-${changedAt}-${index}`,
+        reportId,
+        reportTitle,
+        fromStatus,
+        toStatus,
+        changedAt,
+      });
+    });
+  });
+
+  return events
+    .slice()
+    .sort((a, b) => new Date(b.changedAt || 0) - new Date(a.changedAt || 0))
+    .slice(0, 30);
+}
+
 export default function ResidentHub() {
   const { currentUser, logout } = useAuth();
-  const { openSettings } = useSettingsModal();
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState('home');
@@ -202,18 +237,21 @@ export default function ResidentHub() {
   const [reportsLoading, setReportsLoading] = useState(false);
   const [reportsError, setReportsError] = useState('');
   const [residentAlerts, setResidentAlerts] = useState([]);
-  const [residentToasts, setResidentToasts] = useState([]);
-  const [notifOpen, setNotifOpen] = useState(false);
 
   const [installPrompt, setInstallPrompt] = useState(null);
   const [signingOut, setSigningOut] = useState(false);
   const [activeApprovalReport, setActiveApprovalReport] = useState(null);
   const [activeTicketReport, setActiveTicketReport] = useState(null);
+  const [cameraModalOpen, setCameraModalOpen] = useState(false);
+  const [cameraPermissionDenied, setCameraPermissionDenied] = useState(false);
+  const [cameraError, setCameraError] = useState('');
 
   const composeSectionRef = useRef(null);
-  const notifWrapRef = useRef(null);
-  const previousReportStatusesRef = useRef(new Map());
-  const reportsStatusPrimedRef = useRef(false);
+  const cameraCaptureInputRef = useRef(null);
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const cameraStreamRef = useRef(null);
+  const dismissedAlertIdsRef = useRef(new Set());
 
   const unreadAlertCount = useMemo(
     () => residentAlerts.filter((alert) => !alert.read).length,
@@ -231,6 +269,22 @@ export default function ResidentHub() {
     });
   }, [currentUser]);
 
+  const applyReportsSnapshot = useCallback((incomingReports) => {
+    const nextReports = Array.isArray(incomingReports) ? incomingReports : [];
+    const nextAlerts = buildResidentNotificationEvents(nextReports)
+      .filter((alert) => !dismissedAlertIdsRef.current.has(alert.id));
+
+    setMyReports(nextReports);
+
+    setResidentAlerts((prev) => {
+      const readById = new Map(prev.map((alert) => [alert.id, Boolean(alert.read)]));
+      return nextAlerts.map((alert) => ({
+        ...alert,
+        read: readById.get(alert.id) === true,
+      }));
+    });
+  }, []);
+
   const loadMyReports = useCallback(async ({ silent = false } = {}) => {
     if (!silent) {
       setReportsLoading(true);
@@ -241,67 +295,7 @@ export default function ResidentHub() {
       const response = await api('/api/reports/me');
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to load reports.');
-
-      const nextReports = Array.isArray(data) ? data : [];
-      const nextStatuses = new Map();
-      const nextAlerts = [];
-
-      nextReports.forEach((report) => {
-        const reportId = String(report?.id || '').trim();
-        if (!reportId) return;
-
-        const status = String(report?.status || 'submitted').trim().toLowerCase();
-        nextStatuses.set(reportId, status);
-
-        if (!reportsStatusPrimedRef.current) return;
-
-        const previousStatus = previousReportStatusesRef.current.get(reportId);
-        if (!previousStatus || previousStatus === status) return;
-
-        const auditTrail = Array.isArray(report?.auditTrail) ? report.auditTrail : [];
-        const matchedEntry = auditTrail
-          .slice()
-          .sort((a, b) => new Date(b?.changedAt || 0) - new Date(a?.changedAt || 0))
-          .find((entry) => String(entry?.toStatus || '').trim().toLowerCase() === status);
-
-        const changedAt =
-          matchedEntry?.changedAt ||
-          report?.updatedAt ||
-          new Date().toISOString();
-
-        nextAlerts.push({
-          id: `${reportId}-${status}-${changedAt}`,
-          reportId,
-          reportTitle: report?.title || 'Untitled report',
-          fromStatus: previousStatus,
-          toStatus: status,
-          changedAt,
-        });
-      });
-
-      setMyReports(nextReports);
-
-      if (nextAlerts.length > 0) {
-        const alertsWithState = nextAlerts.map((alert) => ({
-          ...alert,
-          read: notifOpen,
-        }));
-
-        setResidentAlerts((prev) => {
-          const existingIds = new Set(prev.map((alert) => alert.id));
-          const uniqueIncoming = alertsWithState.filter((alert) => !existingIds.has(alert.id));
-          return [...uniqueIncoming, ...prev].slice(0, 30);
-        });
-
-        setResidentToasts((prev) => {
-          const existingIds = new Set(prev.map((toast) => toast.id));
-          const uniqueIncoming = alertsWithState.filter((alert) => !existingIds.has(alert.id));
-          return [...uniqueIncoming, ...prev].slice(0, 4);
-        });
-      }
-
-      previousReportStatusesRef.current = nextStatuses;
-      reportsStatusPrimedRef.current = true;
+      applyReportsSnapshot(Array.isArray(data) ? data : []);
     } catch (err) {
       if (!silent) {
         setReportsError(err.message || 'Unable to load reports.');
@@ -311,33 +305,60 @@ export default function ResidentHub() {
         setReportsLoading(false);
       }
     }
-  }, [api]);
+  }, [api, applyReportsSnapshot]);
 
   useEffect(() => {
     loadMyReports();
   }, [loadMyReports]);
 
   useEffect(() => {
-    if (activeTab !== 'home' && activeTab !== 'map') return undefined;
+    if (!currentUser) {
+      return undefined;
+    }
 
-    const syncReports = () => {
-      if (document.visibilityState !== 'visible') return;
-      loadMyReports({ silent: true });
+    let active = true;
+    let socket;
+
+    const connectRealtimeReports = async () => {
+      try {
+        const idToken = await currentUser.getIdToken();
+        if (!active) return;
+
+        const socketUrl = import.meta.env.VITE_SOCKET_URL || undefined;
+
+        socket = io(socketUrl, {
+          path: '/socket.io',
+          transports: ['websocket', 'polling'],
+          auth: { token: idToken },
+        });
+
+        socket.on('reports:data', (payload) => {
+          if (!active) return;
+          applyReportsSnapshot(Array.isArray(payload) ? payload : []);
+          setReportsError('');
+          setReportsLoading(false);
+        });
+
+        socket.on('connect_error', () => {
+          if (!active) return;
+          // Fall back to HTTP fetch when socket connection is unavailable.
+          loadMyReports({ silent: true });
+        });
+      } catch {
+        if (!active) return;
+        loadMyReports({ silent: true });
+      }
     };
 
-    const intervalId = window.setInterval(syncReports, RESIDENT_REPORTS_SYNC_INTERVAL_MS);
-    const handleFocus = () => syncReports();
-    const handleVisibilityChange = () => syncReports();
-
-    window.addEventListener('focus', handleFocus);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
+    connectRealtimeReports();
 
     return () => {
-      window.clearInterval(intervalId);
-      window.removeEventListener('focus', handleFocus);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      active = false;
+      if (socket) {
+        socket.disconnect();
+      }
     };
-  }, [activeTab, loadMyReports]);
+  }, [applyReportsSnapshot, currentUser, loadMyReports]);
 
   useEffect(() => {
     const handleInstallPrompt = (event) => {
@@ -350,32 +371,9 @@ export default function ResidentHub() {
   }, []);
 
   useEffect(() => {
-    if (!notifOpen) return undefined;
-
-    const handlePointerDown = (event) => {
-      if (!notifWrapRef.current?.contains(event.target)) {
-        setNotifOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handlePointerDown);
-    return () => document.removeEventListener('mousedown', handlePointerDown);
-  }, [notifOpen]);
-
-  useEffect(() => {
-    if (!notifOpen) return;
+    if (activeTab !== 'notifications') return;
     setResidentAlerts((prev) => prev.map((alert) => ({ ...alert, read: true })));
-  }, [notifOpen]);
-
-  useEffect(() => {
-    if (residentToasts.length === 0) return undefined;
-
-    const timeoutId = window.setTimeout(() => {
-      setResidentToasts((prev) => prev.slice(0, -1));
-    }, 5500);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [residentToasts]);
+  }, [activeTab]);
 
   const selectedLat = useMemo(() => {
     const value = Number(form.latitude);
@@ -472,9 +470,117 @@ export default function ResidentHub() {
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleAttachmentChange = (event) => {
+  const handleAttachmentChange = (event, { append = false } = {}) => {
     const files = Array.from(event.target.files || []);
-    setAttachments(files.slice(0, 6));
+    if (!files.length) return;
+
+    setAttachments((prev) => {
+      const base = append ? prev : [];
+      const merged = [...base, ...files];
+      const unique = [];
+      const seen = new Set();
+
+      merged.forEach((file) => {
+        const key = `${file.name}-${file.size}-${file.lastModified}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          unique.push(file);
+        }
+      });
+
+      return unique.slice(0, 6);
+    });
+
+    event.target.value = '';
+  };
+
+  const handleOpenCameraCapture = async () => {
+    setCameraError('');
+    setCameraPermissionDenied(false);
+    setCameraModalOpen(true);
+    
+    // Request camera access
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment' },
+        audio: false,
+      });
+      
+      cameraStreamRef.current = stream;
+      
+      // Set video stream once it's mounted
+      requestAnimationFrame(() => {
+        if (videoRef.current && stream) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play().catch((error) => {
+            console.error('Error playing video:', error);
+            setCameraError('Failed to start camera playback.');
+          });
+        }
+      });
+    } catch (error) {
+      if (error.name === 'NotAllowedError') {
+        setCameraPermissionDenied(true);
+        setCameraError('Camera permission denied. Please enable it in your device settings.');
+      } else if (error.name === 'NotFoundError') {
+        setCameraError('No camera device found on this device.');
+      } else {
+        setCameraError(`Camera error: ${error.message}`);
+      }
+      setCameraModalOpen(false);
+    }
+  };
+
+  const handleCameraCapture = () => {
+    if (!videoRef.current || !canvasRef.current) return;
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const context = canvas.getContext('2d');
+
+    // Set canvas to video dimensions
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    // Draw current video frame to canvas
+    context.drawImage(video, 0, 0);
+
+    // Convert canvas to blob and create file
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        setCameraError('Failed to capture image.');
+        return;
+      }
+
+      const timestamp = new Date().getTime();
+      const file = new File([blob], `camera-${timestamp}.jpg`, { type: 'image/jpeg' });
+
+      // Add to attachments
+      setAttachments((prev) => {
+        const unique = new Map(prev.map((f) => [`${f.name}-${f.size}`, f]));
+        unique.set(`${file.name}-${file.size}`, file);
+        return unique.size > 6 ? Array.from(unique.values()).slice(0, 6) : Array.from(unique.values());
+      });
+
+      // Close modal and cleanup
+      handleCloseCameraModal();
+    }, 'image/jpeg', 0.9);
+  };
+
+  const handleCloseCameraModal = () => {
+    // Stop all camera tracks
+    if (cameraStreamRef.current) {
+      cameraStreamRef.current.getTracks().forEach((track) => track.stop());
+      cameraStreamRef.current = null;
+    }
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+
+    setCameraModalOpen(false);
+    setCameraError('');
+    setCameraPermissionDenied(false);
   };
 
   const showSubmitFeedback = useCallback((type, message) => {
@@ -581,8 +687,13 @@ export default function ResidentHub() {
   };
 
   const dismissResidentAlert = (alertId) => {
+    dismissedAlertIdsRef.current.add(alertId);
     setResidentAlerts((prev) => prev.filter((alert) => alert.id !== alertId));
-    setResidentToasts((prev) => prev.filter((alert) => alert.id !== alertId));
+  };
+
+  const clearResidentAlerts = () => {
+    residentAlerts.forEach((alert) => dismissedAlertIdsRef.current.add(alert.id));
+    setResidentAlerts([]);
   };
 
   const openAlertTicket = (alert) => {
@@ -594,13 +705,13 @@ export default function ResidentHub() {
     setResidentAlerts((prev) => prev.map((item) => (
       item.id === alert.id ? { ...item, read: true } : item
     )));
-    setNotifOpen(false);
+    setActiveTab('home');
   };
 
   return (
     <main className="resident-shell">
       <header className="resident-topbar">
-        <div>
+        <div className="resident-topbar-brand">
           <div className="resident-brand-wrap">
             <OneGapoLogo className="resident-brand-logo" decorative />
             <p className="resident-brand">OneGapo</p>
@@ -608,65 +719,25 @@ export default function ResidentHub() {
           <p className="resident-sub">Resident reporting</p>
         </div>
         <div className="resident-topbar-actions">
-          <div className="resident-notif-wrap" ref={notifWrapRef}>
-            <button
-              type="button"
-              className="btn-outline resident-notif-btn"
-              onClick={() => setNotifOpen((prev) => !prev)}
-              aria-label="Notifications"
-              aria-expanded={notifOpen}
-              aria-haspopup="menu"
+          <button
+            type="button"
+            className="btn-outline resident-notif-btn"
+            onClick={() => setActiveTab('notifications')}
+            aria-label="Notifications"
+            aria-pressed={activeTab === 'notifications'}
+          >
+            <span
+              className={`material-symbols-outlined resident-notif-icon ${unreadAlertCount > 0 ? 'resident-notif-icon-unread' : ''}`}
+              aria-hidden="true"
             >
-              <span className="material-symbols-outlined resident-notif-icon" aria-hidden="true">notifications</span>
-              {unreadAlertCount > 0 ? (
-                <span className="resident-notif-badge" aria-label={`${unreadAlertCount} unread notifications`}>
-                  {unreadAlertCount > 9 ? '9+' : unreadAlertCount}
-                </span>
-              ) : null}
-            </button>
-
-            {notifOpen ? (
-              <div className="resident-notif-menu" role="menu" aria-label="Resident notifications">
-                <div className="resident-notif-menu-header">
-                  <p className="resident-card-title">Notifications</p>
-                  {residentAlerts.length > 0 ? (
-                    <button
-                      type="button"
-                      className="btn-outline resident-alert-clear"
-                      onClick={() => {
-                        setResidentAlerts([]);
-                        setResidentToasts([]);
-                      }}
-                    >
-                      Clear all
-                    </button>
-                  ) : null}
-                </div>
-
-                <div className="resident-notif-menu-list">
-                  {residentAlerts.length === 0 ? (
-                    <p className="resident-notif-empty">No notification updates yet.</p>
-                  ) : (
-                    residentAlerts.map((alert) => (
-                      <button
-                        key={alert.id}
-                        type="button"
-                        className={`resident-notif-item ${alert.read ? '' : 'resident-notif-item-unread'}`}
-                        onClick={() => openAlertTicket(alert)}
-                        role="menuitem"
-                      >
-                        <span className="resident-notif-item-title">{alert.reportTitle}</span>
-                        <span className="resident-notif-item-meta">
-                          {normalizeStatus(alert.fromStatus)} → {normalizeStatus(alert.toStatus)}
-                        </span>
-                        <span className="resident-notif-item-time">{formatReportDate(alert.changedAt)}</span>
-                      </button>
-                    ))
-                  )}
-                </div>
-              </div>
+              notifications
+            </span>
+            {unreadAlertCount > 0 ? (
+              <span className="resident-notif-badge" aria-label={`${unreadAlertCount} unread notifications`}>
+                {unreadAlertCount > 9 ? '9+' : unreadAlertCount}
+              </span>
             ) : null}
-          </div>
+          </button>
 
           {installPrompt ? (
             <button type="button" className="btn-outline resident-install" onClick={handleInstallApp}>
@@ -679,45 +750,6 @@ export default function ResidentHub() {
       <section className="resident-body">
         {activeTab === 'home' && (
           <div className="resident-section resident-section-gap">
-            {residentAlerts.length > 0 ? (
-              <div className="resident-card resident-alerts-card" role="status" aria-live="polite">
-                <div className="resident-card-header">
-                  <p className="resident-card-title">Recent ticket alerts</p>
-                  <button
-                    type="button"
-                    className="btn-outline resident-alert-clear"
-                    onClick={() => {
-                      setResidentAlerts([]);
-                      setResidentToasts([]);
-                    }}
-                  >
-                    Clear all
-                  </button>
-                </div>
-
-                <div className="resident-alert-list">
-                  {residentAlerts.map((alert) => (
-                    <article key={alert.id} className="resident-alert-item">
-                      <div className="resident-alert-copy">
-                        <p className="resident-alert-title">{alert.reportTitle}</p>
-                        <p className="resident-alert-meta">
-                          {normalizeStatus(alert.fromStatus)} → {normalizeStatus(alert.toStatus)} • {formatReportDate(alert.changedAt)}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        className="btn-outline resident-alert-dismiss"
-                        onClick={() => dismissResidentAlert(alert.id)}
-                        aria-label={`Dismiss alert for ${alert.reportTitle}`}
-                      >
-                        Dismiss
-                      </button>
-                    </article>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
             <div className="resident-summary-row">
               <article className="resident-summary-card">
                 <p className="resident-summary-label">Total reports</p>
@@ -748,10 +780,13 @@ export default function ResidentHub() {
               ) : (
                 <div className="resident-report-list">
                   {myReports.map((report) => {
-                    const approvalImage = getReportApprovalImage(report);
-
                     return (
-                      <article key={report.id} className="resident-report-item">
+                      <button
+                        key={report.id}
+                        type="button"
+                        className="resident-report-item"
+                        onClick={() => setActiveTicketReport(report)}
+                      >
                         <div className="resident-report-head">
                           <p className="resident-report-title">{report.title}</p>
                           <span className={`report-status report-status-${report.status || 'submitted'}`}>
@@ -760,25 +795,7 @@ export default function ResidentHub() {
                         </div>
                         <p className="resident-report-meta">{formatReportDate(report.createdAt)} • {report.category}</p>
                         <p className="resident-report-desc">{report.description}</p>
-                        <div className="resident-report-actions">
-                          <button
-                            type="button"
-                            className="btn-outline resident-report-action-btn"
-                            onClick={() => setActiveTicketReport(report)}
-                          >
-                            View ticket
-                          </button>
-                          {approvalImage ? (
-                            <button
-                              type="button"
-                              className="btn-outline resident-approval-btn"
-                              onClick={() => setActiveApprovalReport(report)}
-                            >
-                              See image
-                            </button>
-                          ) : null}
-                        </div>
-                      </article>
+                      </button>
                     );
                   })}
                 </div>
@@ -873,15 +890,46 @@ export default function ResidentHub() {
 
               <div>
                 <label className="form-label" htmlFor="resident-attachments">Images / Videos (optional)</label>
+                <div className="resident-media-actions">
+                  <input
+                    id="resident-attachments"
+                    type="file"
+                    className="form-input resident-attachments-input"
+                    accept="image/*,video/*"
+                    multiple
+                    onChange={(event) => handleAttachmentChange(event)}
+                    disabled={submitting}
+                  />
+                  <button
+                    type="button"
+                    className="resident-media-btn resident-media-btn-file"
+                    onClick={() => document.getElementById('resident-attachments').click()}
+                    disabled={submitting}
+                    aria-label="Select files"
+                  >
+                    <span className="material-symbols-outlined" aria-hidden="true">image</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="resident-media-btn resident-media-btn-camera"
+                    onClick={handleOpenCameraCapture}
+                    disabled={submitting}
+                    aria-label="Take photo"
+                  >
+                    <span className="material-symbols-outlined" aria-hidden="true">photo_camera</span>
+                  </button>
+                </div>
                 <input
-                  id="resident-attachments"
+                  id="resident-camera-capture"
+                  ref={cameraCaptureInputRef}
                   type="file"
-                  className="form-input"
-                  accept="image/*,video/*"
-                  multiple
-                  onChange={handleAttachmentChange}
+                  className="resident-camera-input"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={(event) => handleAttachmentChange(event, { append: true })}
                   disabled={submitting}
                 />
+                <p className="resident-attachment-note">You can attach up to 6 files total.</p>
                 {attachments.length > 0 ? (
                   <ul className="report-files-list">
                     {attachments.map((file) => (
@@ -930,27 +978,7 @@ export default function ResidentHub() {
               Manage your account details, profile information, password, and appearance.
             </p>
 
-            <div className="resident-settings-account">
-              <p className="resident-settings-account-name">{currentUser.displayName || 'Resident account'}</p>
-              <p className="resident-settings-account-email">{currentUser.email}</p>
-            </div>
-
-            <button
-              type="button"
-              className="btn-outline resident-settings-action"
-              onClick={openSettings}
-            >
-              Open account customization
-            </button>
-
-            <button
-              type="button"
-              className="btn-outline resident-logout"
-              onClick={handleLogout}
-              disabled={signingOut}
-            >
-              {signingOut ? 'Logging out...' : 'Log out'}
-            </button>
+            <SettingsContent showLogout onLogout={handleLogout} logoutLoading={signingOut} />
           </section>
         )}
 
@@ -1006,6 +1034,8 @@ export default function ResidentHub() {
           >
             {(() => {
               const updates = buildResidentTicketUpdates(activeTicketReport);
+              const approvalImage = getReportApprovalImage(activeTicketReport);
+              const isResolved = String(activeTicketReport?.status || '').toLowerCase() === 'resolved';
 
               return (
                 <div className="resident-ticket-modal-content">
@@ -1017,6 +1047,18 @@ export default function ResidentHub() {
                       Last updated {formatReportDate(activeTicketReport.updatedAt || activeTicketReport.createdAt)}
                     </p>
                   </div>
+
+                  {isResolved && approvalImage ? (
+                    <div className="resident-report-actions">
+                      <button
+                        type="button"
+                        className="btn-outline resident-approval-btn"
+                        onClick={() => setActiveApprovalReport(activeTicketReport)}
+                      >
+                        See image
+                      </button>
+                    </div>
+                  ) : null}
 
                   <div className="resident-ticket-timeline" role="list">
                     {updates.map((update) => (
@@ -1036,40 +1078,100 @@ export default function ResidentHub() {
             })()}
           </AppModal>
         ) : null}
-      </section>
 
-      {residentToasts.length > 0 ? (
-        <div className="resident-toast-stack" role="status" aria-live="polite" aria-atomic="false">
-          {residentToasts.map((toast) => (
-            <article key={toast.id} className="resident-toast">
-              <div className="resident-toast-copy">
-                <p className="resident-toast-title">{toast.reportTitle}</p>
-                <p className="resident-toast-message">
-                  {normalizeStatus(toast.fromStatus)} → {normalizeStatus(toast.toStatus)}
-                </p>
-                <p className="resident-toast-time">{formatReportDate(toast.changedAt)}</p>
-              </div>
-              <div className="resident-toast-actions">
+        {cameraModalOpen && (
+          <div className="resident-fullscreen-camera-overlay">
+            <div className="resident-camera-fullscreen-container">
+              <button
+                type="button"
+                className="resident-camera-close-btn"
+                onClick={handleCloseCameraModal}
+                aria-label="Close camera"
+              >
+                <span className="material-symbols-outlined" aria-hidden="true">close</span>
+              </button>
+
+              {cameraPermissionDenied || cameraError ? (
+                <div className="resident-camera-error-fullscreen">
+                  <p className="resident-camera-error-message">{cameraError}</p>
+                  {cameraPermissionDenied && (
+                    <p className="resident-camera-error-hint">
+                      Please enable camera access in your device settings and try again.
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={handleCloseCameraModal}
+                  >
+                    Close
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <video
+                    ref={videoRef}
+                    className="resident-camera-video-fullscreen"
+                    playsInline
+                  />
+                  <canvas ref={canvasRef} style={{ display: 'none' }} />
+                  <div className="resident-camera-actions-fullscreen">
+                    <button
+                      type="button"
+                      className="resident-camera-capture-btn"
+                      onClick={handleCameraCapture}
+                      aria-label="Capture photo"
+                    >
+                      <span className="material-symbols-outlined" aria-hidden="true">radio_button_checked</span>
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'notifications' && (
+          <section className="resident-notifications-page">
+            <div className="resident-notifications-header">
+              <h2 className="resident-notifications-title">Notifications</h2>
+              {residentAlerts.length > 0 ? (
                 <button
                   type="button"
-                  className="btn-outline resident-toast-view"
-                  onClick={() => openAlertTicket(toast)}
+                  className="btn-outline resident-alerts-clear-btn"
+                  onClick={clearResidentAlerts}
                 >
-                  View
+                  Clear all
                 </button>
-                <button
-                  type="button"
-                  className="btn-outline resident-toast-dismiss"
-                  onClick={() => dismissResidentAlert(toast.id)}
-                  aria-label={`Dismiss notification for ${toast.reportTitle}`}
-                >
-                  Dismiss
-                </button>
+              ) : null}
+            </div>
+
+            {residentAlerts.length === 0 ? (
+              <p className="resident-notifications-empty">No notification updates yet.</p>
+            ) : (
+              <div className="resident-notifications-list">
+                {residentAlerts.map((alert) => (
+                  <button
+                    key={alert.id}
+                    type="button"
+                    className={`resident-notification-item ${alert.read ? '' : 'resident-notification-item-unread'}`}
+                    onClick={() => openAlertTicket(alert)}
+                  >
+                    <div className="resident-notification-item-header">
+                      <span className="resident-notification-item-title">{alert.reportTitle}</span>
+                      {!alert.read && <span className="resident-notification-item-dot" />}
+                    </div>
+                    <span className="resident-notification-item-meta">
+                      {normalizeStatus(alert.fromStatus)} → {normalizeStatus(alert.toStatus)}
+                    </span>
+                    <span className="resident-notification-item-time">{formatReportDate(alert.changedAt)}</span>
+                  </button>
+                ))}
               </div>
-            </article>
-          ))}
-        </div>
-      ) : null}
+            )}
+          </section>
+        )}
+      </section>
 
       <nav className="resident-bottom-nav" aria-label="Resident navigation">
         <button

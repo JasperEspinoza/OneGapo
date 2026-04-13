@@ -42,8 +42,7 @@ const ICONS = {
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="20" height="20" style={{minWidth: '20px'}}><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
   ),
   settings: (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 25
-    " fill="currentColor" width="20" height="20" style={{minWidth: '20px'}}><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L5.09 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="20" height="20" style={{minWidth: '20px'}}><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L5.09 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
   ),
   logout: (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="20" height="20" style={{minWidth: '20px'}}><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>
@@ -636,7 +635,6 @@ export default function AdminPanel() {
         setConfirmDialogLoading(false);
       }
     }, [confirmDialog, confirmDialogLoading]);
-  const reportsPollingRef = useRef(false);
 
   // Notifications state
   const [notifications, setNotifications] = useState([]);
@@ -650,6 +648,7 @@ export default function AdminPanel() {
   const [reportTypeFilter, setReportTypeFilter] = useState('all');
   const [reportStatusFilter, setReportStatusFilter] = useState('all');
   const [reportBarangayFilter, setReportBarangayFilter] = useState('all');
+  const [reportSearchQuery, setReportSearchQuery] = useState('');
   const [analyticsSearchQuery, setAnalyticsSearchQuery] = useState('');
   const [analyticsStatusFilter, setAnalyticsStatusFilter] = useState('all');
   const [analyticsBranchTypeFilter, setAnalyticsBranchTypeFilter] = useState('all');
@@ -802,9 +801,11 @@ export default function AdminPanel() {
         const idToken = await currentUser.getIdToken();
         if (!active) return;
 
-        socket = io({
+        const socketUrl = import.meta.env.VITE_SOCKET_URL || undefined;
+
+        socket = io(socketUrl, {
           path: '/socket.io',
-          transports: ['websocket'],
+          transports: ['websocket', 'polling'],
           auth: { token: idToken },
         });
 
@@ -819,6 +820,12 @@ export default function AdminPanel() {
           setNotifications(Array.isArray(payload) ? payload : []);
           setNotifLoading(false);
           setNotifError('');
+        });
+
+        socket.on('reports:data', (payload) => {
+          if (!active) return;
+          setReports(Array.isArray(payload) ? payload : []);
+          setReportsError('');
         });
 
         socket.on('connect_error', () => {
@@ -860,37 +867,6 @@ export default function AdminPanel() {
     if (['dashboard', 'reports'].includes(activeSection)) loadReports();
     if (activeSection === 'analytics') loadPerformance();
   }, [activeSection, loadUsers, loadRoles, loadReports, loadPerformance]);
-
-  useEffect(() => {
-    if (activeSection !== 'dashboard') return undefined;
-
-    const pollReports = async () => {
-      if (reportsPollingRef.current) return;
-
-      reportsPollingRef.current = true;
-      try {
-        await loadReports({ silent: true });
-      } finally {
-        reportsPollingRef.current = false;
-      }
-    };
-
-    const intervalId = window.setInterval(pollReports, 8000);
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        pollReports();
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-      window.clearInterval(intervalId);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      reportsPollingRef.current = false;
-    };
-  }, [activeSection, loadReports]);
 
   const unreadNotificationsCount = useMemo(
     () => notifications.filter((item) => !item?.isRead).length,
@@ -1029,9 +1005,26 @@ export default function AdminPanel() {
     });
   }, [branchPerformanceRows, analyticsSearchQuery, analyticsStatusFilter, analyticsBranchTypeFilter]);
 
+  const analyticsChartRows = useMemo(() => {
+    const rows = filteredBarangayPerformanceRows
+      .map((row) => ({
+        name: row.name,
+        totalReports: Number(row.totalReports || 0),
+      }))
+      .filter((row) => row.totalReports > 0)
+      .sort((a, b) => b.totalReports - a.totalReports)
+      .slice(0, 6);
+
+    const maxReports = rows.reduce((max, row) => Math.max(max, row.totalReports), 0);
+
+    return {
+      rows,
+      maxReports,
+    };
+  }, [filteredBarangayPerformanceRows]);
+
   const combinedPerformanceRows = useMemo(() => {
     const branchRows = filteredBranchPerformanceRows.map((row) => ({
-      scope: 'Branch',
       name: row.name,
       type: row.type || 'public',
       totalReports: row.totalReports,
@@ -1048,7 +1041,6 @@ export default function AdminPanel() {
 
   const exportCombinedPerformanceCsv = useCallback(() => {
     const rows = combinedPerformanceRows.map((row) => [
-      row.scope,
       row.name,
       row.type,
       row.totalReports,
@@ -1057,7 +1049,7 @@ export default function AdminPanel() {
       formatDurationMinutes(row.averageMttrMinutes),
       `${Number(row.resolutionRate || 0).toFixed(1)}%`,
     ]);
-    downloadCsvFile('mttr-location.csv', ['Scope', 'Location', 'Type', 'Reports', 'Resolved', 'Pending', 'MTTR', 'Resolution Rate'], rows);
+    downloadCsvFile('mttr-location.csv', ['Location', 'Type', 'Reports', 'Resolved', 'Pending', 'MTTR', 'Resolution Rate'], rows);
   }, [combinedPerformanceRows]);
 
   const exportBarangayCsv = useCallback(() => {
@@ -1156,27 +1148,14 @@ export default function AdminPanel() {
       });
     }
 
-    addSectionGap();
-    writeLine('Branch Directory', { bold: true, fontSize: 12, lineHeight: 18 });
-    if (branches.length === 0) {
-      writeLine('No branch records available.');
-    } else {
-      branches.forEach((branch) => {
-        const assignedStaffCount = users.filter((user) => user.branchId === branch.id).length;
-        writeLine(`${branch.name} (${branch.type}): staff assigned ${assignedStaffCount}`);
-      });
-    }
-
     doc.save('analytics-statistics.pdf');
   }, [
     analyticsBranchTypeFilter,
     analyticsSearchQuery,
     analyticsStatusFilter,
-    branches,
     filteredBarangayPerformanceRows,
     filteredBranchPerformanceRows,
     reportAnalyticsSummary,
-    users,
   ]);
 
   const residentReportMarkers = useMemo(
@@ -1246,26 +1225,68 @@ export default function AdminPanel() {
     ).sort((a, b) => a.localeCompare(b));
   }, [reports]);
 
-  const filteredReports = useMemo(() => {
+  const usersByUid = useMemo(
+    () => new Map(users.filter((u) => u?.uid).map((u) => [u.uid, u])),
+    [users]
+  );
+
+  const resolveReporterName = useCallback(
+    (report) => getReporterDisplayName(report, usersByUid),
+    [usersByUid]
+  );
+
+  const reportPreStatusRows = useMemo(() => {
+    const search = reportSearchQuery.trim().toLowerCase();
+
     return reports.filter((report) => {
       const matchesType =
         reportTypeFilter === 'all'
           ? true
           : String(report?.category || 'general').toLowerCase() === reportTypeFilter;
 
-      const matchesStatus =
-        reportStatusFilter === 'all'
-          ? true
-          : getReportStatusKey(report?.status) === reportStatusFilter;
-
       const matchesBarangay =
         reportBarangayFilter === 'all'
           ? true
           : extractBarangayFromReport(report) === reportBarangayFilter;
 
-      return matchesType && matchesStatus && matchesBarangay;
+      const searchable = [
+        String(report?.title || ''),
+        String(report?.description || ''),
+        String(report?.location?.address || ''),
+        String(extractBarangayFromReport(report) || ''),
+        String(resolveReporterName(report) || ''),
+      ].join(' ').toLowerCase();
+
+      const matchesSearch = search ? searchable.includes(search) : true;
+
+      return matchesType && matchesBarangay && matchesSearch;
     });
-  }, [reports, reportTypeFilter, reportStatusFilter, reportBarangayFilter]);
+  }, [reportBarangayFilter, reportSearchQuery, reportTypeFilter, reports]);
+
+  const reportStatusSummary = useMemo(() => {
+    const counts = {
+      all: reportPreStatusRows.length,
+      submitted: 0,
+      in_review: 0,
+      resolved: 0,
+      rejected: 0,
+      archived: 0,
+    };
+
+    reportPreStatusRows.forEach((report) => {
+      const key = getReportStatusKey(report?.status);
+      if (Object.prototype.hasOwnProperty.call(counts, key)) {
+        counts[key] += 1;
+      }
+    });
+
+    return counts;
+  }, [reportPreStatusRows]);
+
+  const filteredReports = useMemo(() => {
+    if (reportStatusFilter === 'all') return reportPreStatusRows;
+    return reportPreStatusRows.filter((report) => getReportStatusKey(report?.status) === reportStatusFilter);
+  }, [reportPreStatusRows, reportStatusFilter]);
 
   // ── Handlers ────────────────────────────────────────────
   const handleCreateBranch = async (e) => {
@@ -1684,16 +1705,6 @@ export default function AdminPanel() {
     return branches.filter((b) => b.name?.toLowerCase().includes(q));
   }, [branches, searchQuery]);
 
-  const usersByUid = useMemo(
-    () => new Map(users.filter((u) => u?.uid).map((u) => [u.uid, u])),
-    [users]
-  );
-
-  const resolveReporterName = useCallback(
-    (report) => getReporterDisplayName(report, usersByUid),
-    [usersByUid]
-  );
-
   const recentReportActivities = useMemo(
     () => buildRecentReportActivities(reports),
     [reports]
@@ -1718,7 +1729,7 @@ export default function AdminPanel() {
       <aside className={`ap-sidebar${sidebarOpen ? ' ap-sidebar-mobile-open' : ''}`}>
         <div className="ap-sidebar-brand">
           <div className="ap-brand-icon">
-            <OneGapoLogo className="ap-brand-logo" decorative />
+            <OneGapoLogo className="ap-brand-logo onegapo-logo-force-dark" decorative />
           </div>
           <div className="ap-brand-copy">
             <div className="ap-brand-name">OneGapo</div>
@@ -1878,7 +1889,6 @@ export default function AdminPanel() {
                     <div className="ap-stat-icon ap-stat-icon-blue">
                       {ICONS.users}
                     </div>
-                    <span className="ap-stat-badge ap-stat-badge-green">{stats.totalResidents} residents</span>
                   </div>
                   <p className="ap-stat-label">Total Users</p>
                   <h3 className="ap-stat-value">{usersLoading ? '…' : stats.totalUsers}</h3>
@@ -1890,7 +1900,7 @@ export default function AdminPanel() {
                     <div className="ap-stat-icon ap-stat-icon-amber">
                       {ICONS.branches}
                     </div>
-                    <span className="ap-stat-badge ap-stat-badge-amber">{stats.totalPrivate} private</span>
+
                   </div>
                   <p className="ap-stat-label">Total Branches</p>
                   <h3 className="ap-stat-value">{branchLoading ? '…' : stats.totalBranches}</h3>
@@ -1902,7 +1912,6 @@ export default function AdminPanel() {
                     <div className="ap-stat-icon ap-stat-icon-emerald">
                       {ICONS.badge}
                     </div>
-                    <span className="ap-stat-badge ap-stat-badge-green">Active</span>
                   </div>
                   <p className="ap-stat-label">Staff Accounts</p>
                   <h3 className="ap-stat-value">{usersLoading ? '…' : stats.totalStaff}</h3>
@@ -1914,7 +1923,6 @@ export default function AdminPanel() {
                     <div className="ap-stat-icon ap-stat-icon-purple">
                       {ICONS.domain}
                     </div>
-                    <span className="ap-stat-badge ap-stat-badge-purple">{stats.totalPublic} public</span>
                   </div>
                   <p className="ap-stat-label">Coverage</p>
                   <h3 className="ap-stat-value">{branchLoading ? '…' : stats.totalBranches}</h3>
@@ -2090,49 +2098,84 @@ export default function AdminPanel() {
               <div className="ap-card">
                 <div className="ap-card-header">
                   <h3 className="ap-card-title">All Report Details</h3>
-                  <div className="ap-filters-row">
-                    <div>
-                      <label htmlFor="report-type-filter" className="form-label">Report type</label>
-                      <select
-                        id="report-type-filter"
-                        className="form-select"
-                        value={reportTypeFilter}
-                        onChange={(event) => setReportTypeFilter(event.target.value)}
+                </div>
+
+                <div className="ap-report-status-summary" aria-label="Report statuses">
+                  {REPORT_STATUS_FILTER_OPTIONS.map((option) => {
+                    const statusClass = option.value === 'all'
+                      ? 'ap-report-status'
+                      : getReportStatusClassName(option.value);
+
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        className={`ap-report-status-chip${reportStatusFilter === option.value ? ' ap-report-status-chip-active' : ''}`}
+                        onClick={() => setReportStatusFilter(option.value)}
+                        aria-pressed={reportStatusFilter === option.value}
                       >
-                        <option value="all">All types</option>
-                        {reportTypeOptions.map((option) => (
-                          <option key={option.value} value={option.value}>{option.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label htmlFor="report-status-filter" className="form-label">Status</label>
-                      <select
-                        id="report-status-filter"
-                        className="form-select"
-                        value={reportStatusFilter}
-                        onChange={(event) => setReportStatusFilter(event.target.value)}
-                      >
-                        {REPORT_STATUS_FILTER_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>{option.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label htmlFor="report-barangay-filter" className="form-label">Barangay</label>
-                      <select
-                        id="report-barangay-filter"
-                        className="form-select"
-                        value={reportBarangayFilter}
-                        onChange={(event) => setReportBarangayFilter(event.target.value)}
-                      >
-                        <option value="all">All barangays</option>
-                        {reportBarangayOptions.map((barangay) => (
-                          <option key={barangay} value={barangay}>{barangay}</option>
-                        ))}
-                      </select>
-                    </div>
+                        <span className={statusClass}>{option.label}</span>
+                        <span className="ap-report-status-chip-count">{reportStatusSummary[option.value] || 0}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="ap-filters-row ap-report-filters-row">
+                  <div>
+                    <label htmlFor="report-search" className="form-label">Search</label>
+                    <input
+                      id="report-search"
+                      type="text"
+                      className="form-input"
+                      placeholder="Search title, address, reporter"
+                      value={reportSearchQuery}
+                      onChange={(event) => setReportSearchQuery(event.target.value)}
+                    />
                   </div>
+                  <div>
+                    <label htmlFor="report-type-filter" className="form-label">Report type</label>
+                    <select
+                      id="report-type-filter"
+                      className="form-select"
+                      value={reportTypeFilter}
+                      onChange={(event) => setReportTypeFilter(event.target.value)}
+                    >
+                      <option value="all">All types</option>
+                      {reportTypeOptions.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="report-barangay-filter" className="form-label">Barangay</label>
+                    <select
+                      id="report-barangay-filter"
+                      className="form-select"
+                      value={reportBarangayFilter}
+                      onChange={(event) => setReportBarangayFilter(event.target.value)}
+                    >
+                      <option value="all">All barangays</option>
+                      {reportBarangayOptions.map((barangay) => (
+                        <option key={barangay} value={barangay}>{barangay}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {(reportSearchQuery || reportTypeFilter !== 'all' || reportStatusFilter !== 'all' || reportBarangayFilter !== 'all') ? (
+                    <button
+                      type="button"
+                      className="ap-btn-outline ap-btn-sm"
+                      style={{ alignSelf: 'flex-end' }}
+                      onClick={() => {
+                        setReportSearchQuery('');
+                        setReportTypeFilter('all');
+                        setReportStatusFilter('all');
+                        setReportBarangayFilter('all');
+                      }}
+                    >
+                      Clear filters
+                    </button>
+                  ) : null}
                 </div>
                 {reportActionError ? <div className="auth-error" role="alert">{reportActionError}</div> : null}
                 {reportsLoading ? (
@@ -2998,30 +3041,120 @@ export default function AdminPanel() {
                   <button
                     type="button"
                     onClick={exportAnalyticsPdf}
-                    disabled={branchLoading || usersLoading || performanceLoading}
+                    disabled={performanceLoading}
                     className="ap-btn-outline ap-btn-sm"
                   >
                     Export PDF
                   </button>
                   <button
                     type="button"
-                    onClick={() => { loadBranches(); loadUsers(); loadPerformance(); }}
-                    disabled={branchLoading || usersLoading || performanceLoading}
+                    onClick={() => { loadPerformance(); }}
+                    disabled={performanceLoading}
                     className="ap-btn-outline ap-btn-sm"
                   >
-                    {(branchLoading || usersLoading || performanceLoading) ? 'Loading…' : 'Refresh data'}
+                    {performanceLoading ? 'Loading…' : 'Refresh data'}
                   </button>
                 </div>
               </div>
 
               {performanceError ? <div role="alert" className="auth-error">{performanceError}</div> : null}
 
+              <div className="ap-stats-grid">
+                <div className="ap-stat-card">
+                  <div className="ap-stat-head">
+                    <div className="ap-stat-icon ap-stat-icon-blue">
+                      {ICONS.report}
+                    </div>
+                    <p className="ap-stat-label">Total Reports</p>
+                  </div>
+                  <h3 className="ap-stat-value">{performanceLoading ? '…' : reportAnalyticsSummary.totalReports}</h3>
+                  <p className="ap-stat-meta">Reports tracked in the system</p>
+                </div>
+
+                <div className="ap-stat-card">
+                  <div className="ap-stat-head">
+                    <div className="ap-stat-icon ap-stat-icon-emerald">
+                      {ICONS.badge}
+                    </div>
+                    <p className="ap-stat-label">Resolved</p>
+                  </div>
+                  <h3 className="ap-stat-value">{performanceLoading ? '…' : reportAnalyticsSummary.resolvedReports}</h3>
+                  <p className="ap-stat-meta">{performanceLoading ? '…' : `${reportAnalyticsSummary.resolutionRate.toFixed(1)}% resolution rate`}</p>
+                </div>
+
+                <div className="ap-stat-card">
+                  <div className="ap-stat-head">
+                    <div className="ap-stat-icon ap-stat-icon-amber">
+                      {ICONS.analytics}
+                    </div>
+                    <p className="ap-stat-label">Average MTTR</p>
+                  </div>
+                  <h3 className="ap-stat-value">{performanceLoading ? '…' : reportAnalyticsSummary.averageMttrLabel}</h3>
+                  <p className="ap-stat-meta">Mean time to resolve</p>
+                </div>
+
+                <div className="ap-stat-card">
+                  <div className="ap-stat-head">
+                    <div className="ap-stat-icon ap-stat-icon-purple">
+                      {ICONS.branches}
+                    </div>
+                    <p className="ap-stat-label">Pending</p>
+                  </div>
+                  <h3 className="ap-stat-value">{performanceLoading ? '…' : reportAnalyticsSummary.pendingReports}</h3>
+                  <p className="ap-stat-meta">Submitted or in review</p>
+                </div>
+              </div>
+
               <div className="ap-card">
                 <div className="ap-card-header">
-                  <h3 className="ap-card-title">Search &amp; Filter</h3>
-                </div>
-                <div className="ap-filters-row">
                   <div>
+                    <h3 className="ap-card-title">Reports by Barangay</h3>
+                    <p className="ap-card-sub">Top barangays by report volume</p>
+                  </div>
+                </div>
+                <div className="ap-chart-placeholder" role="img" aria-label="Reports by barangay chart">
+                  {performanceLoading ? (
+                    <p className="ap-loading">Loading…</p>
+                  ) : analyticsChartRows.rows.length === 0 ? (
+                    <p className="ap-empty">No barangays with reports for the current filters.</p>
+                  ) : (
+                    <div className="ap-chart-bars">
+                      {analyticsChartRows.rows.map((row) => {
+                        const ratio = analyticsChartRows.maxReports > 0 ? (row.totalReports / analyticsChartRows.maxReports) * 100 : 0;
+                        const barWidth = row.totalReports > 0 ? `${Math.max(6, ratio)}%` : '0%';
+                        return (
+                          <div className="ap-chart-row" key={row.name}>
+                            <span className="ap-chart-label">{row.name}</span>
+                            <div className="ap-chart-track">
+                              <div className="ap-chart-fill" style={{ width: barWidth }} />
+                            </div>
+                            <span className="ap-chart-value">{row.totalReports}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="ap-card">
+                <div className="ap-card-header">
+                  <div>
+                    <h3 className="ap-card-title">Location MTTR</h3>
+                    <p className="ap-card-sub">Branch performance metrics by location</p>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    <button type="button" className="ap-btn-outline ap-btn-sm" onClick={exportCombinedPerformanceCsv} disabled={performanceLoading || combinedPerformanceRows.length === 0}>
+                      Export CSV
+                    </button>
+                    <button type="button" className="ap-btn-outline ap-btn-sm" onClick={exportAnalyticsPdf} disabled={performanceLoading}>
+                      Export PDF
+                    </button>
+                  </div>
+                </div>
+
+                <div className="ap-analytics-filters-inline">
+                  <div className="ap-inline-filter ap-inline-filter-search">
                     <label htmlFor="analytics-search" className="form-label">Search area</label>
                     <input
                       id="analytics-search"
@@ -3032,7 +3165,7 @@ export default function AdminPanel() {
                       onChange={(event) => setAnalyticsSearchQuery(event.target.value)}
                     />
                   </div>
-                  <div>
+                  <div className="ap-inline-filter">
                     <label htmlFor="analytics-status-filter" className="form-label">Report filter</label>
                     <select
                       id="analytics-status-filter"
@@ -3046,7 +3179,7 @@ export default function AdminPanel() {
                       <option value="pending_only">With pending</option>
                     </select>
                   </div>
-                  <div>
+                  <div className="ap-inline-filter">
                     <label htmlFor="analytics-branch-type-filter" className="form-label">Branch type</label>
                     <select
                       id="analytics-branch-type-filter"
@@ -3074,96 +3207,36 @@ export default function AdminPanel() {
                     </button>
                   ) : null}
                 </div>
-              </div>
-
-              <div className="ap-stats-grid">
-                <div className="ap-stat-card">
-                  <div className="ap-stat-top">
-                    <div className="ap-stat-icon ap-stat-icon-blue">
-                      {ICONS.report}
-                    </div>
-                  </div>
-                  <p className="ap-stat-label">Total Reports</p>
-                  <h3 className="ap-stat-value">{performanceLoading ? '…' : reportAnalyticsSummary.totalReports}</h3>
-                  <p className="ap-stat-meta">Reports tracked in the system</p>
-                </div>
-
-                <div className="ap-stat-card">
-                  <div className="ap-stat-top">
-                    <div className="ap-stat-icon ap-stat-icon-emerald">
-                      {ICONS.badge}
-                    </div>
-                  </div>
-                  <p className="ap-stat-label">Resolved</p>
-                  <h3 className="ap-stat-value">{performanceLoading ? '…' : reportAnalyticsSummary.resolvedReports}</h3>
-                  <p className="ap-stat-meta">{performanceLoading ? '…' : `${reportAnalyticsSummary.resolutionRate.toFixed(1)}% resolution rate`}</p>
-                </div>
-
-                <div className="ap-stat-card">
-                  <div className="ap-stat-top">
-                    <div className="ap-stat-icon ap-stat-icon-amber">
-                      {ICONS.analytics}
-                    </div>
-                  </div>
-                  <p className="ap-stat-label">Average MTTR</p>
-                  <h3 className="ap-stat-value">{performanceLoading ? '…' : reportAnalyticsSummary.averageMttrLabel}</h3>
-                  <p className="ap-stat-meta">Mean time to resolve</p>
-                </div>
-
-                <div className="ap-stat-card">
-                  <div className="ap-stat-top">
-                    <div className="ap-stat-icon ap-stat-icon-purple">
-                      {ICONS.branches}
-                    </div>
-                  </div>
-                  <p className="ap-stat-label">Pending</p>
-                  <h3 className="ap-stat-value">{performanceLoading ? '…' : reportAnalyticsSummary.pendingReports}</h3>
-                  <p className="ap-stat-meta">Submitted or in review</p>
-                </div>
-              </div>
-
-              <div className="ap-card">
-                <div className="ap-card-header">
-                  <div>
-                    <h3 className="ap-card-title">Location MTTR</h3>
-                    <p className="ap-card-sub">Branch performance metrics by location</p>
-                  </div>
-                  <button type="button" className="ap-btn-outline ap-btn-sm" onClick={exportCombinedPerformanceCsv} disabled={performanceLoading || combinedPerformanceRows.length === 0}>
-                    Export CSV
-                  </button>
-                </div>
                 {performanceLoading ? (
                   <p className="ap-loading">Loading…</p>
                 ) : combinedPerformanceRows.length === 0 ? (
                   <p className="ap-empty">No rows match the active filters.</p>
                 ) : (
                   <div className="ap-table-wrap">
-                    <table className="ap-table">
+                    <table className="ap-table ap-table-analytics">
                       <thead>
                         <tr>
-                          <th>Scope</th>
                           <th>Location</th>
                           <th>Type</th>
-                          <th>Reports</th>
-                          <th>Resolved</th>
-                          <th>Pending</th>
-                          <th>MTTR</th>
-                          <th>Resolution</th>
+                          <th className="ap-cell-num">Reports</th>
+                          <th className="ap-cell-num">Resolved</th>
+                          <th className="ap-cell-num">Pending</th>
+                          <th className="ap-cell-num">MTTR</th>
+                          <th className="ap-cell-num">Resolution</th>
                         </tr>
                       </thead>
                       <tbody>
                         {combinedPerformanceRows.map((row) => (
-                          <tr key={`${row.scope}-${row.name}`}>
-                            <td>{row.scope}</td>
+                          <tr key={`${row.name}-${row.type || 'public'}`}>
                             <td><strong>{row.name}</strong></td>
                             <td>
                               <span className={`badge badge-entity-${row.type || 'public'}`}>{row.type || 'public'}</span>
                             </td>
-                            <td>{row.totalReports}</td>
-                            <td>{row.resolvedReports}</td>
-                            <td>{row.pendingReports}</td>
-                            <td>{formatDurationMinutes(row.averageMttrMinutes)}</td>
-                            <td>{row.resolutionRate ? `${row.resolutionRate.toFixed(1)}%` : '0%'}</td>
+                            <td className="ap-cell-num">{row.totalReports}</td>
+                            <td className="ap-cell-num">{row.resolvedReports}</td>
+                            <td className="ap-cell-num">{row.pendingReports}</td>
+                            <td className="ap-cell-num">{formatDurationMinutes(row.averageMttrMinutes)}</td>
+                            <td className="ap-cell-num">{row.resolutionRate ? `${row.resolutionRate.toFixed(1)}%` : '0%'}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -3172,42 +3245,6 @@ export default function AdminPanel() {
                 )}
               </div>
 
-              <div className="ap-card">
-                <div className="ap-card-header">
-                  <h3 className="ap-card-title">Branch Directory</h3>
-                  <p className="ap-card-sub">Staff assignment and location type</p>
-                </div>
-                {branchLoading ? (
-                  <p className="ap-loading">Loading…</p>
-                ) : branches.length === 0 ? (
-                  <p className="ap-empty">No branches to display.</p>
-                ) : (
-                  <div className="ap-table-wrap">
-                    <table className="ap-table">
-                      <thead>
-                        <tr>
-                          <th>Branch / Barangay</th>
-                          <th>Type</th>
-                          <th>Head Staff</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {branches.map((b) => {
-                          const branchStaff = users.filter((u) => u.branchId === b.id);
-                          const headStaff = branchStaff.length > 0 ? branchStaff[0] : null;
-                          return (
-                            <tr key={b.id}>
-                              <td>{b.name}</td>
-                              <td><span className={`badge badge-entity-${b.type}`}>{b.type}</span></td>
-                              <td>{headStaff ? (headStaff.fullName || headStaff.email) : <span className="ap-muted">None</span>}</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
             </div>
           )}
 

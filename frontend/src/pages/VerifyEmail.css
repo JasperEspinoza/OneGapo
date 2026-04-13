@@ -1,15 +1,17 @@
 @import './AuthPages.css';
 
-/* --------------------------------------------------------------------------
-   Verify Email specific
-   -------------------------------------------------------------------------- */
-
 .verify-email-icon {
-  font-size: 3rem;
+  width: 2.75rem;
+  height: 2.75rem;
+  margin: 0 auto 0.25rem;
+  border-radius: 0.55rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.45rem;
+  color: var(--color-primary-strong);
+  background: color-mix(in srgb, var(--color-primary) 14%, transparent);
   line-height: 1;
-  text-align: center;
-  display: block;
-  margin-bottom: 0.25rem;
 }
 
 .verify-email-address {

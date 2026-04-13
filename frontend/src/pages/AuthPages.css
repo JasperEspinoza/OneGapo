@@ -8,8 +8,8 @@
 	align-items: center;
 	justify-content: center;
 	background:
-		radial-gradient(circle at 10% 0%, var(--color-bg-gradient-b), transparent 30%),
-		linear-gradient(180deg, var(--color-bg), var(--color-surface-muted));
+		linear-gradient(rgba(11, 28, 53, 0.62), rgba(11, 28, 53, 0.62)),
+		url('/assets/OneGapoBG.png') center / cover no-repeat;
 	padding: 1.5rem 1rem;
 }
 
