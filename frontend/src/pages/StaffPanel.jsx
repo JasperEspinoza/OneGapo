@@ -8,6 +8,7 @@ import { useSettingsModal } from '../context/SettingsModalContext';
 import ReportLocationMap from '../components/ReportLocationMap';
 import AppModal from '../components/AppModal';
 import OneGapoLogo from '../components/OneGapoLogo';
+import { getSocketServerUrl } from '../config/runtime';
 
 const PERMISSION_LABELS = {
   view_reports:         'View reports',
@@ -400,7 +401,7 @@ export default function StaffPanel() {
         const idToken = await currentUser.getIdToken();
         if (!active) return;
 
-        const socketUrl = import.meta.env.VITE_SOCKET_URL || undefined;
+        const socketUrl = getSocketServerUrl();
 
         socket = io(socketUrl, {
           path: '/socket.io',

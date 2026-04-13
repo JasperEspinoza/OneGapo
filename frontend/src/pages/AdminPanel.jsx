@@ -8,6 +8,7 @@ import OneGapoLogo from '../components/OneGapoLogo';
 import ReportLocationMap from '../components/ReportLocationMap';
 import { useAuth } from '../context/AuthContext';
 import { useSettingsModal } from '../context/SettingsModalContext';
+import { getSocketServerUrl } from '../config/runtime';
 
 const PERMISSION_OPTIONS = [
   { value: 'view_reports',         label: 'View reports' },
@@ -803,7 +804,7 @@ export default function AdminPanel() {
         const idToken = await currentUser.getIdToken();
         if (!active) return;
 
-        const socketUrl = import.meta.env.VITE_SOCKET_URL || undefined;
+        const socketUrl = getSocketServerUrl();
 
         socket = io(socketUrl, {
           path: '/socket.io',

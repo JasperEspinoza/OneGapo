@@ -8,6 +8,7 @@ import ReportLocationMap from '../components/ReportLocationMap';
 import AppModal from '../components/AppModal';
 import OneGapoLogo from '../components/OneGapoLogo';
 import SettingsContent from '../components/SettingsContent';
+import { getSocketServerUrl } from '../config/runtime';
 
 const REPORT_CATEGORIES = [
   { value: 'infrastructure', label: 'Infrastructure' },
@@ -324,7 +325,7 @@ export default function ResidentHub() {
         const idToken = await currentUser.getIdToken();
         if (!active) return;
 
-        const socketUrl = import.meta.env.VITE_SOCKET_URL || undefined;
+        const socketUrl = getSocketServerUrl();
 
         socket = io(socketUrl, {
           path: '/socket.io',

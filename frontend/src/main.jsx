@@ -3,21 +3,29 @@ import ReactDOM from 'react-dom/client';
 import { registerSW } from 'virtual:pwa-register';
 import App from './App';
 import ErrorBoundary from './components/ErrorBoundary';
+import { getApiBaseUrl, resolveApiUrl } from './config/runtime';
 import './index.css';
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
+const apiBaseUrl = getApiBaseUrl();
 
 if (apiBaseUrl && typeof window !== 'undefined' && typeof window.fetch === 'function') {
-  const normalizedApiBaseUrl = apiBaseUrl.replace(/\/$/, '');
   const nativeFetch = window.fetch.bind(window);
 
   window.fetch = (input, init) => {
-    if (typeof input === 'string' && input.startsWith('/api/')) {
-      return nativeFetch(`${normalizedApiBaseUrl}${input}`, init);
+    if (typeof input === 'string') {
+      return nativeFetch(resolveApiUrl(input), init);
     }
 
     if (input instanceof URL && input.pathname.startsWith('/api/')) {
-      return nativeFetch(new URL(`${normalizedApiBaseUrl}${input.pathname}${input.search}`), init);
+      return nativeFetch(resolveApiUrl(`${input.pathname}${input.search}`), init);
+    }
+
+    if (input instanceof Request) {
+      const rewrittenUrl = resolveApiUrl(input.url);
+      if (rewrittenUrl !== input.url) {
+        const clonedRequest = new Request(rewrittenUrl, input);
+        return nativeFetch(clonedRequest, init);
+      }
     }
 
     return nativeFetch(input, init);
