@@ -2,7 +2,7 @@ import './ForgotPassword.css';
 import { useState } from 'react';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { Link } from 'react-router-dom';
-import { auth } from '../config/firebase';
+import { auth, firebaseConfigErrorMessage, isFirebaseConfigured } from '../config/firebase';
 
 export default function ForgotPassword() {
   const [email,   setEmail]   = useState('');
@@ -14,6 +14,11 @@ export default function ForgotPassword() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     const trimmedEmail = email.trim();
+
+    if (!isFirebaseConfigured || !auth) {
+      setError(firebaseConfigErrorMessage || 'Firebase is not configured for this deployment.');
+      return;
+    }
 
     setError('');
     setSuccess(false);

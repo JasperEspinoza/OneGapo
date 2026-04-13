@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { updateProfile, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { auth, db } from '../config/firebase';
+import { auth, db, firebaseConfigErrorMessage, isFirebaseConfigured } from '../config/firebase';
 import { useAuth } from '../context/AuthContext';
 
 export default function SettingsContent({ showLogout = false, onLogout, logoutLoading = false }) {
@@ -25,6 +25,8 @@ export default function SettingsContent({ showLogout = false, onLogout, logoutLo
   });
 
   useEffect(() => {
+    if (!isFirebaseConfigured || !auth || !db) return;
+
     const root = document.documentElement;
     if (themeMode === 'dark') {
       root.classList.add('theme-dark');
@@ -35,6 +37,11 @@ export default function SettingsContent({ showLogout = false, onLogout, logoutLo
   }, [themeMode]);
 
   useEffect(() => {
+    if (!isFirebaseConfigured || !auth || !db) {
+      setLoadingProfile(false);
+      return undefined;
+    }
+
     if (!currentUser) return;
 
     let active = true;
@@ -73,7 +80,10 @@ export default function SettingsContent({ showLogout = false, onLogout, logoutLo
 
   const handleSaveProfile = async (event) => {
     event.preventDefault();
-    if (!currentUser) return;
+    if (!currentUser || !isFirebaseConfigured || !auth || !db) {
+      setSaveError(firebaseConfigErrorMessage || 'Firebase is not configured for this deployment.');
+      return;
+    }
 
     setSaving(true);
     setSaveError('');
@@ -113,7 +123,10 @@ export default function SettingsContent({ showLogout = false, onLogout, logoutLo
   };
 
   const handlePasswordReset = async () => {
-    if (!currentUser) return;
+    if (!currentUser || !isFirebaseConfigured || !auth) {
+      setResetError(firebaseConfigErrorMessage || 'Firebase is not configured for this deployment.');
+      return;
+    }
 
     setResetLoading(true);
     setResetError('');
@@ -130,6 +143,22 @@ export default function SettingsContent({ showLogout = false, onLogout, logoutLo
   };
 
   if (!currentUser) return null;
+
+  if (!isFirebaseConfigured || !auth || !db) {
+    return (
+      <div className="profile-modal-sections">
+        <section className="profile-card">
+          <h2 className="profile-card-title">Account Settings</h2>
+          <div role="alert" className="auth-error">
+            Firebase is not configured for this deployment.
+          </div>
+          <p className="profile-settings-help">
+            Set the Firebase Vercel environment variables to enable profile and password features.
+          </p>
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className="profile-modal-sections">

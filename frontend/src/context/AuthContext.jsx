@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { auth } from '../config/firebase';
+import { auth, isFirebaseConfigured } from '../config/firebase';
 
 const AuthContext = createContext(null);
 
@@ -27,6 +27,14 @@ export function AuthProvider({ children }) {
   };
 
   useEffect(() => {
+    if (!isFirebaseConfigured || !auth) {
+      setCurrentUser(null);
+      setUserClaims(null);
+      setAccountVerified(false);
+      setLoading(false);
+      return undefined;
+    }
+
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       try {
         if (user) {
@@ -55,9 +63,10 @@ export function AuthProvider({ children }) {
     return unsubscribe;
   }, []);
 
-  const logout = () => signOut(auth);
+  const logout = () => (auth ? signOut(auth) : Promise.resolve());
 
   const refreshUser = async () => {
+    if (!auth || !isFirebaseConfigured) return;
     if (!auth.currentUser) return;
     await auth.currentUser.reload();
     const tokenResult = await auth.currentUser.getIdTokenResult(true);

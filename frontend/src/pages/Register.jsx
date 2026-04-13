@@ -5,7 +5,7 @@ import {
   updateProfile,
 } from 'firebase/auth';
 import { Link, useNavigate, Navigate } from 'react-router-dom';
-import { auth } from '../config/firebase';
+import { auth, firebaseConfigErrorMessage, isFirebaseConfigured } from '../config/firebase';
 import { useAuth } from '../context/AuthContext';
 import OneGapoLogo from '../components/OneGapoLogo';
 
@@ -45,6 +45,11 @@ export default function Register() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+
+    if (!isFirebaseConfigured || !auth) {
+      setError(firebaseConfigErrorMessage || 'Firebase is not configured for this deployment.');
+      return;
+    }
 
     if (password !== confirm) return setError('Passwords do not match.');
     if (password.length < 8)  return setError('Password must be at least 8 characters.');
@@ -92,8 +97,8 @@ export default function Register() {
   };
 
   return (
-    <div className="auth-page">
-      <div className="auth-card">
+    <div className="auth-page register-page">
+      <div className="auth-card register-card">
         <div className="auth-header">
           <OneGapoLogo className="auth-logo" alt="OneGapo" />
           <h1 className="auth-title">Create account</h1>
@@ -102,7 +107,7 @@ export default function Register() {
 
         {error && <div role="alert" className="auth-error">{error}</div>}
 
-        <form onSubmit={handleSubmit} className="auth-form" noValidate>
+        <form onSubmit={handleSubmit} className="auth-form register-form" noValidate>
           <div>
             <label htmlFor="fullName" className="form-label">Full name</label>
             <input

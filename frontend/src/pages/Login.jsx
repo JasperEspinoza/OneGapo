@@ -2,7 +2,7 @@ import './Login.css';
 import { useState } from 'react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { useNavigate, Navigate, Link } from 'react-router-dom';
-import { auth } from '../config/firebase';
+import { auth, firebaseConfigErrorMessage, isFirebaseConfigured } from '../config/firebase';
 import { useAuth } from '../context/AuthContext';
 import OneGapoLogo from '../components/OneGapoLogo';
 
@@ -57,6 +57,10 @@ export default function Login() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    if (!isFirebaseConfigured || !auth) {
+      setError(firebaseConfigErrorMessage || 'Firebase is not configured for this deployment.');
+      return;
+    }
     setLoading(true);
 
     try {

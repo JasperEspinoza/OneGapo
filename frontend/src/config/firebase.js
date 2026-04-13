@@ -16,11 +16,10 @@ const required = [
   'VITE_FIREBASE_APP_ID',
 ];
 const missing = required.filter((k) => !import.meta.env[k] || import.meta.env[k] === 'REPLACE_ME');
-if (missing.length > 0) {
-  throw new Error(
-    `Firebase config is incomplete. Set these variables in frontend/.env.local:\n  ${missing.join('\n  ')}`
-  );
-}
+export const isFirebaseConfigured = missing.length === 0;
+export const firebaseConfigErrorMessage = isFirebaseConfigured
+  ? ''
+  : `Firebase config is incomplete. Set these variables in frontend/.env.local:\n  ${missing.join('\n  ')}`;
 
 const firebaseConfig = {
   apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
@@ -31,9 +30,9 @@ const firebaseConfig = {
   appId:             import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
-const app  = initializeApp(firebaseConfig);
+const app = isFirebaseConfigured ? initializeApp(firebaseConfig) : null;
 
-export const auth = getAuth(app);
-export const db   = getFirestore(app);
+export const auth = app ? getAuth(app) : null;
+export const db = app ? getFirestore(app) : null;
 
 export default app;
