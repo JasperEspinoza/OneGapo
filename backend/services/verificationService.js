@@ -57,18 +57,30 @@ async function markUserVerified(uid) {
 }
 
 async function getVerificationStatus(uid) {
-  const userSnap = await admin.firestore().collection('users').doc(uid).get();
-  if (!userSnap.exists) {
-    return false;
-  }
+  const db = admin.firestore();
 
-  if (userSnap.data().verified === true) {
+  const [userSnap, tokenSnap, userRecord] = await Promise.all([
+    db.collection('users').doc(uid).get(),
+    db.collection(TOKEN_COLLECTION).doc(uid).get(),
+    admin.auth().getUser(uid),
+  ]);
+
+  const userData = userSnap.exists ? userSnap.data() : null;
+  if (userData?.verified === true) {
     return true;
   }
 
-  const userRecord = await admin.auth().getUser(uid);
-  if (userRecord.emailVerified) {
-    await markUserVerified(uid);
+  const tokenData = tokenSnap.exists ? tokenSnap.data() : null;
+  const tokenMarkedUsed = Boolean(tokenData?.usedAt);
+
+  if (tokenMarkedUsed || userRecord?.customClaims?.verified === true || userRecord?.emailVerified === true) {
+    // Self-heal stale verification records across Auth claims and Firestore user profile.
+    try {
+      await markUserVerified(uid);
+    } catch (err) {
+      // If backfill fails transiently, still surface verified=true from observed signal.
+      console.warn('[VerificationService] Backfill markUserVerified failed:', err.message);
+    }
     return true;
   }
 
