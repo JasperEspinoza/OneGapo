@@ -14,9 +14,52 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 const server = http.createServer(app);
 
-const allowedOrigin = process.env.FRONTEND_URL
-  ? process.env.FRONTEND_URL
-  : /^http:\/\/localhost(:\d+)?$/;
+function parseAllowedOrigins(value) {
+  return String(value || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function createOriginMatcher() {
+  const configured = parseAllowedOrigins(process.env.FRONTEND_URL);
+
+  const defaults = [
+    /^http:\/\/localhost(:\d+)?$/,
+    /^https:\/\/.*\.vercel\.app$/,
+  ];
+
+  const allowlist = configured.length > 0 ? configured : defaults;
+
+  return (origin, callback) => {
+    // Allow non-browser and same-origin requests that may not send Origin.
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
+
+    const isAllowed = allowlist.some((entry) => {
+      if (entry instanceof RegExp) {
+        return entry.test(origin);
+      }
+
+      if (String(entry).toLowerCase() === 'vercel-preview') {
+        return /^https:\/\/.*\.vercel\.app$/.test(origin);
+      }
+
+      return String(entry) === origin;
+    });
+
+    if (isAllowed) {
+      callback(null, true);
+      return;
+    }
+
+    callback(new Error('Not allowed by CORS'));
+  };
+}
+
+const allowedOrigin = createOriginMatcher();
 
 app.use(
   cors({
