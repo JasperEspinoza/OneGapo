@@ -1,6 +1,134 @@
 const nodemailer = require('nodemailer');
+const https = require('https');
 
 let transporter = null;
+
+function normalizeEmail(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function extractEmailAddress(value) {
+  const input = String(value || '').trim();
+  if (!input) return '';
+
+  const angleMatch = input.match(/<([^>]+)>/);
+  if (angleMatch?.[1]) {
+    return normalizeEmail(angleMatch[1]);
+  }
+
+  return normalizeEmail(input);
+}
+
+function getSenderIdentity() {
+  const rawFrom = String(
+    process.env.EMAIL_FROM || process.env.SMTP_USER || process.env.GMAIL_EMAIL || process.env.BREVO_SENDER_EMAIL || 'noreply@onegapo.gov.ph'
+  ).trim();
+  const senderEmail = extractEmailAddress(process.env.BREVO_SENDER_EMAIL || rawFrom) || 'noreply@onegapo.gov.ph';
+  const senderName = String(process.env.BREVO_SENDER_NAME || 'OneGapo').trim() || 'OneGapo';
+
+  return {
+    fromHeader: rawFrom || senderEmail,
+    senderEmail,
+    senderName,
+  };
+}
+
+function postJson(url, payload, headers = {}) {
+  return new Promise((resolve, reject) => {
+    const requestUrl = new URL(url);
+    const body = JSON.stringify(payload);
+
+    const req = https.request(
+      {
+        protocol: requestUrl.protocol,
+        hostname: requestUrl.hostname,
+        port: requestUrl.port || 443,
+        path: `${requestUrl.pathname}${requestUrl.search}`,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(body),
+          ...headers,
+        },
+      },
+      (res) => {
+        let responseBody = '';
+        res.on('data', (chunk) => {
+          responseBody += chunk;
+        });
+        res.on('end', () => {
+          const status = Number(res.statusCode || 0);
+          if (status >= 200 && status < 300) {
+            resolve({ status, body: responseBody });
+            return;
+          }
+          reject(new Error(`HTTP ${status}: ${responseBody || 'Unknown error'}`));
+        });
+      }
+    );
+
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
+
+function shouldTryApiFallback(err) {
+  const code = String(err?.code || '').toUpperCase();
+  return code === 'ETIMEDOUT' || code === 'ECONNREFUSED' || code === 'ESOCKET' || code === 'ENOTFOUND';
+}
+
+function getBrevoApiKey() {
+  return String(process.env.BREVO_API_KEY || '').trim();
+}
+
+async function sendViaBrevoApi({ to, subject, html, text, senderEmail, senderName }) {
+  const apiKey = getBrevoApiKey();
+  if (!apiKey) {
+    const err = new Error('BREVO_API_KEY is not configured.');
+    err.code = 'BREVO_API_KEY_MISSING';
+    throw err;
+  }
+
+  const recipient = normalizeEmail(to);
+  if (!recipient) {
+    const err = new Error('Recipient email is required.');
+    err.code = 'EMAIL_RECIPIENT_MISSING';
+    throw err;
+  }
+
+  const fromEmail = extractEmailAddress(senderEmail) || 'noreply@onegapo.gov.ph';
+  const fromName = String(senderName || process.env.BREVO_SENDER_NAME || 'OneGapo').trim() || 'OneGapo';
+
+  const payload = {
+    sender: {
+      name: fromName,
+      email: fromEmail,
+    },
+    to: [{ email: recipient }],
+    subject,
+    htmlContent: html,
+    textContent: text,
+  };
+
+  const result = await postJson('https://api.brevo.com/v3/smtp/email', payload, {
+    'api-key': apiKey,
+  });
+
+  let parsedBody = null;
+  try {
+    parsedBody = result.body ? JSON.parse(result.body) : null;
+  } catch {
+    parsedBody = null;
+  }
+
+  return {
+    provider: 'brevo-api',
+    accepted: [recipient],
+    status: result.status,
+    messageId: parsedBody?.messageId || 'brevo-api',
+  };
+}
 
 /**
  * Initialize the email transporter based on environment configuration
@@ -49,6 +177,9 @@ function initializeTransporter() {
         host: smtpHost,
         port: parseInt(process.env.SMTP_PORT, 10) || 587,
         secure: process.env.SMTP_SECURE === 'true',
+        connectionTimeout: parseInt(process.env.SMTP_CONNECTION_TIMEOUT_MS, 10) || 15000,
+        greetingTimeout: parseInt(process.env.SMTP_GREETING_TIMEOUT_MS, 10) || 10000,
+        socketTimeout: parseInt(process.env.SMTP_SOCKET_TIMEOUT_MS, 10) || 20000,
         auth: {
           user: smtpUser,
           pass: smtpPass,
@@ -74,13 +205,31 @@ function initializeTransporter() {
  */
 async function sendVerificationEmail(email, verificationLink, options = {}) {
   try {
-    const trans = initializeTransporter();
-    if (!trans) {
-      console.warn('[EmailService] Email not configured. Verification link not sent:', email);
-      return { skipped: true, reason: 'Email not configured' };
+    const recipient = normalizeEmail(email);
+    if (!recipient) {
+      console.warn('[EmailService] Verification email skipped: recipient email is missing.');
+      return { skipped: true, reason: 'Recipient email is missing' };
     }
 
-    const sender = process.env.EMAIL_FROM || process.env.SMTP_USER || process.env.GMAIL_EMAIL || 'noreply@onegapo.gov.ph';
+    const senderIdentity = getSenderIdentity();
+    const trans = initializeTransporter();
+    if (!trans) {
+      if (getBrevoApiKey()) {
+        const apiResult = await sendViaBrevoApi({
+          to: recipient,
+          subject: 'Verify Your OneGapo Email Address',
+          html: `Welcome to OneGapo! Verify your email here: ${verificationLink}`,
+          text: `Welcome to OneGapo! Click here to verify your email: ${verificationLink}`,
+          senderEmail: senderIdentity.senderEmail,
+          senderName: senderIdentity.senderName,
+        });
+        console.log(`[EmailService] Verification email sent via Brevo API to ${recipient}`, apiResult.messageId);
+        return apiResult;
+      }
+
+      console.warn('[EmailService] Email not configured. Verification link not sent:', recipient);
+      return { skipped: true, reason: 'Email not configured' };
+    }
 
     const branchName = options.branchName || null;
     const locationText = branchName ? ` for your account at ${branchName}` : ' for your account';
@@ -124,15 +273,34 @@ async function sendVerificationEmail(email, verificationLink, options = {}) {
       </html>
     `;
 
-    const result = await trans.sendMail({
-      from: sender,
-      to: email,
+    const messagePayload = {
+      from: senderIdentity.fromHeader,
+      to: recipient,
       subject: 'Verify Your OneGapo Email Address',
       html: htmlContent,
       text: `Welcome to OneGapo! Click here to verify your email: ${verificationLink}`,
-    });
+    };
 
-    console.log(`[EmailService] Verification email sent to ${email}`, result.messageId);
+    let result;
+    try {
+      result = await trans.sendMail(messagePayload);
+    } catch (smtpErr) {
+      if (shouldTryApiFallback(smtpErr) && getBrevoApiKey()) {
+        console.warn('[EmailService] SMTP send failed, attempting Brevo API fallback:', smtpErr.message);
+        result = await sendViaBrevoApi({
+          to: recipient,
+          subject: messagePayload.subject,
+          html: messagePayload.html,
+          text: messagePayload.text,
+          senderEmail: senderIdentity.senderEmail,
+          senderName: senderIdentity.senderName,
+        });
+      } else {
+        throw smtpErr;
+      }
+    }
+
+    console.log(`[EmailService] Verification email sent to ${recipient}`, result.messageId);
     return result;
   } catch (err) {
     console.error('[EmailService] Failed to send verification email to', email);
@@ -152,13 +320,31 @@ async function sendVerificationEmail(email, verificationLink, options = {}) {
  */
 async function sendPasswordResetEmail(email, resetLink, branchName = null) {
   try {
-    const trans = initializeTransporter();
-    if (!trans) {
-      console.warn('[EmailService] Email not configured. Password reset link not sent:', email);
-      return { skipped: true, reason: 'Email not configured' };
+    const recipient = normalizeEmail(email);
+    if (!recipient) {
+      console.warn('[EmailService] Password reset email skipped: recipient email is missing.');
+      return { skipped: true, reason: 'Recipient email is missing' };
     }
 
-    const sender = process.env.EMAIL_FROM || process.env.SMTP_USER || process.env.GMAIL_EMAIL || 'noreply@onegapo.gov.ph';
+    const senderIdentity = getSenderIdentity();
+    const trans = initializeTransporter();
+    if (!trans) {
+      if (getBrevoApiKey()) {
+        const apiResult = await sendViaBrevoApi({
+          to: recipient,
+          subject: '[OneGapo] Set Your Staff Account Password',
+          html: `Set your password here: ${resetLink}`,
+          text: `Set your password here: ${resetLink}. This link expires after 24 hours.`,
+          senderEmail: senderIdentity.senderEmail,
+          senderName: senderIdentity.senderName,
+        });
+        console.log(`[EmailService] Password reset email sent via Brevo API to ${recipient}`, apiResult.messageId);
+        return apiResult;
+      }
+
+      console.warn('[EmailService] Email not configured. Password reset link not sent:', recipient);
+      return { skipped: true, reason: 'Email not configured' };
+    }
 
     const locationText = branchName ? ` at ${branchName}` : '';
     const htmlContent = `
@@ -205,15 +391,34 @@ async function sendPasswordResetEmail(email, resetLink, branchName = null) {
       </html>
     `;
 
-    const result = await trans.sendMail({
-      from: sender,
-      to: email,
+    const messagePayload = {
+      from: senderIdentity.fromHeader,
+      to: recipient,
       subject: '[OneGapo] Set Your Staff Account Password',
       html: htmlContent,
       text: `Set your password here: ${resetLink}. This link expires after 24 hours.`,
-    });
+    };
 
-    console.log(`[EmailService] Password reset email sent to ${email}`, result.messageId);
+    let result;
+    try {
+      result = await trans.sendMail(messagePayload);
+    } catch (smtpErr) {
+      if (shouldTryApiFallback(smtpErr) && getBrevoApiKey()) {
+        console.warn('[EmailService] SMTP send failed, attempting Brevo API fallback:', smtpErr.message);
+        result = await sendViaBrevoApi({
+          to: recipient,
+          subject: messagePayload.subject,
+          html: messagePayload.html,
+          text: messagePayload.text,
+          senderEmail: senderIdentity.senderEmail,
+          senderName: senderIdentity.senderName,
+        });
+      } else {
+        throw smtpErr;
+      }
+    }
+
+    console.log(`[EmailService] Password reset email sent to ${recipient}`, result.messageId);
     return result;
   } catch (err) {
     console.error('[EmailService] Failed to send password reset email to', email);
