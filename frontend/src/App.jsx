@@ -12,6 +12,7 @@ import AdminPanel     from './pages/AdminPanel';
 import ResidentHub    from './pages/ResidentHub';
 import { useAuth } from './context/AuthContext';
 import { SettingsModalProvider } from './context/SettingsModalContext';
+import PwaInstallPrompt from './components/PwaInstallPrompt';
 
 const Unauthorized = () => (
   <div className="screen-center">
@@ -103,6 +104,7 @@ function App() {
             {/* ── Catch-all ───────────────────────────────────────── */}
             <Route path="*" element={<Navigate to="/login" replace />} />
           </Routes>
+          <PwaInstallPrompt />
         </SettingsModalProvider>
       </AuthProvider>
     </Router>

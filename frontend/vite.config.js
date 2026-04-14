@@ -14,7 +14,7 @@ export default defineConfig({
     VitePWA({
       disable: isVercelPreview,
       registerType: 'prompt',
-      includeAssets: ['pwa-icon.svg'],
+      includeAssets: ['assets/OneGapo.png'],
       manifest: {
         name: 'OneGapo Resident',
         short_name: 'OneGapo',
@@ -27,9 +27,9 @@ export default defineConfig({
         orientation: 'portrait-primary',
         icons: [
           {
-            src: 'pwa-icon.svg',
-            sizes: 'any',
-            type: 'image/svg+xml',
+            src: 'assets/OneGapo.png',
+            sizes: '200x200',
+            type: 'image/png',
             purpose: 'any',
           },
         ],
