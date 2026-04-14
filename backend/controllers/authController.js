@@ -58,8 +58,14 @@ async function completeResidentRegistration(req, res, next) {
       };
     }
 
+    const message = emailDelivery.sent
+      ? 'Registration completed. Verification email sent.'
+      : emailDelivery.skipped
+        ? 'Registration completed, but verification email is not configured.'
+        : 'Registration completed, but verification email failed to send.';
+
     return res.status(200).json({
-      message: 'Registration completed. Verification email sent.',
+      message,
       role: 'resident',
       verified: false,
       emailDelivery,
@@ -92,9 +98,18 @@ async function resendOwnVerification(req, res, next) {
     ]);
     const userData = userSnap.exists ? userSnap.data() : {};
 
-    const emailResult = await sendAccountVerificationEmail(uid, userRecord.email || '', {
-      branchName: userData.branchName || null,
-    });
+    let emailResult;
+    try {
+      emailResult = await sendAccountVerificationEmail(uid, userRecord.email || '', {
+        branchName: userData.branchName || null,
+      });
+    } catch (emailErr) {
+      console.warn('[resendOwnVerification] Verification email send failed:', emailErr.message);
+      return res.status(503).json({
+        error: 'Verification email service is temporarily unavailable. Please try again later.',
+        details: emailErr.message,
+      });
+    }
 
     if (emailResult?.skipped) {
       return res.json({ message: 'Verification email is not configured. Please configure SMTP.' });

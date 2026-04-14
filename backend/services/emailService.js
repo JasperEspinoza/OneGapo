@@ -38,7 +38,7 @@ function initializeTransporter() {
         }
       });
     } else if (emailProvider === 'smtp') {
-      if (!process.env.SMTP_HOST || !process.env.SMTP_USER) {
+      if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
         console.warn('[EmailService] SMTP not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS in .env');
         return null;
       }
