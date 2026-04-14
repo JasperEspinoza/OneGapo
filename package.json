@@ -3,6 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
+    "postinstall": "npm --prefix backend install --no-audit --no-fund",
     "build": "npm --prefix frontend install --no-audit --no-fund && npm --prefix frontend run build",
     "dev": "npm --prefix frontend run dev",
     "start": "npm --prefix backend start"
