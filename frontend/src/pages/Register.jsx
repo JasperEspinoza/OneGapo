@@ -77,6 +77,11 @@ export default function Register() {
       });
 
       if (!res.ok) {
+        if (res.status === 404) {
+          throw new Error(
+            'Registration service endpoint was not found. Check backend deployment and VITE_API_BASE_URL configuration.'
+          );
+        }
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error || 'Could not complete registration. Please try again.');
       }

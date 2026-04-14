@@ -1,10 +1,15 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { registerSW } from 'virtual:pwa-register';
 import App from './App';
 import ErrorBoundary from './components/ErrorBoundary';
 import { getApiBaseUrl, resolveApiUrl } from './config/runtime';
 import './index.css';
+
+/* global __PWA_ENABLED__ */
+
+if (typeof __PWA_ENABLED__ === 'undefined') {
+  throw new Error('Missing build flag: __PWA_ENABLED__');
+}
 
 const apiBaseUrl = getApiBaseUrl();
 
@@ -32,11 +37,23 @@ if (apiBaseUrl && typeof window !== 'undefined' && typeof window.fetch === 'func
   };
 }
 
-registerSW({
-  onRegisterError(error) {
-    console.error('Service worker registration failed:', error);
-  },
-});
+if (__PWA_ENABLED__) {
+  import('virtual:pwa-register').then(({ registerSW }) => {
+    registerSW({
+      onRegisterError(error) {
+        console.error('Service worker registration failed:', error);
+      },
+    });
+  });
+} else if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations()
+    .then((registrations) => {
+      registrations.forEach((registration) => registration.unregister());
+    })
+    .catch(() => {
+      // Ignore unregister failures in constrained environments.
+    });
+}
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

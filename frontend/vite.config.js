@@ -6,6 +6,9 @@ const isVercelPreview = process.env.VERCEL_ENV === 'preview';
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  define: {
+    __PWA_ENABLED__: JSON.stringify(!isVercelPreview),
+  },
   plugins: [
     react(),
     VitePWA({
