@@ -121,7 +121,8 @@ export default function VerifyEmail() {
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
-        throw new Error(data.error || 'Could not resend email. Please try again.');
+        const detail = data.details ? ` (${data.details})` : '';
+        throw new Error((data.error || 'Could not resend email. Please try again.') + detail);
       }
 
       setResent(true);

@@ -77,16 +77,28 @@ async function completeResidentRegistration(req, res, next) {
 
 async function getResidentVerificationStatus(req, res, next) {
   try {
-    const verified = await getVerificationStatus(req.user.uid);
+    const uid = String(req.user?.uid || '').trim();
+    if (!uid) {
+      return res.status(401).json({ error: 'Unauthorized: Missing user identifier.' });
+    }
+
+    const verified = await getVerificationStatus(uid);
     return res.json({ verified });
   } catch (err) {
+    if (err?.code === 'auth/user-not-found') {
+      return res.status(404).json({ error: 'User account not found.' });
+    }
     return next(err);
   }
 }
 
 async function resendOwnVerification(req, res, next) {
   try {
-    const { uid } = req.user;
+    const uid = String(req.user?.uid || '').trim();
+    if (!uid) {
+      return res.status(401).json({ error: 'Unauthorized: Missing user identifier.' });
+    }
+
     const verified = await getVerificationStatus(uid);
     if (verified) {
       return res.status(400).json({ error: 'This account is already verified.' });
@@ -117,6 +129,21 @@ async function resendOwnVerification(req, res, next) {
 
     return res.json({ message: 'Verification email sent.' });
   } catch (err) {
+    if (err?.code === 'auth/user-not-found') {
+      return res.status(404).json({ error: 'User account not found.' });
+    }
+
+    if (err?.message && /verification link has expired|verification token is required|invalid/i.test(err.message)) {
+      return res.status(400).json({ error: err.message });
+    }
+
+    if (err?.code === 'ECONNREFUSED' || err?.code === 'ETIMEDOUT' || err?.code === 'ESOCKET') {
+      return res.status(503).json({
+        error: 'Verification email service is temporarily unavailable. Please try again later.',
+        details: err.message,
+      });
+    }
+
     return next(err);
   }
 }
