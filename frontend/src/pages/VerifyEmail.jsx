@@ -23,6 +23,7 @@ export default function VerifyEmail() {
   const token = new URLSearchParams(location.search).get('token');
 
   const [resending, setResending] = useState(false);
+  const [checkingStatus, setCheckingStatus] = useState(false);
   const [resent,    setResent]    = useState(false);
   const [error,     setError]     = useState('');
   const [verifyingToken, setVerifyingToken] = useState(false);
@@ -64,11 +65,12 @@ export default function VerifyEmail() {
 
         const message = data.message || 'Email verified successfully.';
         setVerificationMessage(message);
-        navigate('/verify-email', { replace: true });
-
         if (currentUser && currentUser.uid === data.uid) {
-          refreshUser().catch(() => {});
+          await refreshUser().catch(() => {});
+          await logout().catch(() => {});
         }
+
+        navigate('/login', { replace: true });
       } catch (err) {
         if (!active) return;
         if (err.name === 'AbortError') {
@@ -92,18 +94,54 @@ export default function VerifyEmail() {
       window.clearTimeout(timeoutId);
       controller.abort();
     };
-  }, [token, tokenProcessed, currentUser, navigate, refreshUser]);
+  }, [token, tokenProcessed, currentUser, navigate, refreshUser, logout]);
 
   useEffect(() => {
     const isPrivileged = userClaims?.role === 'staff' || userClaims?.role === 'admin';
-    if ((isPrivileged || accountVerified) && !token) {
+    if (!token && isPrivileged) {
       navigate(getDestination(userClaims), { replace: true });
     }
-  }, [accountVerified, navigate, token, userClaims]);
+  }, [navigate, token, userClaims]);
+
+  useEffect(() => {
+    if (token) return;
+    const isPrivileged = userClaims?.role === 'staff' || userClaims?.role === 'admin';
+    if (isPrivileged || !accountVerified) return;
+
+    let active = true;
+    const routeToLogin = async () => {
+      await logout().catch(() => {});
+      if (active) {
+        navigate('/login', { replace: true });
+      }
+    };
+
+    routeToLogin();
+
+    return () => {
+      active = false;
+    };
+  }, [accountVerified, logout, navigate, token, userClaims]);
 
   const handleCheckNow = async () => {
     setError('');
-    await refreshUser();
+    setVerificationMessage('');
+    setCheckingStatus(true);
+
+    try {
+      const verified = await refreshUser();
+      if (verified) {
+        await logout().catch(() => {});
+        navigate('/login', { replace: true });
+        return;
+      }
+
+      setError('Your email is still unverified. Open your email link first, then try again.');
+    } catch {
+      setError('Could not check verification status right now. Please try again.');
+    } finally {
+      setCheckingStatus(false);
+    }
   };
 
   const handleResend = async () => {
@@ -173,7 +211,7 @@ export default function VerifyEmail() {
         {currentUser ? (
           <div className="verify-email-actions">
             <button onClick={handleCheckNow} className="btn-primary">
-              I&apos;ve verified my email
+              {checkingStatus ? 'Checking…' : 'I\'ve verified my email'}
             </button>
             <button
               onClick={handleResend}

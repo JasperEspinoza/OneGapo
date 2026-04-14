@@ -66,8 +66,8 @@ export function AuthProvider({ children }) {
   const logout = () => (auth ? signOut(auth) : Promise.resolve());
 
   const refreshUser = async () => {
-    if (!auth || !isFirebaseConfigured) return;
-    if (!auth.currentUser) return;
+    if (!auth || !isFirebaseConfigured) return false;
+    if (!auth.currentUser) return false;
     await auth.currentUser.reload();
     const tokenResult = await auth.currentUser.getIdTokenResult(true);
     let verified = tokenResult.claims.verified === true;
@@ -81,6 +81,7 @@ export function AuthProvider({ children }) {
     setCurrentUser(auth.currentUser);
     setUserClaims({ ...tokenResult.claims });
     setAccountVerified(verified);
+    return verified;
   };
 
   return (
