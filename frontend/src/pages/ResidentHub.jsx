@@ -326,6 +326,10 @@ export default function ResidentHub() {
         if (!active) return;
 
         const socketUrl = getSocketServerUrl();
+        if (!socketUrl) {
+          loadMyReports({ silent: true });
+          return;
+        }
 
         socket = io(socketUrl, {
           path: '/socket.io',

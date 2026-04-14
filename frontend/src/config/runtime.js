@@ -3,8 +3,30 @@ function normalizeBaseUrl(value) {
   return value.trim().replace(/\/$/, '');
 }
 
+function getRuntimeWindowConfig(key) {
+  if (typeof window === 'undefined') return '';
+
+  try {
+    const fromGlobal = window.__ONEGAPO_CONFIG__?.[key];
+    if (typeof fromGlobal === 'string' && fromGlobal.trim()) {
+      return fromGlobal;
+    }
+
+    const fromStorage = window.localStorage?.getItem(`ONEGAPO_${key}`);
+    if (typeof fromStorage === 'string' && fromStorage.trim()) {
+      return fromStorage;
+    }
+  } catch {
+    return '';
+  }
+
+  return '';
+}
+
 export function getApiBaseUrl() {
-  return normalizeBaseUrl(import.meta.env.VITE_API_BASE_URL);
+  return normalizeBaseUrl(
+    import.meta.env.VITE_API_BASE_URL || getRuntimeWindowConfig('API_BASE_URL')
+  );
 }
 
 export function resolveApiUrl(input) {
@@ -29,7 +51,9 @@ export function resolveApiUrl(input) {
 }
 
 export function getSocketServerUrl() {
-  const socketUrl = normalizeBaseUrl(import.meta.env.VITE_SOCKET_URL);
+  const socketUrl = normalizeBaseUrl(
+    import.meta.env.VITE_SOCKET_URL || getRuntimeWindowConfig('SOCKET_URL')
+  );
   if (socketUrl) return socketUrl;
 
   const apiBaseUrl = getApiBaseUrl();

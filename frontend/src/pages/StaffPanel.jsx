@@ -402,6 +402,11 @@ export default function StaffPanel() {
         if (!active) return;
 
         const socketUrl = getSocketServerUrl();
+        if (!socketUrl) {
+          setNotifLoading(false);
+          setNotifError('Realtime notifications unavailable.');
+          return;
+        }
 
         socket = io(socketUrl, {
           path: '/socket.io',
