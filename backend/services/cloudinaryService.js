@@ -55,7 +55,21 @@ function uploadBufferToCloudinary(fileBuffer, options = {}) {
   });
 }
 
+async function deleteResourceByPublicId(publicId, options = {}) {
+  const cfg = ensureCloudinaryConfigured();
+
+  return new Promise((resolve, reject) => {
+    // resource_type defaults to 'image' but allow override (video/auto)
+    const params = { resource_type: options.resource_type || 'image' };
+    cloudinary.uploader.destroy(publicId, params, (error, result) => {
+      if (error) return reject(error);
+      resolve(result);
+    });
+  });
+}
+
 module.exports = {
   isCloudinaryConfigured,
   uploadBufferToCloudinary,
+  deleteResourceByPublicId,
 };

@@ -1177,14 +1177,26 @@ export default function ResidentHub() {
                     className={`resident-notification-item ${alert.read ? '' : 'resident-notification-item-unread'}`}
                     onClick={() => openAlertTicket(alert)}
                   >
-                    <div className="resident-notification-item-header">
-                      <span className="resident-notification-item-title">{alert.reportTitle}</span>
-                      {!alert.read && <span className="resident-notification-item-dot" />}
-                    </div>
-                    <span className="resident-notification-item-meta">
-                      {normalizeStatus(alert.fromStatus)} → {normalizeStatus(alert.toStatus)}
+                    <span
+                      className={`resident-notification-icon material-symbols-outlined ${alert.read ? '' : 'resident-notification-icon-unread'}`}
+                      aria-hidden="true"
+                    >
+                      {String(alert.toStatus || '').toLowerCase() === 'resolved' ? 'check_circle' : 'notifications'}
                     </span>
-                    <span className="resident-notification-item-time">{formatReportDate(alert.changedAt)}</span>
+
+                    <div className="resident-notification-content">
+                      <div className="resident-notification-item-header">
+                        <span className="resident-notification-item-title">{alert.reportTitle}</span>
+                        {!alert.read && <span className="resident-notification-item-dot" />}
+                      </div>
+
+                      <div className="resident-notification-row">
+                        <span className="resident-notification-item-meta">
+                          {normalizeStatus(alert.fromStatus)} → {normalizeStatus(alert.toStatus)}
+                        </span>
+                        <span className="resident-notification-item-time">{formatReportDate(alert.changedAt)}</span>
+                      </div>
+                    </div>
                   </button>
                 ))}
               </div>

@@ -9,6 +9,7 @@ const {
   getPerformanceMetrics,
   updateReportStatus,
   archiveReport,
+  unarchiveReport,
   deleteReport,
   listForwardTargets,
   forwardReport,
@@ -91,6 +92,7 @@ router.patch('/:reportId/forward', verifyToken, requireStaffOrAdmin, forwardRepo
 router.post('/:reportId/duplicate', verifyToken, requireStaffOrAdmin, markReportDuplicate);
 router.delete('/:reportId/duplicate', verifyToken, requireStaffOrAdmin, revokeReportDuplicate);
 router.patch('/:reportId/archive', verifyToken, requireStaffOrAdmin, archiveReport);
+router.patch('/:reportId/unarchive', verifyToken, requireStaffOrAdmin, unarchiveReport);
 router.delete('/:reportId', verifyToken, requireStaffOrAdmin, deleteReport);
 router.get('/notifications', verifyToken, requireStaffOrAdmin, rateLimitNotificationsRead, listNotifications);
 router.patch('/notifications/:notificationId/read', verifyToken, requireStaffOrAdmin, markNotificationRead);

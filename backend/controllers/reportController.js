@@ -1585,6 +1585,97 @@ async function archiveReport(req, res, next) {
   }
 }
 
+async function unarchiveReport(req, res, next) {
+  try {
+    const requesterUid = getRequesterUid(req);
+    const role = req.user?.role;
+    if (role !== 'staff' && role !== 'admin') {
+      return res.status(403).json({ error: 'Only staff and admins can unarchive reports.' });
+    }
+
+    if (!canManageReportLifecycle(req.user)) {
+      return res.status(403).json({ error: 'Only the main admin and branch admins can unarchive reports.' });
+    }
+
+    const reportId = String(req.params?.reportId || '').trim();
+    if (!reportId) return res.status(400).json({ error: 'reportId is required.' });
+
+    const db = admin.firestore();
+    const ref = db.collection('reports').doc(reportId);
+    const snap = await ref.get();
+    if (!snap.exists) return res.status(404).json({ error: 'Report not found.' });
+
+    const report = snap.data() || {};
+    if (role === 'staff' && !canStaffAccessReport(report, req.user)) {
+      return res.status(403).json({ error: 'You can only unarchive reports inside your assigned branch/barangay coverage.' });
+    }
+
+    const previousStatus = String(report?.status || 'submitted').trim().toLowerCase();
+    if (previousStatus !== 'archived') {
+      return res.json({ message: 'Report is not archived.', report: { ...report, id: report.id || reportId } });
+    }
+
+    // Determine last non-archived status from auditTrail if available
+    let restoreStatus = 'submitted';
+    try {
+      const audit = Array.isArray(report.auditTrail) ? report.auditTrail.slice().reverse() : [];
+      for (const entry of audit) {
+        if (!entry) continue;
+        if (entry.type === 'archived') continue;
+        if (entry.toStatus) {
+          restoreStatus = String(entry.toStatus).trim().toLowerCase();
+          break;
+        }
+      }
+    } catch (e) {
+      // fallback to submitted
+      restoreStatus = 'submitted';
+    }
+
+    const unarchivedAtIso = new Date().toISOString();
+    const auditEntry = {
+      type: 'unarchived',
+      fromStatus: 'archived',
+      toStatus: restoreStatus,
+      changedAt: unarchivedAtIso,
+      changedBy: {
+        uid: requesterUid,
+        role,
+        email: req.user.email || '',
+      },
+      progressNote: null,
+    };
+
+    await ref.update({
+      status: restoreStatus,
+      archivedAt: admin.firestore.FieldValue.delete(),
+      archivedBy: admin.firestore.FieldValue.delete(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      lastUpdatedBy: {
+        uid: requesterUid,
+        role,
+        email: req.user.email || '',
+      },
+      auditTrail: admin.firestore.FieldValue.arrayUnion(auditEntry),
+    });
+
+    const updatedSnap = await ref.get();
+    const data = updatedSnap.data() || {};
+
+    return res.json({
+      message: 'Report unarchived successfully.',
+      report: {
+        ...data,
+        id: data.id || reportId,
+        createdAt: toIso(data.createdAt),
+        updatedAt: toIso(data.updatedAt),
+      },
+    });
+  } catch (err) {
+    return next(err);
+  }
+}
+
 async function deleteReport(req, res, next) {
   try {
     const role = req.user?.role;
@@ -1615,6 +1706,30 @@ async function deleteReport(req, res, next) {
       return res.status(403).json({
         error: 'You can only delete reports inside your assigned branch/barangay coverage.',
       });
+    }
+
+    // Attempt to remove attached media from Cloudinary (if configured).
+    try {
+      const attachments = Array.isArray(report.attachments) ? report.attachments : [];
+      const resolutionPhotos = Array.isArray(report?.resolution?.photos) ? report.resolution.photos : [];
+      const { deleteResourceByPublicId, isCloudinaryConfigured } = require('../services/cloudinaryService');
+
+      if (isCloudinaryConfigured() && (attachments.length || resolutionPhotos.length)) {
+        const allMedia = [...attachments, ...resolutionPhotos];
+        await Promise.all(allMedia.map(async (media) => {
+          const publicId = media?.publicId || media?.public_id || null;
+          if (!publicId) return null;
+          try {
+            return await deleteResourceByPublicId(publicId, { resource_type: media.resourceType || 'image' });
+          } catch (err) {
+            // Log and continue; deletion should not block report deletion
+            console.warn('[deleteReport] Failed to delete media', publicId, err.message || err);
+            return null;
+          }
+        }));
+      }
+    } catch (err) {
+      console.warn('[deleteReport] Cloudinary cleanup failed:', err.message || err);
     }
 
     await ref.delete();
@@ -2058,6 +2173,7 @@ module.exports = {
   getPerformanceMetrics,
   updateReportStatus,
   archiveReport,
+  unarchiveReport,
   deleteReport,
   listForwardTargets,
   forwardReport,

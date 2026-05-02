@@ -84,19 +84,24 @@
 }
 
 /* Notifications */
-.resident-notif-btn {
+.resident-notif-btn,
+.btn-outline.resident-notif-btn {
   position: relative;
   width: 2.4rem;
   height: 2.4rem;
+  min-width: 2.4rem;
+  min-height: 2.4rem;
   border-radius: 0.5rem;
   border: 1px solid var(--res-border);
   background: var(--res-surface);
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   color: var(--res-text-soft);
   cursor: pointer;
   transition: all 0.2s;
+  padding: 0 !important; /* override .btn-outline padding only for this button */
+  line-height: 0; /* keep icon centered */
 }
 
 .resident-notif-btn:hover {
@@ -133,6 +138,13 @@
   justify-content: flex-end;
   gap: 0.5rem;
   flex-shrink: 0;
+}
+
+/* Ensure sections stack vertically and have consistent gaps to avoid horizontal wrapping */
+.resident-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
 }
 
 /* Layout */
@@ -360,6 +372,118 @@
 
 .resident-report-meta .material-symbols-outlined {
   font-size: 1rem;
+}
+
+/* Notifications page */
+.resident-notifications-page {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.resident-notifications-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.resident-notifications-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.resident-notification-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  background: var(--res-surface);
+  border: 1px solid var(--res-border);
+  border-radius: var(--res-radius-md);
+  padding: 0.6rem 0.75rem;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s, transform 0.12s;
+}
+
+.resident-notification-item:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--res-shadow-sm);
+  border-color: var(--res-border-strong);
+}
+
+.resident-notification-icon {
+  min-width: 2.25rem;
+  min-height: 2.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  background: var(--res-surface-muted);
+  color: var(--res-text-muted);
+  font-size: 1.15rem;
+  flex-shrink: 0;
+}
+
+.resident-notification-icon-unread {
+  background: var(--res-primary-soft);
+  color: var(--res-primary);
+}
+
+.resident-notification-content {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.resident-notification-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.resident-notification-item-title {
+  font-weight: 700;
+  color: var(--res-text);
+  font-size: 0.95rem;
+  margin: 0;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resident-notification-item-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  background: var(--res-primary);
+  border-radius: 1rem;
+  flex-shrink: 0;
+}
+
+.resident-notification-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  justify-content: space-between;
+}
+
+.resident-notification-item-meta {
+  font-size: 0.82rem;
+  color: var(--res-text-muted);
+}
+
+.resident-notification-item-time {
+  font-size: 0.78rem;
+  color: var(--res-text-muted);
+  white-space: nowrap;
+}
+
+.resident-notification-item-unread {
+  border-left: 3px solid var(--res-primary);
 }
 
 /* Forms */

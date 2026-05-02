@@ -88,6 +88,7 @@ const ICONS = {
 const NAV_ITEMS = [
   { id: 'dashboard', label: 'Dashboard',  icon: 'dashboard' },
   { id: 'reports',   label: 'Reports',    icon: 'report' },
+  { id: 'archive',   label: 'Archive',    icon: 'badge' },
   { id: 'branches',  label: 'Branches',   icon: 'branches' },
   { id: 'roles',     label: 'Roles',      icon: 'admin_panel_settings' },
   { id: 'accounts',  label: 'Staff',      icon: 'accounts' },
@@ -505,6 +506,7 @@ export default function AdminPanel() {
       case 'dashboard':
         return true;
       case 'reports':
+      case 'archive':
         return canAccessReports;
       case 'branches':
         return canAccessBranches;
@@ -613,6 +615,7 @@ export default function AdminPanel() {
   const [performanceError, setPerformanceError] = useState('');
   const [reportActionError, setReportActionError] = useState('');
   const [archivingReportId, setArchivingReportId] = useState('');
+  const [unarchivingReportId, setUnarchivingReportId] = useState('');
   const [deletingReportId, setDeletingReportId] = useState('');
   const [selectedReport, setSelectedReport] = useState(null);
   const [expandedReportImage, setExpandedReportImage] = useState(null);
@@ -1692,7 +1695,7 @@ export default function AdminPanel() {
     }
   };
 
-  const handleArchiveReport = async (report, { skipConfirm = false } = {}) => {
+  const handleArchiveReport = async (report, { skipConfirm = true } = {}) => {
     const reportId = String(report?.id || '').trim();
     if (!reportId) return;
 
@@ -1701,18 +1704,7 @@ export default function AdminPanel() {
       return;
     }
 
-    const title = report?.title || 'this report';
-    if (!skipConfirm) {
-      openConfirmDialog({
-        title: 'Archive report',
-        message: `Archive "${title}"?`,
-        confirmLabel: 'Archive',
-        confirmClassName: 'ap-btn-danger',
-        onConfirm: () => handleArchiveReport(report, { skipConfirm: true }),
-      });
-      return;
-    }
-
+    // Archive immediately without confirmation
     setReportActionError('');
     setArchivingReportId(reportId);
 
@@ -1734,6 +1726,32 @@ export default function AdminPanel() {
       setReportActionError(err.message || 'Failed to archive report.');
     } finally {
       setArchivingReportId('');
+    }
+  };
+
+  const handleUnarchiveReport = async (report) => {
+    const reportId = String(report?.id || '').trim();
+    if (!reportId) return;
+
+    if (String(report?.status || '').toLowerCase() !== 'archived') {
+      setReportActionError('This report is not archived.');
+      return;
+    }
+
+    setReportActionError('');
+    setUnarchivingReportId(reportId);
+
+    try {
+      const res = await api(`/api/reports/${reportId}/unarchive`, { method: 'PATCH' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to unarchive report.');
+
+      setReports((prev) => prev.map((item) => (item.id === reportId ? { ...item, ...(data?.report || {}) } : item)));
+      setSelectedReport((prev) => (prev?.id === reportId ? { ...prev, ...(data?.report || {}) } : prev));
+    } catch (err) {
+      setReportActionError(err.message || 'Failed to unarchive report.');
+    } finally {
+      setUnarchivingReportId('');
     }
   };
 
@@ -1959,10 +1977,6 @@ export default function AdminPanel() {
 
         {/* Scrollable content */}
         <div className="ap-content">
-
-          {/* ══════════════════════════════════════
-              DASHBOARD
-          ══════════════════════════════════════ */}
           {activeSection === 'dashboard' && (
             <div className="ap-section">
               <div className="ap-section-heading">
@@ -2456,8 +2470,84 @@ export default function AdminPanel() {
           )}
 
           {/* ══════════════════════════════════════
-              BRANCHES
+              ARCHIVE
           ══════════════════════════════════════ */}
+          {activeSection === 'archive' && (
+            <div className="ap-section">
+              <div className="ap-section-heading">
+                <div>
+                  <h2 className="ap-section-title">Archived reports</h2>
+                  <p className="ap-section-sub">Previously archived reports. You can restore or permanently delete them.</p>
+                </div>
+                <div className="ap-section-actions">
+                  <button onClick={() => loadReports()} disabled={reportsLoading} className="ap-btn-outline ap-btn-sm">
+                    {reportsLoading ? 'Loading…' : 'Refresh reports'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="ap-card">
+                <div className="ap-card-header">
+                  <h3 className="ap-card-title">Archived report list</h3>
+                </div>
+
+                {reportActionError ? <div className="auth-error" role="alert">{reportActionError}</div> : null}
+                {reportsLoading ? (
+                  <p className="ap-loading">Loading…</p>
+                ) : reports.length === 0 ? (
+                  <p className="ap-empty">No reports found.</p>
+                ) : (
+                  <div className="ap-table-wrap">
+                    <table className="ap-table">
+                      <thead>
+                        <tr>
+                          <th>Title</th>
+                          <th>Category</th>
+                          <th>Archived At</th>
+                          <th>Address</th>
+                          <th>Reporter</th>
+                          <th>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {reports.filter((r) => String((r?.status || '')).toLowerCase() === 'archived').map((report) => (
+                          <tr key={report.id}>
+                            <td>{report.title || <span className="ap-muted">—</span>}</td>
+                            <td>{getReportCategoryLabel(report.category)}</td>
+                            <td>{report.archivedAt ? new Date(report.archivedAt).toLocaleString() : <span className="ap-muted">—</span>}</td>
+                            <td>{report?.location?.address || <span className="ap-muted">—</span>}</td>
+                            <td>{resolveReporterName(report)}</td>
+                            <td className="ap-table-actions">
+                              <div className="ap-report-row-actions" style={{ gap: '0.5rem' }}>
+                                <button
+                                  type="button"
+                                  className="ap-report-action-btn"
+                                  onClick={() => handleUnarchiveReport(report)}
+                                  disabled={unarchivingReportId === report.id || deletingReportId === report.id}
+                                >
+                                  {unarchivingReportId === report.id ? 'Unarchiving…' : 'Unarchive'}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="ap-report-action-btn ap-report-action-btn-danger"
+                                  onClick={() => handleDeleteReport(report)}
+                                  disabled={deletingReportId === report.id || unarchivingReportId === report.id}
+                                >
+                                  {deletingReportId === report.id ? 'Deleting…' : 'Delete'}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+         
           {activeSection === 'branches' && (
             <div className="ap-section">
               <div className="ap-section-heading">
@@ -3116,7 +3206,7 @@ export default function AdminPanel() {
                   </div>
                 )}
               </div>
-            </div>
+            </div>  
           )}
 
           {/* ══════════════════════════════════════

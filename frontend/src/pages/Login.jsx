@@ -51,7 +51,7 @@ export default function Login() {
   if (currentUser) {
     if (currentHasAdminWorkspace) return <Navigate to="/admin" replace />;
     if (userClaims?.role === 'staff') return <Navigate to="/staff" replace />;
-    return <Navigate to="/" replace />;
+    return <Navigate to="/resident" replace />;
   }
 
   const handleSubmit = async (e) => {
@@ -72,7 +72,7 @@ export default function Login() {
 
       if (canAccessAdminWorkspace) navigate('/admin', { replace: true });
       else if (role === 'staff') navigate('/staff', { replace: true });
-      else navigate('/', { replace: true });
+      else navigate('/resident', { replace: true });
     } catch (err) {
       setError(getErrorMessage(err.code));
     } finally {
