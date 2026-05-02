@@ -721,7 +721,6 @@ export default function ResidentHub() {
             <OneGapoLogo className="resident-brand-logo" decorative />
             <p className="resident-brand">OneGapo</p>
           </div>
-          <p className="resident-sub">Resident reporting</p>
         </div>
         <div className="resident-topbar-actions">
           <button
@@ -755,23 +754,35 @@ export default function ResidentHub() {
       <section className="resident-body">
         {activeTab === 'home' && (
           <div className="resident-section resident-section-gap">
+            <div className="resident-hero-card" onClick={() => setActiveTab('compose')}>
+              <div className="resident-hero-content">
+                <h2 className="resident-hero-title">Report an Issue</h2>
+                <p className="resident-hero-desc">Help keep our city clean and safe. Report an issue to the local government.</p>
+                <span className="resident-hero-btn">
+                  <span className="material-symbols-outlined" aria-hidden="true">edit_square</span>
+                  Submit Report
+                </span>
+              </div>
+              <span className="material-symbols-outlined resident-hero-bg-icon" aria-hidden="true">report</span>
+            </div>
+
             <div className="resident-summary-row">
               <article className="resident-summary-card">
-                <p className="resident-summary-label">Total reports</p>
+                <p className="resident-summary-label">Total Reports</p>
                 <p className="resident-summary-value">{myReports.length}</p>
               </article>
               <article className="resident-summary-card">
-                <p className="resident-summary-label">Open reports</p>
+                <p className="resident-summary-label">Open Reports</p>
                 <p className="resident-summary-value">
                   {myReports.filter((report) => report.status !== 'resolved').length}
                 </p>
               </article>
             </div>
 
-            <div className="resident-card">
+            <div className="resident-section">
               <div className="resident-card-header">
-                <p className="resident-card-title">My submitted reports</p>
-                <button type="button" className="btn-outline" onClick={loadMyReports} disabled={reportsLoading}>
+                <p className="resident-section-title">My submitted reports</p>
+                <button type="button" className="btn-outline btn-sm" onClick={loadMyReports} disabled={reportsLoading}>
                   {reportsLoading ? 'Refreshing...' : 'Refresh'}
                 </button>
               </div>
@@ -792,14 +803,18 @@ export default function ResidentHub() {
                         className="resident-report-item"
                         onClick={() => setActiveTicketReport(report)}
                       >
-                        <div className="resident-report-head">
-                          <p className="resident-report-title">{report.title}</p>
-                          <span className={`report-status report-status-${report.status || 'submitted'}`}>
+                        <div className="resident-report-pills">
+                          <span className={`res-pill report-status-${report.status || 'submitted'}`}>
                             {normalizeStatus(report.status)}
                           </span>
+                          <span className="res-pill res-pill-cat">{report.category}</span>
                         </div>
-                        <p className="resident-report-meta">{formatReportDate(report.createdAt)} • {report.category}</p>
+                        <p className="resident-report-title">{report.title}</p>
                         <p className="resident-report-desc">{report.description}</p>
+                        <div className="resident-report-meta">
+                          <span className="material-symbols-outlined" aria-hidden="true">schedule</span>
+                          {formatReportDate(report.createdAt)}
+                        </div>
                       </button>
                     );
                   })}
@@ -944,7 +959,7 @@ export default function ResidentHub() {
                 ) : null}
               </div>
 
-              <button type="submit" className="btn-primary" disabled={submitting}>
+              <button type="submit" className="btn-primary resident-submit-btn" disabled={submitting}>
                 {submitting ? 'Submitting report...' : 'Submit report'}
               </button>
             </form>
@@ -1186,6 +1201,7 @@ export default function ResidentHub() {
           aria-label="Home"
         >
           <span className="material-symbols-outlined resident-tab-icon" aria-hidden="true">home</span>
+          <span>Home</span>
         </button>
         <button
           type="button"
@@ -1194,6 +1210,7 @@ export default function ResidentHub() {
           aria-label="Create report"
         >
           <span className="material-symbols-outlined resident-tab-icon" aria-hidden="true">edit_square</span>
+          <span>Report</span>
         </button>
         <button
           type="button"
@@ -1202,6 +1219,7 @@ export default function ResidentHub() {
           aria-label="Map"
         >
           <span className="material-symbols-outlined resident-tab-icon" aria-hidden="true">map</span>
+          <span>Map</span>
         </button>
         <button
           type="button"
@@ -1210,6 +1228,7 @@ export default function ResidentHub() {
           aria-label="Settings"
         >
           <span className="material-symbols-outlined resident-tab-icon" aria-hidden="true">settings</span>
+          <span>Settings</span>
         </button>
       </nav>
     </main>

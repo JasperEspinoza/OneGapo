@@ -10,6 +10,7 @@ import Dashboard      from './pages/Dashboard';
 import StaffPanel     from './pages/StaffPanel';
 import AdminPanel     from './pages/AdminPanel';
 import ResidentHub    from './pages/ResidentHub';
+import LandingPage    from './pages/LandingPage';
 import { useAuth } from './context/AuthContext';
 import { SettingsModalProvider } from './context/SettingsModalContext';
 import PwaInstallPrompt from './components/PwaInstallPrompt';
@@ -53,6 +54,48 @@ const HomeRoute = () => {
   return <Dashboard />;
 };
 
+const RootRoute = () => {
+  const { currentUser, userClaims, accountVerified, loading } = useAuth();
+  const role = userClaims?.role;
+  const permissions = Array.isArray(userClaims?.permissions) ? userClaims.permissions : [];
+  const canAccessAdminWorkspace =
+    role === 'admin' || permissions.some((permission) => ADMIN_WORKSPACE_PERMISSIONS.includes(permission));
+  const canAccessReportWorkspace =
+    role === 'admin' ||
+    role === 'staff' ||
+    permissions.some((permission) => REPORT_WORKSPACE_PERMISSIONS.includes(permission));
+
+  if (loading) {
+    return (
+      <div className="screen-center">
+        <span className="loading-text">Loading…</span>
+      </div>
+    );
+  }
+
+  if (!currentUser) {
+    return <LandingPage />;
+  }
+
+  if (role === 'resident') {
+    if (!accountVerified) {
+      return <Navigate to="/verify-email" replace />;
+    }
+
+    return <Navigate to="/resident" replace />;
+  }
+
+  if (canAccessAdminWorkspace) {
+    return <Navigate to="/admin" replace />;
+  }
+
+  if (canAccessReportWorkspace) {
+    return <Navigate to="/staff" replace />;
+  }
+
+  return <Dashboard />;
+};
+
 function App() {
   return (
     <Router future={{ v7_relativeSplatPath: true }}>
@@ -60,6 +103,7 @@ function App() {
         <SettingsModalProvider>
           <Routes>
             {/* ── Public ────────────────────────────────────────────── */}
+            <Route path="/" element={<RootRoute />} />
             <Route path="/login"           element={<Login />} />
             <Route path="/register"        element={<Register />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -68,7 +112,7 @@ function App() {
 
             {/* ── Any authenticated + verified user ────────────── */}
             <Route element={<ProtectedRoute />}>
-              <Route path="/" element={<HomeRoute />} />
+              <Route path="/home" element={<HomeRoute />} />
             </Route>
 
             <Route element={<ProtectedRoute allowedRoles={['resident']} showNav={false} />}>
@@ -102,7 +146,7 @@ function App() {
             </Route>
 
             {/* ── Catch-all ───────────────────────────────────────── */}
-            <Route path="*" element={<Navigate to="/login" replace />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
           <PwaInstallPrompt />
         </SettingsModalProvider>

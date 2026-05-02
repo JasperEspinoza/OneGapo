@@ -2198,27 +2198,6 @@ export default function AdminPanel() {
                   <h3 className="ap-card-title">All Report Details</h3>
                 </div>
 
-                <div className="ap-report-status-summary" aria-label="Report statuses">
-                  {REPORT_STATUS_FILTER_OPTIONS.map((option) => {
-                    const statusClass = option.value === 'all'
-                      ? 'ap-report-status'
-                      : getReportStatusClassName(option.value);
-
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        className={`ap-report-status-chip${reportStatusFilter === option.value ? ' ap-report-status-chip-active' : ''}`}
-                        onClick={() => setReportStatusFilter(option.value)}
-                        aria-pressed={reportStatusFilter === option.value}
-                      >
-                        <span className={statusClass}>{option.label}</span>
-                        <span className="ap-report-status-chip-count">{reportStatusSummary[option.value] || 0}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-
                 <div className="ap-filters-row ap-report-filters-row">
                   <div>
                     <label htmlFor="report-search" className="form-label">Search</label>
@@ -2242,6 +2221,21 @@ export default function AdminPanel() {
                       <option value="all">All types</option>
                       {reportTypeOptions.map((option) => (
                         <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="report-status-filter" className="form-label">Status</label>
+                    <select
+                      id="report-status-filter"
+                      className="form-select"
+                      value={reportStatusFilter}
+                      onChange={(event) => setReportStatusFilter(event.target.value)}
+                    >
+                      {REPORT_STATUS_FILTER_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label} ({reportStatusSummary[option.value] || 0})
+                        </option>
                       ))}
                     </select>
                   </div>

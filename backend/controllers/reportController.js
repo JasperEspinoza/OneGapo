@@ -1267,6 +1267,12 @@ async function updateReportStatus(req, res, next) {
       });
     }
 
+    if (status === 'rejected' && (!progressNote || progressNote.trim() === '')) {
+      return res.status(400).json({
+        error: 'A justification (progress note) is required when rejecting a report.',
+      });
+    }
+
     const db = admin.firestore();
     const ref = db.collection('reports').doc(reportId);
     const snap = await ref.get();

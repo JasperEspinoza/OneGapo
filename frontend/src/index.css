@@ -551,6 +551,14 @@ img, svg {
   display: block;
 }
 
+.onegapo-logo-force-light .onegapo-logo-light {
+  display: block;
+}
+
+.onegapo-logo-force-light .onegapo-logo-dark {
+  display: none;
+}
+
 .navbar-actions {
   display: flex;
   align-items: center;

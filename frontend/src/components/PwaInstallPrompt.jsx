@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 
 const DISMISS_KEY = 'onegapo:pwa-install-dismissed-at';
 const DISMISS_TTL_MS = 3 * 24 * 60 * 60 * 1000;
@@ -20,14 +21,23 @@ function isDismissedRecently() {
 }
 
 export default function PwaInstallPrompt() {
+  const location = useLocation();
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isMobile, setIsMobile] = useState(() => {
     if (typeof window === 'undefined' || !window.matchMedia) return false;
     return window.matchMedia(MOBILE_QUERY).matches;
   });
   const [isVisible, setIsVisible] = useState(false);
+  const isPublicLandingRoute =
+    location.pathname === '/' ||
+    location.pathname === '/login' ||
+    location.pathname === '/register' ||
+    location.pathname === '/forgot-password' ||
+    location.pathname === '/verify-email';
 
   useEffect(() => {
+    if (isPublicLandingRoute) return undefined;
+
     if (typeof window === 'undefined' || !window.matchMedia) return undefined;
 
     const mediaQuery = window.matchMedia(MOBILE_QUERY);
@@ -44,6 +54,8 @@ export default function PwaInstallPrompt() {
   }, []);
 
   useEffect(() => {
+    if (isPublicLandingRoute) return undefined;
+
     if (typeof window === 'undefined') return undefined;
 
     const handleBeforeInstallPrompt = (event) => {
@@ -89,8 +101,8 @@ export default function PwaInstallPrompt() {
   }, [deferredPrompt, hidePrompt]);
 
   const shouldRender = useMemo(
-    () => isMobile && isVisible && !isStandaloneMode() && Boolean(deferredPrompt),
-    [deferredPrompt, isMobile, isVisible]
+    () => !isPublicLandingRoute && isMobile && isVisible && !isStandaloneMode() && Boolean(deferredPrompt),
+    [deferredPrompt, isMobile, isPublicLandingRoute, isVisible]
   );
 
   if (!shouldRender) return null;

@@ -235,6 +235,8 @@ export default function StaffPanel() {
   const [resolveTargetReportId, setResolveTargetReportId] = useState('');
   const [resolveProgressNote, setResolveProgressNote] = useState('');
   const [resolvePhotos, setResolvePhotos] = useState([]);
+  const [rejectTargetReportId, setRejectTargetReportId] = useState('');
+  const [rejectReason, setRejectReason] = useState('');
   const [forwardTargets, setForwardTargets] = useState([]);
   const [forwardTargetByReport, setForwardTargetByReport] = useState({});
   const [forwardingReportId, setForwardingReportId] = useState('');
@@ -569,6 +571,8 @@ export default function StaffPanel() {
       setResolveTargetReportId('');
       setResolveProgressNote('');
       setResolvePhotos([]);
+      setRejectTargetReportId('');
+      setRejectReason('');
       return true;
     } catch (err) {
       setReportActionError(err.message || 'Failed to update report status.');
@@ -584,6 +588,13 @@ export default function StaffPanel() {
       setResolveTargetReportId(reportId);
       setResolveProgressNote('');
       setResolvePhotos([]);
+      return;
+    }
+
+    if (nextStatus === 'rejected') {
+      setReportActionError('');
+      setRejectTargetReportId(reportId);
+      setRejectReason('');
       return;
     }
 
@@ -604,6 +615,22 @@ export default function StaffPanel() {
     await handleUpdateReportStatus(resolveTargetReportId, 'resolved', {
       progressNote: note,
       resolutionPhotos: resolvePhotos,
+    });
+  };
+
+  const handleSubmitRejection = async (event) => {
+    event.preventDefault();
+
+    const note = rejectReason.trim();
+    if (!rejectTargetReportId) return;
+
+    if (!note) {
+      setReportActionError('A justification is required when rejecting a report.');
+      return;
+    }
+
+    await handleUpdateReportStatus(rejectTargetReportId, 'rejected', {
+      progressNote: note,
     });
   };
 
@@ -1125,6 +1152,11 @@ export default function StaffPanel() {
   const resolveTargetReport = useMemo(
     () => reports.find((report) => report.id === resolveTargetReportId) || null,
     [reports, resolveTargetReportId]
+  );
+
+  const rejectTargetReport = useMemo(
+    () => reports.find((report) => report.id === rejectTargetReportId) || null,
+    [reports, rejectTargetReportId]
   );
 
   const selectedReportPreviewImage = selectedReport ? getReportPreviewImage(selectedReport) : null;
@@ -2043,6 +2075,56 @@ export default function StaffPanel() {
                               setResolvePhotos([]);
                             }}
                             disabled={updatingReportId === resolveTargetReport.id}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
+                    </AppModal>
+                  )}
+
+                  {rejectTargetReport && (
+                    <AppModal
+                      title={`Reject report: ${rejectTargetReport.title || rejectTargetReport.id}`}
+                      titleId="staff-reject-report-title"
+                      size="wide"
+                      onClose={() => {
+                        if (updatingReportId === rejectTargetReport.id) return;
+                        setRejectTargetReportId('');
+                        setRejectReason('');
+                      }}
+                    >
+                      <form className="ap-form" onSubmit={handleSubmitRejection}>
+                        <div>
+                          <label htmlFor="reject-reason-note" className="form-label">Rejection Reason</label>
+                          <textarea
+                            id="reject-reason-note"
+                            className="form-input"
+                            rows={4}
+                            placeholder="Provide a required justification for rejecting this report."
+                            value={rejectReason}
+                            onChange={(event) => setRejectReason(event.target.value)}
+                            disabled={updatingReportId === rejectTargetReport.id}
+                            required
+                          />
+                        </div>
+
+                        <div className="ap-modal-button-group">
+                          <button
+                            type="submit"
+                            className="ap-btn-danger"
+                            disabled={updatingReportId === rejectTargetReport.id}
+                          >
+                            {updatingReportId === rejectTargetReport.id ? 'Rejecting...' : 'Reject report'}
+                          </button>
+                          <button
+                            type="button"
+                            className="ap-btn-outline"
+                            onClick={() => {
+                              setRejectTargetReportId('');
+                              setRejectReason('');
+                            }}
+                            disabled={updatingReportId === rejectTargetReport.id}
                           >
                             Cancel
                           </button>
