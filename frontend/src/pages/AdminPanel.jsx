@@ -110,7 +110,6 @@ const REPORT_STATUS_FILTER_OPTIONS = [
   { value: 'in_review', label: 'In Review' },
   { value: 'resolved', label: 'Resolved' },
   { value: 'rejected', label: 'Rejected' },
-  { value: 'archived', label: 'Archived' },
 ];
 
 function getReportPreviewImage(report) {
@@ -187,6 +186,10 @@ function getReportStatusKey(status) {
 function getReportStatusLabel(status) {
   const normalized = getReportStatusKey(status).replace(/_/g, ' ');
   return normalized.replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function isArchivedReport(report) {
+  return getReportStatusKey(report?.status) === 'archived';
 }
 
 function getReportStatusClassName(status) {
@@ -1340,6 +1343,10 @@ export default function AdminPanel() {
     const search = reportSearchQuery.trim().toLowerCase();
 
     return reports.filter((report) => {
+      if (isArchivedReport(report)) {
+        return false;
+      }
+
       const matchesType =
         reportTypeFilter === 'all'
           ? true
@@ -1718,10 +1725,7 @@ export default function AdminPanel() {
       setReports((prev) =>
         prev.map((item) => (item.id === reportId ? { ...item, ...(data?.report || {}) } : item))
       );
-      setSelectedReport((prev) => {
-        if (!prev || prev.id !== reportId) return prev;
-        return { ...prev, ...(data?.report || {}) };
-      });
+      setSelectedReport((prev) => (prev?.id === reportId ? null : prev));
     } catch (err) {
       setReportActionError(err.message || 'Failed to archive report.');
     } finally {
@@ -2510,9 +2514,12 @@ export default function AdminPanel() {
                         </tr>
                       </thead>
                       <tbody>
-                        {reports.filter((r) => String((r?.status || '')).toLowerCase() === 'archived').map((report) => (
+                        {reports.filter(isArchivedReport).map((report) => (
                           <tr key={report.id}>
-                            <td>{report.title || <span className="ap-muted">—</span>}</td>
+                            <td>
+                              {report.title || <span className="ap-muted">—</span>}
+                              <span className="ap-muted"> (archived)</span>
+                            </td>
                             <td>{getReportCategoryLabel(report.category)}</td>
                             <td>{report.archivedAt ? new Date(report.archivedAt).toLocaleString() : <span className="ap-muted">—</span>}</td>
                             <td>{report?.location?.address || <span className="ap-muted">—</span>}</td>

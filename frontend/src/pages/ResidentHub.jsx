@@ -254,6 +254,22 @@ export default function ResidentHub() {
   const cameraStreamRef = useRef(null);
   const dismissedAlertIdsRef = useRef(new Set());
 
+  useEffect(() => {
+    if (!cameraModalOpen) return undefined;
+
+    const { body } = document;
+    const previousOverflow = body.style.overflow;
+    const previousTouchAction = body.style.touchAction;
+
+    body.style.overflow = 'hidden';
+    body.style.touchAction = 'none';
+
+    return () => {
+      body.style.overflow = previousOverflow;
+      body.style.touchAction = previousTouchAction;
+    };
+  }, [cameraModalOpen]);
+
   const unreadAlertCount = useMemo(
     () => residentAlerts.filter((alert) => !alert.read).length,
     [residentAlerts]
@@ -1100,7 +1116,7 @@ export default function ResidentHub() {
         ) : null}
 
         {cameraModalOpen && (
-          <div className="resident-fullscreen-camera-overlay">
+          <div className="resident-fullscreen-camera-overlay" role="dialog" aria-modal="true" aria-label="Camera capture">
             <div className="resident-camera-fullscreen-container">
               <button
                 type="button"
