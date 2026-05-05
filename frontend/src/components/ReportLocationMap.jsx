@@ -522,7 +522,7 @@ export default function ReportLocationMap({
   onPick,
   markers = [],
   preferredBarangay = '',
-  helpText = 'Click on the map to pin the report location.',
+  helpText = '',
   preserveViewOnRefresh = false,
   enableFullscreenBarangayFilter = true,
   statusOptions = [],

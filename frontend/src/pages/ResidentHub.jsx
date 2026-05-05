@@ -252,7 +252,61 @@ export default function ResidentHub() {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const cameraStreamRef = useRef(null);
+  const [focusIndicator, setFocusIndicator] = useState({ visible: false, left: 0, top: 0 });
   const dismissedAlertIdsRef = useRef(new Set());
+
+  // Attempt to focus the camera at a normalized point (nx, ny) where 0..1 range
+  const attemptFocusAtPoint = async (nx, ny) => {
+    try {
+      const stream = cameraStreamRef.current;
+      if (!stream) return;
+      const [track] = stream.getVideoTracks();
+      if (!track || typeof track.applyConstraints !== 'function') return;
+
+      const caps = typeof track.getCapabilities === 'function' ? track.getCapabilities() : {};
+      const advanced = [];
+
+      // Use pointsOfInterest if supported (normalized coordinates expected by some browsers)
+      if (caps.pointsOfInterest !== undefined) {
+        advanced.push({ pointsOfInterest: [{ x: nx, y: ny }] });
+      }
+
+      // Try to request a single-shot focus mode if available
+      if (Array.isArray(caps.focusMode) && caps.focusMode.includes('single-shot')) {
+        advanced.push({ focusMode: 'single-shot' });
+      }
+
+      if (advanced.length === 0) {
+        // No supported focus controls exposed by the browser/device
+        return;
+      }
+
+      await track.applyConstraints({ advanced });
+    } catch (err) {
+      // Non-fatal: just log and continue. Many devices/browsers won't support these constraints.
+      // eslint-disable-next-line no-console
+      console.debug('Focus attempt failed or unsupported:', err && err.message ? err.message : err);
+    }
+  };
+
+  const handleVideoFocus = (event) => {
+    if (!videoRef.current) return;
+
+    const rect = videoRef.current.getBoundingClientRect();
+    const clientX = event.clientX ?? (event.touches && event.touches[0] && event.touches[0].clientX);
+    const clientY = event.clientY ?? (event.touches && event.touches[0] && event.touches[0].clientY);
+    if (typeof clientX !== 'number' || typeof clientY !== 'number') return;
+
+    const nx = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    const ny = Math.max(0, Math.min(1, (clientY - rect.top) / rect.height));
+
+    // Show a temporary focus indicator (positioned in viewport coordinates)
+    setFocusIndicator({ visible: true, left: clientX, top: clientY });
+    window.setTimeout(() => setFocusIndicator((s) => ({ ...s, visible: false })), 700);
+
+    // Try to focus the camera at the tapped point (best-effort)
+    attemptFocusAtPoint(nx, ny);
+  };
 
   useEffect(() => {
     if (!cameraModalOpen) return undefined;
@@ -423,6 +477,7 @@ export default function ResidentHub() {
       })),
     [myReports]
   );
+
 
   const handleMapPick = useCallback(async ({ lat, lng }) => {
     setForm((prev) => ({
@@ -985,22 +1040,15 @@ export default function ResidentHub() {
         {activeTab === 'map' && (
           <section className="resident-card resident-map-card">
             <div className="resident-card-header">
-              <p className="resident-card-title">My reports map</p>
-              <button type="button" className="btn-outline" onClick={loadMyReports} disabled={reportsLoading}>
-                {reportsLoading ? 'Refreshing...' : 'Refresh'}
-              </button>
+                      <p className="resident-card-title">Map</p>
             </div>
 
             {reportsError ? <div className="dashboard-alert dashboard-alert-error">{reportsError}</div> : null}
 
             <ReportLocationMap
               markers={markers}
-              helpText="Locations of reports you submitted."
+              helpText="Locations of reports submitted by residents."
             />
-
-            {myReports.length === 0 ? (
-              <p className="resident-muted">Your submitted report pins will appear here.</p>
-            ) : null}
           </section>
         )}
 
@@ -1149,7 +1197,30 @@ export default function ResidentHub() {
                     ref={videoRef}
                     className="resident-camera-video-fullscreen"
                     playsInline
+                    onClick={handleVideoFocus}
+                    onTouchEnd={handleVideoFocus}
+                    aria-label="Camera preview"
                   />
+                  {/* Focus indicator (fixed positioned so it aligns with pointer) */}
+                  {focusIndicator.visible && (
+                    <div
+                      aria-hidden="true"
+                      style={{
+                        position: 'fixed',
+                        left: focusIndicator.left,
+                        top: focusIndicator.top,
+                        transform: 'translate(-50%, -50%)',
+                        width: 72,
+                        height: 72,
+                        borderRadius: '50%',
+                        border: '2px solid rgba(255,255,255,0.95)',
+                        boxShadow: '0 6px 18px rgba(0,0,0,0.45)',
+                        pointerEvents: 'none',
+                        transition: 'opacity 220ms ease',
+                        zIndex: 9999,
+                      }}
+                    />
+                  )}
                   <canvas ref={canvasRef} style={{ display: 'none' }} />
                   <div className="resident-camera-actions-fullscreen">
                     <button
