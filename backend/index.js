@@ -26,10 +26,12 @@ function createOriginMatcher() {
 
   const defaults = [
     /^http:\/\/localhost(:\d+)?$/,
+    /^http:\/\/127\.0\.0\.1(:\d+)?$/,
+    /^http:\/\/[\[]::1[\]](:\d+)?$/,
     /^https:\/\/.*\.vercel\.app$/,
   ];
 
-  const allowlist = configured.length > 0 ? configured : defaults;
+  const allowlist = [...defaults, ...configured];
 
   return (origin, callback) => {
     // Allow non-browser and same-origin requests that may not send Origin.

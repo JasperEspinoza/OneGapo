@@ -1265,6 +1265,7 @@ export default function AdminPanel() {
   const residentReportMarkers = useMemo(
     () => reports
       .filter((report) => report?.reporter?.role === 'resident')
+      .filter((report) => String(report?.status || '').toLowerCase() !== 'archived')
       .map((report) => ({
         id: report.id,
         lat: Number(report?.location?.latitude),

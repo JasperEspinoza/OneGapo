@@ -462,6 +462,7 @@ export default function ResidentHub() {
 
   const markers = useMemo(
     () => myReports
+      .filter((report) => String(report?.status || '').toLowerCase() !== 'archived')
       .filter((report) => Number.isFinite(Number(report?.location?.latitude)) && Number.isFinite(Number(report?.location?.longitude)))
       .map((report) => ({
         id: report.id,
