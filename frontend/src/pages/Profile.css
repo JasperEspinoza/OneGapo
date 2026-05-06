@@ -36,7 +36,7 @@
 .profile-modal-sections .profile-card {
   padding: 0.875rem;
   border-radius: 0.75rem;
-  box-shadow: none;
+  box-shadow: var(--shadow-sm);
 }
 
 .profile-card {

@@ -59,7 +59,7 @@
   --status-rejected-bg: #fee2e2;
   --status-rejected-border: #fca5a5;
   --status-rejected-text: #991b1b;
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.07);
+  --shadow-sm: 0 2px 6px rgba(15, 23, 42, 0.08);
   --shadow-md: 0 6px 16px rgba(15, 23, 42, 0.08);
   --shadow-lg: 0 14px 30px rgba(15, 23, 42, 0.12);
   --focus-ring: 0 0 0 3px color-mix(in srgb, var(--color-primary) 22%, transparent);
@@ -108,7 +108,7 @@
   --status-rejected-bg: #3b1f24;
   --status-rejected-border: #99414b;
   --status-rejected-text: #fecdd3;
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.28);
+  --shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 8px 20px rgba(0, 0, 0, 0.3);
   --shadow-lg: 0 16px 36px rgba(0, 0, 0, 0.38);
 }
@@ -194,6 +194,35 @@ img, svg {
   50%       { opacity: 0.5; }
 }
 
+@keyframes page-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes page-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes page-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* --------------------------------------------------------------------------
    Utilities / shared
    -------------------------------------------------------------------------- */
@@ -212,6 +241,11 @@ img, svg {
 .app-page {
   min-height: calc(100vh - 3.5rem);
   padding: 2rem 1.25rem;
+  animation: page-fade-in 0.35s ease-out;
+}
+
+.page-transition {
+  animation: page-fade-in 0.35s ease-out;
 }
 
 .app-page-inner {

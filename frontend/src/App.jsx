@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
+import PageTransition from './components/PageTransition';
 
 import Login          from './pages/Login';
 import Register       from './pages/Register';
@@ -14,6 +15,7 @@ import LandingPage    from './pages/LandingPage';
 import { useAuth } from './context/AuthContext';
 import { SettingsModalProvider } from './context/SettingsModalContext';
 import PwaInstallPrompt from './components/PwaInstallPrompt';
+import ThemeInitializer from './components/ThemeInitializer';
 
 const Unauthorized = () => (
   <div className="screen-center">
@@ -100,54 +102,57 @@ function App() {
   return (
     <Router future={{ v7_relativeSplatPath: true }}>
       <AuthProvider>
+        <ThemeInitializer />
         <SettingsModalProvider>
-          <Routes>
-            {/* ── Public ────────────────────────────────────────────── */}
-            <Route path="/" element={<RootRoute />} />
-            <Route path="/login"           element={<Login />} />
-            <Route path="/register"        element={<Register />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/verify-email"    element={<VerifyEmail />} />
-            <Route path="/unauthorized"    element={<Unauthorized />} />
+          <PageTransition>
+            <Routes>
+              {/* ── Public ────────────────────────────────────────────── */}
+              <Route path="/" element={<RootRoute />} />
+              <Route path="/login"           element={<Login />} />
+              <Route path="/register"        element={<Register />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/verify-email"    element={<VerifyEmail />} />
+              <Route path="/unauthorized"    element={<Unauthorized />} />
 
-            {/* ── Any authenticated + verified user ────────────── */}
-            <Route element={<ProtectedRoute />}>
-              <Route path="/home" element={<HomeRoute />} />
-            </Route>
+              {/* ── Any authenticated + verified user ────────────── */}
+              <Route element={<ProtectedRoute />}>
+                <Route path="/home" element={<HomeRoute />} />
+              </Route>
 
-            <Route element={<ProtectedRoute allowedRoles={['resident']} showNav={false} />}>
-              <Route path="/resident" element={<ResidentHub />} />
-            </Route>
+              <Route element={<ProtectedRoute allowedRoles={['resident']} showNav={false} />}>
+                <Route path="/resident" element={<ResidentHub />} />
+              </Route>
 
-            {/* ── Staff + Admin ─────────────────────────────────── */}
-            <Route
-              element={(
-                <ProtectedRoute
-                  allowedRoles={['staff', 'admin']}
-                  allowedPermissionsAny={REPORT_WORKSPACE_PERMISSIONS}
-                  showNav={false}
-                />
-              )}
-            >
-              <Route path="/staff" element={<StaffPanel />} />
-            </Route>
+              {/* ── Staff + Admin ─────────────────────────────────── */}
+              <Route
+                element={(
+                  <ProtectedRoute
+                    allowedRoles={['staff', 'admin']}
+                    allowedPermissionsAny={REPORT_WORKSPACE_PERMISSIONS}
+                    showNav={false}
+                  />
+                )}
+              >
+                <Route path="/staff" element={<StaffPanel />} />
+              </Route>
 
-            {/* ── Admin only ────────────────────────────────────── */}
-            <Route
-              element={(
-                <ProtectedRoute
-                  allowedRoles={['admin', 'staff']}
-                  allowedPermissionsAny={[...ADMIN_WORKSPACE_PERMISSIONS, ...REPORT_WORKSPACE_PERMISSIONS]}
-                  showNav={false}
-                />
-              )}
-            >
-              <Route path="/admin" element={<AdminPanel />} />
-            </Route>
+              {/* ── Admin only ────────────────────────────────────── */}
+              <Route
+                element={(
+                  <ProtectedRoute
+                    allowedRoles={['admin', 'staff']}
+                    allowedPermissionsAny={[...ADMIN_WORKSPACE_PERMISSIONS, ...REPORT_WORKSPACE_PERMISSIONS]}
+                    showNav={false}
+                  />
+                )}
+              >
+                <Route path="/admin" element={<AdminPanel />} />
+              </Route>
 
-            {/* ── Catch-all ───────────────────────────────────────── */}
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+              {/* ── Catch-all ───────────────────────────────────────── */}
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </PageTransition>
           <PwaInstallPrompt />
         </SettingsModalProvider>
       </AuthProvider>

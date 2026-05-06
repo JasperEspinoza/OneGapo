@@ -3,6 +3,7 @@ import { updateProfile, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db, firebaseConfigErrorMessage, isFirebaseConfigured } from '../config/firebase';
 import { useAuth } from '../context/AuthContext';
+import { applyThemeMode, getStoredThemeMode, persistThemeMode } from './theme';
 
 export default function SettingsContent({ showLogout = false, onLogout, logoutLoading = false }) {
   const { currentUser, userClaims, accountVerified, refreshUser } = useAuth();
@@ -19,21 +20,14 @@ export default function SettingsContent({ showLogout = false, onLogout, logoutLo
   const [resetError, setResetError] = useState('');
 
   const [themeMode, setThemeMode] = useState(() => {
-    const savedTheme = localStorage.getItem('onegapo-theme');
-    if (savedTheme === 'dark' || savedTheme === 'light') return savedTheme;
-    return 'light';
+    return getStoredThemeMode();
   });
 
   useEffect(() => {
     if (!isFirebaseConfigured || !auth || !db) return;
 
-    const root = document.documentElement;
-    if (themeMode === 'dark') {
-      root.classList.add('theme-dark');
-    } else {
-      root.classList.remove('theme-dark');
-    }
-    localStorage.setItem('onegapo-theme', themeMode);
+    applyThemeMode(themeMode);
+    persistThemeMode(themeMode);
   }, [themeMode]);
 
   useEffect(() => {

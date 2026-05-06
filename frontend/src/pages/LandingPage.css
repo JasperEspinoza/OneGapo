@@ -382,3 +382,54 @@
     display: none;
   }
 }
+
+/* ========================================================================== */
+/* Skeleton Loaders */
+/* ========================================================================== */
+
+@keyframes skeleton-pulse {
+  0%, 100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+
+.skeleton {
+  display: block;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  animation: skeleton-pulse 1.8s ease-in-out infinite;
+  min-height: 1rem;
+  width: 100%;
+}
+
+.skeleton-sm {
+  height: 0.875rem;
+  width: 100%;
+}
+
+.skeleton-lg {
+  height: 2rem;
+  width: 100%;
+}
+
+.landing-skeleton-brand {
+  pointer-events: none;
+  cursor: default;
+}
+
+.landing-skeleton-brand .skeleton {
+  height: 2rem;
+  width: 2rem;
+  margin: 0;
+}
+
+.landing-hero-skeleton {
+  pointer-events: none;
+}
+
+.landing-hero-skeleton .skeleton {
+  border-radius: 6px;
+}

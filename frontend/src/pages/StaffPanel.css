@@ -57,6 +57,7 @@
   border-radius: 0.55rem;
   padding: 0.85rem;
   background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
   display: flex;
   flex-direction: column;
   gap: 0.45rem;

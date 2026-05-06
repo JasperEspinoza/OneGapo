@@ -18,6 +18,7 @@ export default function LandingPage() {
     return window.matchMedia(MOBILE_QUERY).matches;
   });
   const [installMessage, setInstallMessage] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !window.matchMedia) return undefined;
@@ -34,6 +35,12 @@ export default function LandingPage() {
 
     mediaQuery.addListener(onChange);
     return () => mediaQuery.removeListener(onChange);
+  }, []);
+
+  useEffect(() => {
+    // Simulate initial load time
+    const timer = setTimeout(() => setIsLoading(false), 400);
+    return () => clearTimeout(timer);
   }, []);
 
   useEffect(() => {
@@ -77,6 +84,69 @@ export default function LandingPage() {
 
     setInstallMessage('Install dismissed. You can try again anytime.');
   };
+
+  if (isLoading) {
+    return (
+      <div className="landing-page">
+        <div className="landing-shell">
+          <header className="landing-topbar">
+            <div className="landing-brand landing-skeleton-brand">
+              <div className="skeleton skeleton-sm" />
+              <div className="skeleton skeleton-sm" style={{ width: '6rem' }} />
+            </div>
+          </header>
+
+          <main className="landing-main">
+            {/* Hero Section Skeleton */}
+            <section className="landing-hero landing-hero-skeleton">
+              <div className="landing-copy">
+                <div className="skeleton skeleton-lg" style={{ height: '3rem', marginBottom: '1rem' }} />
+                <div className="skeleton" style={{ height: '1.5rem' }} />
+                <div className="skeleton" style={{ height: '1.5rem', marginBottom: '0.5rem', width: '90%' }} />
+
+                <div className="landing-actions" style={{ marginTop: '1.5rem' }}>
+                  <div className="landing-auth-actions">
+                    <div className="skeleton" style={{ height: '3rem' }} />
+                    <div className="skeleton" style={{ height: '3rem' }} />
+                  </div>
+                </div>
+              </div>
+
+              <aside className="landing-panel">
+                <div className="landing-panel-card">
+                  <div className="skeleton skeleton-sm" style={{ marginBottom: '0.75rem', width: '60%' }} />
+                  <div className="skeleton" style={{ height: '1.2rem', marginBottom: '0.5rem' }} />
+                  <div className="skeleton" style={{ height: '1.2rem', marginBottom: '0.5rem' }} />
+                  <div className="skeleton" style={{ height: '1.2rem', width: '80%' }} />
+                </div>
+
+                <div className="landing-panel-card">
+                  <div className="skeleton skeleton-sm" style={{ marginBottom: '0.75rem', width: '60%' }} />
+                  <div className="skeleton" style={{ height: '1.2rem', marginBottom: '0.5rem' }} />
+                  <div className="skeleton" style={{ height: '1.2rem', width: '85%' }} />
+                </div>
+              </aside>
+            </section>
+
+            {/* Grid Section Skeleton */}
+            <section className="landing-grid">
+              <article className="landing-card">
+                <div className="skeleton skeleton-sm" style={{ marginBottom: '0.75rem', width: '65%' }} />
+                <div className="skeleton" style={{ height: '1.2rem', marginBottom: '0.5rem' }} />
+                <div className="skeleton" style={{ height: '1.2rem', width: '90%' }} />
+              </article>
+
+              <article className="landing-card">
+                <div className="skeleton skeleton-sm" style={{ marginBottom: '0.75rem', width: '65%' }} />
+                <div className="skeleton" style={{ height: '1.2rem', marginBottom: '0.5rem' }} />
+                <div className="skeleton" style={{ height: '1.2rem', width: '90%' }} />
+              </article>
+            </section>
+          </main>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="landing-page">
