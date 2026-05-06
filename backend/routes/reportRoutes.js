@@ -52,7 +52,7 @@ const rateLimitNotificationsRead = createUserScopedRateLimiter({
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    files: 6,
+    files: 3,
     fileSize: 25 * 1024 * 1024,
   },
   fileFilter: (_req, file, cb) => {
@@ -83,7 +83,7 @@ const uploadResolutionEvidence = multer({
   },
 });
 
-router.post('/', verifyToken, upload.array('attachments', 6), createReport);
+router.post('/', verifyToken, upload.array('attachments', 3), createReport);
 router.get('/me', verifyToken, rateLimitResidentReportsRead, listOwnReports);
 router.get('/', verifyToken, rateLimitOperatorReportsRead, listReportsForOperators);
 router.get('/performance', verifyToken, requireStaffOrAdmin, rateLimitPerformanceRead, getPerformanceMetrics);

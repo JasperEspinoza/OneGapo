@@ -356,6 +356,12 @@ export default function ResidentHub() {
     });
   }, []);
 
+  const [ticketImageIndex, setTicketImageIndex] = useState(0);
+
+  useEffect(() => {
+    setTicketImageIndex(0);
+  }, [activeTicketReport]);
+
   const loadMyReports = useCallback(async ({ silent = false } = {}) => {
     if (!silent) {
       setReportsLoading(true);
@@ -407,17 +413,34 @@ export default function ResidentHub() {
           auth: { token: idToken },
         });
 
+        socket.on('connect', () => {
+          if (!active) return;
+          // eslint-disable-next-line no-console
+          console.debug('[client][resident] socket connected', { socketId: socket.id });
+          setReportsLoading(false);
+        });
+
         socket.on('reports:data', (payload) => {
           if (!active) return;
+          // eslint-disable-next-line no-console
+          console.debug('[client][resident] reports:data received', { count: Array.isArray(payload) ? payload.length : 0 });
           applyReportsSnapshot(Array.isArray(payload) ? payload : []);
           setReportsError('');
           setReportsLoading(false);
         });
 
-        socket.on('connect_error', () => {
+        socket.on('connect_error', (err) => {
           if (!active) return;
+          // eslint-disable-next-line no-console
+          console.warn('[client][resident] socket connect_error', err && err.message ? err.message : err);
           // Fall back to HTTP fetch when socket connection is unavailable.
           loadMyReports({ silent: true });
+        });
+
+        socket.on('disconnect', (reason) => {
+          if (!active) return;
+          // eslint-disable-next-line no-console
+          console.info('[client][resident] socket disconnected', { reason });
         });
       } catch {
         if (!active) return;
@@ -550,7 +573,6 @@ export default function ResidentHub() {
   const handleAttachmentChange = (event, { append = false } = {}) => {
     const files = Array.from(event.target.files || []);
     if (!files.length) return;
-
     setAttachments((prev) => {
       const base = append ? prev : [];
       const merged = [...base, ...files];
@@ -565,7 +587,11 @@ export default function ResidentHub() {
         }
       });
 
-      return unique.slice(0, 6);
+      const limited = unique.slice(0, 3);
+      if (unique.length > 3) {
+        showSubmitFeedback('error', 'You can attach up to 3 files per report. Extra files were ignored.');
+      }
+      return limited;
     });
 
     event.target.value = '';
@@ -632,11 +658,18 @@ export default function ResidentHub() {
       const timestamp = new Date().getTime();
       const file = new File([blob], `camera-${timestamp}.jpg`, { type: 'image/jpeg' });
 
-      // Add to attachments
+      // Add to attachments (max 3)
       setAttachments((prev) => {
         const unique = new Map(prev.map((f) => [`${f.name}-${f.size}`, f]));
         unique.set(`${file.name}-${file.size}`, file);
-        return unique.size > 6 ? Array.from(unique.values()).slice(0, 6) : Array.from(unique.values());
+        const arr = Array.from(unique.values()).slice(0, 3);
+        if (arr.length === 3 && prev.length === 3) {
+          // already full; keep as-is
+        }
+        if (unique.size > 3) {
+          showSubmitFeedback('error', 'You can attach up to 3 files per report. Extra photos were ignored.');
+        }
+        return arr;
       });
 
       // Close modal and cleanup
@@ -986,12 +1019,28 @@ export default function ResidentHub() {
                   <input
                     id="resident-attachments"
                     type="file"
-                    className="form-input resident-attachments-input"
+                    style={{ display: 'none' }}
                     accept="image/*,video/*"
                     multiple
-                    onChange={(event) => handleAttachmentChange(event)}
+                    onChange={(event) => handleAttachmentChange(event, { append: true })}
                     disabled={submitting}
                   />
+
+                  <input
+                    id="resident-attachments-display"
+                    type="text"
+                    readOnly
+                    className="form-input resident-attachments-display"
+                    value={
+                      attachments.length === 0
+                        ? ''
+                        : `${attachments.length} attachment${attachments.length === 1 ? '' : 's'}`
+                    }
+                    placeholder="No file chosen"
+                    onClick={() => document.getElementById('resident-attachments').click()}
+                    aria-label="Selected files"
+                  />
+
                   <button
                     type="button"
                     className="resident-media-btn resident-media-btn-file"
@@ -1018,10 +1067,11 @@ export default function ResidentHub() {
                   className="resident-camera-input"
                   accept="image/*"
                   capture="environment"
+                  multiple
                   onChange={(event) => handleAttachmentChange(event, { append: true })}
                   disabled={submitting}
                 />
-                <p className="resident-attachment-note">You can attach up to 6 files total.</p>
+                <p className="resident-attachment-note">You can attach up to 3 files total.</p>
                 {attachments.length > 0 ? (
                   <ul className="report-files-list">
                     {attachments.map((file) => (
@@ -1144,6 +1194,57 @@ export default function ResidentHub() {
                       </button>
                     </div>
                   ) : null}
+
+                  {/* Attachment image viewer with prev/next when multiple photos */}
+                  {(() => {
+                    const attachmentsList = Array.isArray(activeTicketReport.attachments) ? activeTicketReport.attachments : [];
+                    const imageUrls = attachmentsList
+                      .map(getMediaUrl)
+                      .filter(Boolean)
+                      .filter((u) => /\.(png|jpe?g|gif|webp|bmp|svg)(?:\?|$)/i.test(u) || /^data:image\//i.test(u));
+
+                    if (imageUrls.length === 0) return null;
+
+                    const idx = Math.max(0, Math.min(ticketImageIndex, imageUrls.length - 1));
+
+                    return (
+                      <div className="resident-ticket-images">
+                        <div className="resident-ticket-image-wrap">
+                          {imageUrls.length > 1 && (
+                            <button
+                              type="button"
+                              className="resident-image-nav resident-image-nav-left"
+                              onClick={() => setTicketImageIndex((s) => (s - 1 + imageUrls.length) % imageUrls.length)}
+                              aria-label="Previous image"
+                            >
+                              ‹
+                            </button>
+                          )}
+
+                          <img
+                            src={imageUrls[idx]}
+                            alt={activeTicketReport.title || 'Report attachment'}
+                            className="resident-ticket-image"
+                          />
+
+                          {imageUrls.length > 1 && (
+                            <button
+                              type="button"
+                              className="resident-image-nav resident-image-nav-right"
+                              onClick={() => setTicketImageIndex((s) => (s + 1) % imageUrls.length)}
+                              aria-label="Next image"
+                            >
+                              ›
+                            </button>
+                          )}
+                        </div>
+
+                        {imageUrls.length > 1 && (
+                          <div className="resident-ticket-image-counter">{idx + 1}/{imageUrls.length}</div>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   <div className="resident-ticket-timeline" role="list">
                     {updates.map((update) => (

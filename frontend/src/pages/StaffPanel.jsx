@@ -418,12 +418,16 @@ export default function StaffPanel() {
 
         socket.on('connect', () => {
           if (!active) return;
+          // eslint-disable-next-line no-console
+          console.debug('[client][staff] socket connected', { socketId: socket.id });
           setNotifLoading(false);
           setNotifError('');
         });
 
         socket.on('notifications:data', (payload) => {
           if (!active) return;
+          // eslint-disable-next-line no-console
+          console.debug('[client][staff] notifications:data', { count: Array.isArray(payload) ? payload.length : 0 });
           setNotifications(Array.isArray(payload) ? payload : []);
           setNotifLoading(false);
           setNotifError('');
@@ -431,14 +435,24 @@ export default function StaffPanel() {
 
         socket.on('reports:data', (payload) => {
           if (!active) return;
+          // eslint-disable-next-line no-console
+          console.debug('[client][staff] reports:data', { count: Array.isArray(payload) ? payload.length : 0 });
           setReports(Array.isArray(payload) ? payload : []);
           setReportsError('');
         });
 
-        socket.on('connect_error', () => {
+        socket.on('connect_error', (err) => {
           if (!active) return;
+          // eslint-disable-next-line no-console
+          console.warn('[client][staff] socket connect_error', err && err.message ? err.message : err);
           setNotifLoading(false);
           setNotifError('Realtime notifications unavailable.');
+        });
+
+        socket.on('disconnect', (reason) => {
+          if (!active) return;
+          // eslint-disable-next-line no-console
+          console.info('[client][staff] socket disconnected', { reason });
         });
       } catch {
         if (!active) return;

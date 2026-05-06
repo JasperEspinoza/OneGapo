@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>OneGapo - Resident reports, kept in one place.</title>
+<!-- Tailwind CSS CDN with plugins -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Google Fonts: Inter -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols for icons -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+                  "error": "#ba1a1a",
+                  "on-tertiary": "#ffffff",
+                  "on-error-container": "#93000a",
+                  "secondary-container": "#dde3eb",
+                  "surface-variant": "#e0e3e5",
+                  "primary": "#002045",
+                  "surface-container-lowest": "#ffffff",
+                  "surface-container-high": "#e6e8ea",
+                  "on-secondary-fixed-variant": "#41474e",
+                  "outline-variant": "#c4c6cf",
+                  "on-tertiary-container": "#58a2f0",
+                  "surface-dim": "#d8dadc",
+                  "on-secondary-container": "#5f656c",
+                  "tertiary-container": "#003762",
+                  "secondary-fixed-dim": "#c1c7cf",
+                  "on-secondary": "#ffffff",
+                  "tertiary": "#00213e",
+                  "tertiary-fixed": "#d2e4ff",
+                  "inverse-surface": "#2d3133",
+                  "surface-tint": "#455f88",
+                  "outline": "#74777f",
+                  "primary-fixed": "#d6e3ff",
+                  "background": "#f7f9fb",
+                  "on-background": "#191c1e",
+                  "surface-container-highest": "#e0e3e5",
+                  "secondary-fixed": "#dde3eb",
+                  "on-tertiary-fixed": "#001d37",
+                  "inverse-primary": "#adc7f7",
+                  "primary-fixed-dim": "#adc7f7",
+                  "surface-bright": "#f7f9fb",
+                  "surface-container": "#eceef0",
+                  "tertiary-fixed-dim": "#9fcaff",
+                  "on-secondary-fixed": "#161c22",
+                  "on-surface-variant": "#43474e",
+                  "secondary": "#595f66",
+                  "inverse-on-surface": "#eff1f3",
+                  "on-surface": "#191c1e",
+                  "on-primary-container": "#86a0cd",
+                  "primary-container": "#1a365d",
+                  "surface": "#f7f9fb",
+                  "on-primary-fixed-variant": "#2d476f",
+                  "on-error": "#ffffff",
+                  "error-container": "#ffdad6",
+                  "on-tertiary-fixed-variant": "#00497e",
+                  "on-primary-fixed": "#001b3c",
+                  "surface-container-low": "#f2f4f6",
+                  "on-primary": "#ffffff"
+          },
+          "borderRadius": {
+                  "DEFAULT": "0.25rem",
+                  "lg": "0.5rem",
+                  "xl": "0.75rem",
+                  "full": "9999px"
+          },
+          "spacing": {
+                  "xl": "80px",
+                  "sm": "16px",
+                  "md": "24px",
+                  "gutter": "24px",
+                  "lg": "48px",
+                  "margin": "32px",
+                  "xs": "8px",
+                  "base": "4px"
+          },
+          "fontFamily": {
+                  "body-md": ["Inter"],
+                  "headline-md": ["Inter"],
+                  "body-lg": ["Inter"],
+                  "headline-lg": ["Inter"],
+                  "label-md": ["Inter"],
+                  "headline-xl": ["Inter"]
+          }
+        },
+      },
+    }
+  </script>
+<style data-purpose="custom-layout">
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+    .hero-bg {
+      background: linear-gradient(rgba(0, 32, 69, 0.9), rgba(0, 32, 69, 0.8)), url('{{DATA:IMAGE:IMAGE_1}}');
+      background-size: cover;
+      background-position: center;
+    }
+    .timeline-line {
+      position: absolute;
+      left: 15px;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background-color: #dde3eb;
+    }
+    .timeline-dot {
+      position: absolute;
+      left: 10px;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background-color: #1a365d;
+      border: 2px solid white;
+      z-index: 10;
+    }
+  </style>
+</head>
+<body class="bg-surface text-on-surface antialiased scroll-smooth">
+<!-- BEGIN: Hero Section -->
+<section class="hero-bg min-h-[90vh] flex flex-col p-6 md:p-12 text-white" data-purpose="hero-section">
+<header class="w-full flex items-center justify-between max-w-7xl mx-auto" data-purpose="main-header">
+<div class="flex items-center space-x-2" data-purpose="logo-container">
+<div class="w-8 h-8 rounded-full border-2 border-white flex items-center justify-center">
+<span class="font-bold text-lg">G</span>
+</div>
+<span class="text-xl font-bold tracking-tight">OneGapo</span>
+</div>
+</header>
+<main class="flex-grow flex items-center max-w-7xl mx-auto w-full">
+<div class="max-w-3xl">
+<h1 class="text-4xl md:text-6xl font-extrabold leading-tight mb-6">
+          Resident reports,<br/>kept in one place.
+        </h1>
+<p class="text-lg md:text-xl opacity-90 mb-10 leading-relaxed max-w-2xl">
+          OneGapo gives residents one place to file concerns, follow report status, and receive updates without chasing separate channels.
+        </p>
+<div class="flex flex-col sm:flex-row gap-4" data-purpose="cta-buttons">
+<a class="inline-flex justify-center items-center px-8 py-4 bg-white text-primary font-bold rounded-lg transition duration-200 shadow-xl hover:bg-surface-container-low" href="#">
+            Create account
+          </a>
+<a class="inline-flex justify-center items-center px-8 py-4 border border-white/30 hover:bg-white/10 text-white font-semibold rounded-lg transition duration-200" href="#">
+            Sign in
+          </a>
+</div>
+</div>
+</main>
+</section>
+<!-- END: Hero Section -->
+<!-- BEGIN: Features Section (Full-Bleed, Surface Bright) -->
+<section class="bg-surface-bright py-20 px-6" data-purpose="features-summary">
+<div class="max-w-7xl mx-auto">
+<div class="grid grid-cols-1 md:grid-cols-2 gap-16 items-center">
+<div>
+<h2 class="text-3xl font-bold text-primary mb-12">What residents can do</h2>
+<div class="relative space-y-12 pl-10" data-purpose="vertical-timeline">
+<div class="timeline-line"></div>
+<div class="relative flex flex-col">
+<div class="timeline-dot top-2"></div>
+<h3 class="font-bold text-lg text-primary mb-1">Effortless Reporting</h3>
+<p class="text-on-surface-variant">Send a report with location and photos.</p>
+</div>
+<div class="relative flex flex-col">
+<div class="timeline-dot top-2"></div>
+<h3 class="font-bold text-lg text-primary mb-1">Real-time Visibility</h3>
+<p class="text-on-surface-variant">Track submitted, in review, and resolved updates.</p>
+</div>
+<div class="relative flex flex-col">
+<div class="timeline-dot top-2"></div>
+<h3 class="font-bold text-lg text-primary mb-1">Instant Access</h3>
+<p class="text-on-surface-variant">Keep the app on your phone like a native app.</p>
+</div>
+</div>
+</div>
+<div class="bg-surface-container-low p-8 md:p-12 rounded-2xl border border-outline-variant/30" data-purpose="mobile-notice">
+<div class="w-12 h-12 bg-primary/10 text-primary rounded-xl flex items-center justify-center mb-6">
+<span class="material-symbols-outlined">smartphone</span>
+</div>
+<h2 class="text-2xl font-bold text-primary mb-4">Built for mobile use</h2>
+<p class="text-on-surface-variant leading-relaxed text-lg">
+            The download button appears on phones so you can install OneGapo directly from the landing page.
+          </p>
+</div>
+</div>
+</div>
+</section>
+<!-- BEGIN: Efficiency Section (Full-Bleed, Surface Container Low) -->
+<section class="bg-surface-container-low py-20 px-6" data-purpose="efficiency-details">
+<div class="max-w-7xl mx-auto">
+<div class="grid grid-cols-1 md:grid-cols-2 gap-12">
+<!-- Report Faster -->
+<div class="flex flex-col items-start" data-purpose="feature-report-faster">
+<div class="mb-6 text-primary">
+<span class="material-symbols-outlined !text-4xl">bolt</span>
+</div>
+<h3 class="text-2xl font-bold text-primary mb-4">Report faster</h3>
+<p class="text-on-surface-variant text-lg leading-relaxed max-w-md">
+            Capture the issue, location, and supporting details in one submission. No more redundant forms.
+          </p>
+</div>
+<!-- Track Progress -->
+<div class="flex flex-col items-start" data-purpose="feature-track-progress">
+<div class="mb-6 text-primary">
+<span class="material-symbols-outlined !text-4xl">timeline</span>
+</div>
+<h3 class="text-2xl font-bold text-primary mb-4">Track progress</h3>
+<p class="text-on-surface-variant text-lg leading-relaxed max-w-md">
+            Follow status changes from submitted to resolved without re-entering the same information.
+          </p>
+</div>
+</div>
+</div>
+</section>
+<!-- BEGIN: Footer -->
+<footer class="bg-surface border-t border-outline-variant/20 py-12 px-6" data-purpose="main-footer">
+<div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center text-on-surface-variant text-sm">
+<div class="flex items-center space-x-2 mb-4 md:mb-0 opacity-70">
+<div class="w-6 h-6 rounded-full border border-current flex items-center justify-center text-xs">G</div>
+<span class="font-bold tracking-tight">OneGapo</span>
+</div>
+<p>© 2023 OneGapo. All rights reserved.</p>
+</div>
+</footer>
+</body></html>

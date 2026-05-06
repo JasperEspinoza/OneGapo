@@ -1040,6 +1040,9 @@ img, svg {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  /* Keep sidebar at a predictable fixed width so text wraps instead of overflowing */
+  width: 22rem;
+  min-width: 22rem;
   transition: .15s ease;
 }
 
@@ -1099,7 +1102,8 @@ img, svg {
   display: flex;
   flex-direction: column;
   gap: 0.45rem;
-  overflow: auto;
+  /* Prevent inner scrollbar; let content flow and wrap within the fixed-width card */
+  overflow: visible;
 }
 
 .report-map-sidebar-image-button {
@@ -1142,6 +1146,10 @@ img, svg {
   font-size: 0.82rem;
   color: var(--color-text-soft);
   line-height: 1.45;
+  /* Ensure long words or URLs wrap instead of causing overflow */
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .report-map-status-actions {

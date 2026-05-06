@@ -103,6 +103,8 @@ function startNotificationStreamForUser(io, uid) {
   const unsubscribe = query.onSnapshot(
     (snapshot) => {
       const notifications = snapshot.docs.map(notificationDto);
+      // eslint-disable-next-line no-console
+      console.debug(`[realtime] onSnapshot -> emitting notifications:data to ${room} (${Array.isArray(notifications) ? notifications.length : 0})`);
       io.to(room).emit('notifications:data', notifications);
     },
     async () => {
@@ -251,6 +253,8 @@ function startReportStreamForUser(io, user) {
       if (role !== 'resident') {
         reports = reports.filter((report) => canUserAccessReport(report, user));
       }
+      // eslint-disable-next-line no-console
+      console.debug(`[realtime] onSnapshot -> emitting reports:data to ${room} (${Array.isArray(reports) ? reports.length : 0})`);
       io.to(room).emit('reports:data', reports);
     },
     async () => {
@@ -326,6 +330,10 @@ function initSocketServer(httpServer, { allowedOrigin }) {
     const room = `user:${uid}`;
     socket.join(room);
 
+    // Debug log: new connection
+    // eslint-disable-next-line no-console
+    console.info(`[realtime] socket connected: uid=${uid}, socketId=${socket.id}, room=${room}`);
+
     startNotificationStreamForUser(io, uid);
     startReportStreamForUser(io, user);
 
@@ -339,11 +347,15 @@ function initSocketServer(httpServer, { allowedOrigin }) {
     try {
       const initialReports = await fetchReportsForUser(user);
       socket.emit('reports:data', initialReports);
+      // eslint-disable-next-line no-console
+      console.debug(`[realtime] emitted initial reports:data to ${room} (${Array.isArray(initialReports) ? initialReports.length : 0})`);
     } catch {
       socket.emit('reports:data', []);
     }
 
-    socket.on('disconnect', () => {
+    socket.on('disconnect', (reason) => {
+      // eslint-disable-next-line no-console
+      console.info(`[realtime] socket disconnect: uid=${uid}, socketId=${socket.id}, reason=${reason}`);
       stopNotificationStreamForUser(uid);
       stopReportStreamForUser(user);
     });
