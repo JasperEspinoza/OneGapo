@@ -889,11 +889,33 @@
   .resident-summary-card,
   .resident-card,
   .resident-report-item {
-    padding: 0.875rem;
+    padding: 1rem;
   }
 
   .resident-card-header {
-    margin-bottom: 0.75rem;
+    margin-bottom: 0.875rem;
+  }
+
+  .resident-report-item {
+    gap: 0.7rem;
+  }
+
+  .resident-report-pills {
+    margin-bottom: 0.35rem;
+  }
+
+  .resident-report-title {
+    font-size: 1rem;
+    margin-bottom: 0.25rem;
+  }
+
+  .resident-report-desc {
+    line-height: 1.6;
+    margin-bottom: 0.35rem;
+  }
+
+  .resident-report-meta {
+    margin-top: 0.4rem;
   }
 
   .resident-hero-card {
@@ -959,5 +981,227 @@
 
   .resident-tab {
     min-width: 3rem;
+  }
+}
+
+/* ========================================================================== */
+/* Ticket Modal (Report Details) */
+/* ========================================================================== */
+
+.resident-ticket-modal-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.resident-ticket-modal-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.resident-ticket-modal-meta {
+  font-size: 0.85rem;
+  color: var(--res-text-muted);
+  margin: 0;
+  font-weight: 500;
+}
+
+/* Image Viewer */
+.resident-ticket-images {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.resident-ticket-image-wrap {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--res-radius-lg);
+  border: 1px solid var(--res-border);
+  aspect-ratio: auto / 1;
+  background: var(--res-surface-muted);
+}
+
+.resident-ticket-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.resident-image-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(0, 0, 0, 0.5);
+  color: white;
+  border: none;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.4rem;
+  font-size: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.resident-image-nav:hover {
+  background: rgba(0, 0, 0, 0.7);
+}
+
+.resident-image-nav-left {
+  left: 0.75rem;
+}
+
+.resident-image-nav-right {
+  right: 0.75rem;
+}
+
+.resident-ticket-image-counter {
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--res-text-muted);
+  font-weight: 600;
+}
+
+/* Timeline Toggle Button */
+.resident-ticket-logs-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.5rem 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--res-primary);
+  margin: 0.5rem 0;
+  transition: color 0.2s ease;
+  user-select: none;
+}
+
+.resident-ticket-logs-toggle:hover {
+  color: var(--res-primary-hover);
+}
+
+.resident-ticket-logs-toggle-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  font-size: 0.75rem;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: transform 0.3s ease;
+  transform: rotate(180deg);
+}
+
+.resident-ticket-logs-toggle-icon.expanded {
+  transform: rotate(0deg);
+}
+
+/* Timeline (Ticket Updates/Logs) */
+.resident-ticket-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease;
+}
+
+.resident-ticket-timeline.expanded {
+  max-height: 5000px;
+}
+
+.resident-ticket-update {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 1rem;
+  background: var(--res-surface-muted);
+  border-left: 3px solid var(--res-primary);
+  border-radius: 0.4rem;
+  position: relative;
+}
+
+/* Status-specific border colors */
+.resident-ticket-update-submitted {
+  border-left-color: var(--res-primary);
+}
+
+.resident-ticket-update-in_review {
+  border-left-color: var(--res-warning);
+}
+
+.resident-ticket-update-resolved {
+  border-left-color: var(--res-success);
+}
+
+.resident-ticket-update-rejected {
+  border-left-color: var(--res-danger);
+}
+
+.resident-ticket-update-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--res-text);
+  margin: 0;
+  line-height: 1.3;
+}
+
+.resident-ticket-update-meta {
+  font-size: 0.8rem;
+  color: var(--res-text-muted);
+  margin: 0;
+  font-weight: 500;
+}
+
+.resident-ticket-update-detail {
+  font-size: 0.85rem;
+  color: var(--res-text-soft);
+  margin: 0.35rem 0 0 0;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+/* Mobile adjustments for ticket modal */
+@media (max-width: 640px) {
+  .resident-ticket-modal-content {
+    gap: 1rem;
+  }
+
+  .resident-ticket-images {
+    gap: 0.6rem;
+  }
+
+  .resident-ticket-timeline {
+    gap: 0.875rem;
+  }
+
+  .resident-ticket-update {
+    padding: 0.9rem;
+    gap: 0.35rem;
+  }
+
+  .resident-ticket-update-title {
+    font-size: 0.9rem;
+  }
+
+  .resident-ticket-update-meta {
+    font-size: 0.75rem;
+  }
+
+  .resident-ticket-update-detail {
+    font-size: 0.8rem;
   }
 }

@@ -127,6 +127,7 @@ function buildResidentTicketUpdates(report) {
     timestamp: report?.createdAt || report?.updatedAt || '',
     detail: String(report?.description || '').trim(),
     actor: 'Resident',
+    status: 'submitted',
   });
 
   const auditTrail = Array.isArray(report?.auditTrail) ? report.auditTrail : [];
@@ -154,6 +155,7 @@ function buildResidentTicketUpdates(report) {
         timestamp,
         detail: fragments.join(' ').trim(),
         actor: getTicketActorLabel(entry),
+        status: toStatus,
       });
       return;
     }
@@ -174,6 +176,7 @@ function buildResidentTicketUpdates(report) {
         timestamp,
         detail: forwardedDetail,
         actor: getTicketActorLabel(entry),
+        status: toStatus || 'in_review',
       });
       return;
     }
@@ -243,6 +246,7 @@ export default function ResidentHub() {
   const [signingOut, setSigningOut] = useState(false);
   const [activeApprovalReport, setActiveApprovalReport] = useState(null);
   const [activeTicketReport, setActiveTicketReport] = useState(null);
+  const [ticketLogsExpanded, setTicketLogsExpanded] = useState(false);
   const [cameraModalOpen, setCameraModalOpen] = useState(false);
   const [cameraPermissionDenied, setCameraPermissionDenied] = useState(false);
   const [cameraError, setCameraError] = useState('');
@@ -1217,7 +1221,7 @@ export default function ResidentHub() {
                         className="btn-outline resident-approval-btn"
                         onClick={() => setActiveApprovalReport(activeTicketReport)}
                       >
-                        See image
+                        See Resolved Image
                       </button>
                     </div>
                   ) : null}
@@ -1273,9 +1277,31 @@ export default function ResidentHub() {
                     );
                   })()}
 
-                  <div className="resident-ticket-timeline" role="list">
+                  <button
+                    type="button"
+                    className="resident-ticket-logs-toggle"
+                    onClick={() => setTicketLogsExpanded(!ticketLogsExpanded)}
+                    aria-expanded={ticketLogsExpanded}
+                    aria-label={`${ticketLogsExpanded ? 'Hide' : 'View'} update logs`}
+                  >
+                    <span className="resident-ticket-logs-toggle-label">
+                      {ticketLogsExpanded ? 'Hide' : 'View'} logs
+                    </span>
+                    <span className={`resident-ticket-logs-toggle-icon ${ticketLogsExpanded ? 'expanded' : ''}`}>
+                      ▼
+                    </span>
+                  </button>
+
+                  <div 
+                    className={`resident-ticket-timeline ${ticketLogsExpanded ? 'expanded' : ''}`} 
+                    role="list"
+                  >
                     {updates.map((update) => (
-                      <article key={update.id} className="resident-ticket-update" role="listitem">
+                      <article 
+                        key={update.id} 
+                        className={`resident-ticket-update resident-ticket-update-${update.status || 'submitted'}`}
+                        role="listitem"
+                      >
                         <p className="resident-ticket-update-title">{update.title}</p>
                         <p className="resident-ticket-update-meta">
                           {formatReportDate(update.timestamp)} • {update.actor}

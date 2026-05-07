@@ -271,12 +271,14 @@ img, svg {
   align-items: center;
   justify-content: center;
   padding: 1rem;
-  z-index: 1000;
+  /* raise above sticky topbars (e.g., resident-topbar uses very high z-index) */
+  z-index: 12000;
 }
 
 .app-modal {
   width: min(100%, 40rem);
-  max-height: calc(100vh - 2rem);
+  /* account for device safe areas so tall content won't hide under system/top bars */
+  max-height: calc(100vh - (2rem + env(safe-area-inset-top) + env(safe-area-inset-bottom)));
   overflow-y: auto;
   background-color: var(--color-surface);
   border-radius: 0.7rem;
@@ -296,7 +298,8 @@ img, svg {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  padding: 1.125rem 1.25rem;
+  /* slightly more breathing room for modal headers */
+  padding: 1.5rem 1.5rem;
   border-bottom: 1px solid var(--color-border);
 }
 
@@ -342,7 +345,30 @@ img, svg {
 }
 
 .app-modal-body {
-  padding: 1.125rem 1.25rem 1.25rem;
+  /* increase default body padding for less cluttered content */
+  padding: 1.5rem 1.5rem 1.5rem;
+  /* ensure long text or URLs wrap instead of overflowing under fixed headers */
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  -webkit-hyphens: auto;
+  hyphens: auto;
+}
+
+@media (max-width: 640px) {
+  .app-modal {
+    /* use most of the viewport on small screens but leave safe-area gaps */
+    width: calc(100% - 1.5rem);
+    max-height: calc(100vh - (1.5rem + env(safe-area-inset-top) + env(safe-area-inset-bottom)));
+    border-radius: 0.5rem;
+  }
+
+  .app-modal-header {
+    padding: 1rem 1rem;
+  }
+
+  .app-modal-body {
+    padding: 1rem;
+  }
 }
 
 .pwa-install-sheet {
