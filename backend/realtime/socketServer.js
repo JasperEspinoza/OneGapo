@@ -250,13 +250,65 @@ function startReportStreamForUser(io, user) {
 
   const unsubscribe = query.onSnapshot(
     (snapshot) => {
-      let reports = snapshot.docs.map(reportDto);
-      if (role !== 'resident') {
-        reports = reports.filter((report) => canUserAccessReport(report, user));
+      try {
+        const changes = snapshot.docChanges();
+
+        // On first snapshot (initial data), emit the full set as reports:data
+        if (changes.length > 0 && snapshot.docs.length === changes.length) {
+          let reports = snapshot.docs.map(reportDto);
+          if (role !== 'resident') {
+            reports = reports.filter((report) => canUserAccessReport(report, user));
+          }
+          // eslint-disable-next-line no-console
+          console.debug(`[realtime] initial snapshot -> emitting reports:data to ${room} (${Array.isArray(reports) ? reports.length : 0})`);
+          io.to(room).emit('reports:data', reports);
+          return;
+        }
+
+        // For incremental updates, emit granular events
+        changes.forEach((change) => {
+          const doc = change.doc;
+          const report = reportDto(doc);
+
+          if (change.type === 'added') {
+            if (role === 'resident') {
+              // only emit to the resident who created it
+              if (String(report?.reporter?.uid || '') === uid) {
+                io.to(room).emit('reports:created', report);
+              }
+            } else {
+              if (canUserAccessReport(report, user)) {
+                io.to(room).emit('reports:created', report);
+              }
+            }
+            return;
+          }
+
+          if (change.type === 'modified') {
+            if (role === 'resident') {
+              if (String(report?.reporter?.uid || '') === uid) {
+                io.to(room).emit('reports:modified', report);
+              }
+            } else {
+              if (canUserAccessReport(report, user)) {
+                io.to(room).emit('reports:modified', report);
+              } else {
+                // If report no longer accessible to the user, inform client to remove it
+                io.to(room).emit('reports:deleted', { id: report.id });
+              }
+            }
+            return;
+          }
+
+          if (change.type === 'removed') {
+            io.to(room).emit('reports:deleted', { id: doc.id });
+            return;
+          }
+        });
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('[realtime] onSnapshot processing error', err && err.message ? err.message : err);
       }
-      // eslint-disable-next-line no-console
-      console.debug(`[realtime] onSnapshot -> emitting reports:data to ${room} (${Array.isArray(reports) ? reports.length : 0})`);
-      io.to(room).emit('reports:data', reports);
     },
     async () => {
       try {

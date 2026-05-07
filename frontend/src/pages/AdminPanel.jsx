@@ -848,11 +848,33 @@ export default function AdminPanel() {
           setReportsError('');
         });
 
-        socket.on('reports:refresh', (payload) => {
+        socket.on('reports:created', (report) => {
           if (!active) return;
           // eslint-disable-next-line no-console
-          console.debug('[client][admin] reports:refresh', payload || {});
-          loadReports({ silent: true });
+          console.debug('[client][admin] reports:created', { id: report?.id });
+          setReports((prev) => {
+            if (!report || !report.id) return prev;
+            if (prev.some((r) => r.id === report.id)) return prev;
+            return [report, ...prev];
+          });
+        });
+
+        socket.on('reports:modified', (report) => {
+          if (!active) return;
+          // eslint-disable-next-line no-console
+          console.debug('[client][admin] reports:modified', { id: report?.id });
+          setReports((prev) => {
+            if (!report || !report.id) return prev;
+            return prev.map((r) => (r.id === report.id ? { ...r, ...report } : r));
+          });
+        });
+
+        socket.on('reports:deleted', ({ id } = {}) => {
+          if (!active) return;
+          // eslint-disable-next-line no-console
+          console.debug('[client][admin] reports:deleted', { id });
+          if (!id) return;
+          setReports((prev) => prev.filter((r) => r.id !== id));
         });
 
         socket.on('connect_error', (err) => {

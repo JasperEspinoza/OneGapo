@@ -429,6 +429,31 @@ export default function ResidentHub() {
           setReportsLoading(false);
         });
 
+        socket.on('reports:created', (report) => {
+          if (!active) return;
+          // only process if this belongs to the current user
+          if (!report || String(report?.reporter?.uid || '') !== String(currentUser.uid)) return;
+          // eslint-disable-next-line no-console
+          console.debug('[client][resident] reports:created', { id: report.id });
+          applyReportsSnapshot([...(Array.isArray(myReports) ? myReports : []), report]);
+        });
+
+        socket.on('reports:modified', (report) => {
+          if (!active) return;
+          if (!report || String(report?.reporter?.uid || '') !== String(currentUser.uid)) return;
+          // eslint-disable-next-line no-console
+          console.debug('[client][resident] reports:modified', { id: report.id });
+          setMyReports((prev) => prev.map((r) => (r.id === report.id ? { ...r, ...report } : r)));
+        });
+
+        socket.on('reports:deleted', ({ id } = {}) => {
+          if (!active) return;
+          if (!id) return;
+          // eslint-disable-next-line no-console
+          console.debug('[client][resident] reports:deleted', { id });
+          setMyReports((prev) => prev.filter((r) => r.id !== id));
+        });
+
         socket.on('connect_error', (err) => {
           if (!active) return;
           // eslint-disable-next-line no-console

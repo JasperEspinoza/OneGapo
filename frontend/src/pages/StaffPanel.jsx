@@ -441,12 +441,34 @@ export default function StaffPanel() {
           setReportsError('');
         });
 
-        socket.on('reports:refresh', (payload) => {
+        socket.on('reports:created', (report) => {
           if (!active) return;
           // eslint-disable-next-line no-console
-          console.debug('[client][staff] reports:refresh', payload || {});
-          // reload reports (silent to avoid flicker)
-          loadReports({ silent: true });
+          console.debug('[client][staff] reports:created', { id: report?.id });
+          setReports((prev) => {
+            if (!report || !report.id) return prev;
+            // prevent duplicate
+            if (prev.some((r) => r.id === report.id)) return prev;
+            return [report, ...prev];
+          });
+        });
+
+        socket.on('reports:modified', (report) => {
+          if (!active) return;
+          // eslint-disable-next-line no-console
+          console.debug('[client][staff] reports:modified', { id: report?.id });
+          setReports((prev) => {
+            if (!report || !report.id) return prev;
+            return prev.map((r) => (r.id === report.id ? { ...r, ...report } : r));
+          });
+        });
+
+        socket.on('reports:deleted', ({ id } = {}) => {
+          if (!active) return;
+          // eslint-disable-next-line no-console
+          console.debug('[client][staff] reports:deleted', { id });
+          if (!id) return;
+          setReports((prev) => prev.filter((r) => r.id !== id));
         });
 
         socket.on('connect_error', (err) => {
