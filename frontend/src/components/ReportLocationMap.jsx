@@ -422,6 +422,37 @@ function MarkerDetailsSidebar({
   if (!marker) return null;
 
   const previewImage = getMarkerPreviewImage(marker);
+  const [imageIndex, setImageIndex] = useState(0);
+
+  useEffect(() => {
+    setImageIndex(0);
+  }, [marker?.id]);
+
+  const images = useMemo(() => {
+    const out = [];
+    if (!marker) return out;
+    if (marker.imageUrl) out.push(marker.imageUrl);
+
+    if (Array.isArray(marker.attachments)) {
+      marker.attachments.forEach((attachment) => {
+        const src = (
+          attachment?.secureUrl ||
+          attachment?.secure_url ||
+          attachment?.url ||
+          attachment?.uri ||
+          attachment?.downloadURL ||
+          attachment?.thumbnailUrl ||
+          attachment?.src ||
+          ''
+        );
+        if (src) out.push(src);
+      });
+    }
+
+    return out.filter(Boolean);
+  }, [marker]);
+
+  const currentImage = images.length > 0 ? images[imageIndex] : null;
   const markerStatus = String(marker?.status || 'submitted').toLowerCase();
   const filteredStatusOptions = statusOptions.filter(
     (option) => option.value !== 'submitted' && option.value !== 'in_review'
@@ -501,17 +532,40 @@ function MarkerDetailsSidebar({
           </>
         ) : null}
 
-        {previewImage ? (
+        {currentImage ? (
           <>
-            <button
-              type="button"
-              className="report-map-sidebar-image-button"
-              onClick={() => onOpenImage(previewImage, marker.title || 'Report attachment')}
-              aria-label="Open report image in full view"
-            >
-              <img src={previewImage} alt={marker.title || 'Report attachment'} className="report-map-sidebar-image" />
-              <span className="material-symbols-outlined report-map-sidebar-image-icon" aria-hidden="true">zoom_in</span>
-            </button>
+            <div className="report-map-sidebar-image-frame">
+              <button
+                type="button"
+                className="report-map-sidebar-image-button"
+                onClick={() => onOpenImage(currentImage, marker.title || 'Report attachment', images, imageIndex)}
+                aria-label="Open report image in full view"
+              >
+                <img src={currentImage} alt={marker.title || 'Report attachment'} className="report-map-sidebar-image" />
+                <span className="material-symbols-outlined report-map-sidebar-image-icon" aria-hidden="true">zoom_in</span>
+              </button>
+
+              {images.length > 1 ? (
+                <div className="report-map-sidebar-image-carousel">
+                  <button
+                    type="button"
+                    className="report-map-sidebar-image-prev"
+                    onClick={(ev) => { ev.stopPropagation(); setImageIndex((i) => (i - 1 + images.length) % images.length); }}
+                    aria-label="Previous image"
+                  >
+                    ‹
+                  </button>
+                  <button
+                    type="button"
+                    className="report-map-sidebar-image-next"
+                    onClick={(ev) => { ev.stopPropagation(); setImageIndex((i) => (i + 1) % images.length); }}
+                    aria-label="Next image"
+                  >
+                    ›
+                  </button>
+                </div>
+              ) : null}
+            </div>
           </>
         ) : (
           <p className="report-map-sidebar-empty">No image attachment for this report.</p>
@@ -783,9 +837,9 @@ export default function ReportLocationMap({
     }, 170);
   };
 
-  const openImagePreview = (src, alt) => {
+  const openImagePreview = (src, alt, imagesArr, idx = 0) => {
     if (!src) return;
-    setZoomedImage({ src, alt: alt || 'Report attachment' });
+    setZoomedImage({ src, alt: alt || 'Report attachment', images: Array.isArray(imagesArr) && imagesArr.length ? imagesArr : [src], index: Number.isFinite(idx) ? idx : 0 });
   };
 
   const buildRouteForMarker = useCallback(async (marker) => {
@@ -1147,27 +1201,56 @@ export default function ReportLocationMap({
       )}
 
       {zoomedImage && createPortal(
-        <div className="report-image-modal" role="dialog" aria-modal="true" aria-label="Expanded report image">
-          <button
-            type="button"
-            className="report-image-modal-backdrop"
-            onClick={() => setZoomedImage(null)}
-            aria-label="Close expanded image"
-          />
-          <div className="report-image-modal-panel">
-            <button
-              type="button"
-              className="btn-outline report-image-modal-close"
-              onClick={() => setZoomedImage(null)}
-              aria-label="Close expanded image"
-            >
-              X
-            </button>
-            <img src={zoomedImage.src} alt={zoomedImage.alt} className="report-image-modal-image" />
-          </div>
-        </div>,
+        <ZoomedImageModal zoomedImage={zoomedImage} onClose={() => setZoomedImage(null)} setZoomedImage={setZoomedImage} />,
         document.body
       )}
     </>
+  );
+}
+
+function ZoomedImageModal({ zoomedImage, onClose, setZoomedImage }) {
+  const images = Array.isArray(zoomedImage?.images) && zoomedImage.images.length ? zoomedImage.images : [zoomedImage?.src].filter(Boolean);
+  const [index, setIndex] = useState(Number.isFinite(zoomedImage?.index) ? zoomedImage.index : 0);
+
+  useEffect(() => {
+    setIndex(Number.isFinite(zoomedImage?.index) ? zoomedImage.index : 0);
+  }, [zoomedImage?.images?.length, zoomedImage?.index]);
+
+  useEffect(() => {
+    setZoomedImage((prev) => ({ ...(prev || {}), index, src: images[index] }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [index]);
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape') return onClose();
+      if (e.key === 'ArrowLeft') setIndex((i) => (i - 1 + images.length) % images.length);
+      if (e.key === 'ArrowRight') setIndex((i) => (i + 1) % images.length);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [images.length, onClose]);
+
+  if (!images.length) return null;
+
+  return (
+    <div className="report-image-modal" role="dialog" aria-modal="true" aria-label="Expanded report image">
+      <button type="button" className="report-image-modal-backdrop" onClick={onClose} aria-label="Close expanded image" />
+      <div className="report-image-modal-panel">
+        <button type="button" className="btn-outline report-image-modal-close" onClick={onClose} aria-label="Close expanded image">X</button>
+
+        <div className="report-image-modal-content">
+          {images.length > 1 ? (
+            <button type="button" className="report-image-modal-prev" onClick={() => setIndex((i) => (i - 1 + images.length) % images.length)} aria-label="Previous image">‹</button>
+          ) : null}
+
+          <img src={images[index]} alt={zoomedImage.alt || 'Report attachment'} className="report-image-modal-image" />
+
+          {images.length > 1 ? (
+            <button type="button" className="report-image-modal-next" onClick={() => setIndex((i) => (i + 1) % images.length)} aria-label="Next image">›</button>
+          ) : null}
+        </div>
+      </div>
+    </div>
   );
 }

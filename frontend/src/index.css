@@ -1162,8 +1162,11 @@ img, svg {
   display: flex;
   flex-direction: column;
   gap: 0.45rem;
-  /* Prevent inner scrollbar; let content flow and wrap within the fixed-width card */
-  overflow: visible;
+  /* Allow vertical scrolling when content is taller than the sidebar */
+  overflow: auto;
+  /* allow the body to grow/shrink inside the flex container and enable its own scroll context */
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .report-map-sidebar-image-button {
@@ -1174,6 +1177,50 @@ img, svg {
   background: transparent;
   cursor: zoom-in;
 }
+
+.report-map-sidebar-image-frame {
+  position: relative;
+}
+
+.report-map-sidebar-image-carousel {
+  position: absolute;
+  left: 0.45rem;
+  right: 0.45rem;
+  bottom: 0.45rem;
+  display: flex;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.report-map-sidebar-image-carousel button {
+  pointer-events: auto;
+  min-width: 2rem;
+  min-height: 2rem;
+  border-radius: 0.45rem;
+  background: rgba(0,0,0,0.55);
+  color: #fff;
+  border: 0;
+  font-size: 1.25rem;
+}
+
+.report-image-modal .report-image-modal-content { display:flex; align-items:center; justify-content:center; gap:0.5rem; position:relative; }
+.report-image-modal-prev, .report-image-modal-next {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(0,0,0,0.6);
+  color: #fff;
+  border: 0;
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 999px;
+  font-size: 1.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.report-image-modal-prev { left: 0.75rem; }
+.report-image-modal-next { right: 0.75rem; }
 
 .report-map-sidebar-image-icon {
   position: absolute;
