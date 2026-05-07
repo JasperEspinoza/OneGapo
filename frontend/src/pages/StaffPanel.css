@@ -323,7 +323,7 @@
 }
 
 .ss-audit-dropdown[open] .ss-audit-dropdown-arrow {
-  transform: rotate(180deg);
+  transform: rotate(90deg);
 }
 
 .ss-audit-dropdown-content {
