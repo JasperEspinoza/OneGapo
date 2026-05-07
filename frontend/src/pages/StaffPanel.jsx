@@ -114,6 +114,44 @@ function getReportPreviewImage(report) {
   );
 }
 
+function getReportMediaItems(report) {
+  if (!Array.isArray(report?.attachments)) return [];
+
+  return report.attachments
+    .map((attachment, index) => {
+      const src = String(
+        attachment?.secureUrl ||
+        attachment?.secure_url ||
+        attachment?.url ||
+        attachment?.uri ||
+        attachment?.downloadURL ||
+        attachment?.thumbnailUrl ||
+        attachment?.src ||
+        ''
+      ).trim();
+      if (!src) return null;
+
+      const mime = String(
+        attachment?.mimeType ||
+        attachment?.mime_type ||
+        attachment?.resourceType ||
+        attachment?.resource_type ||
+        ''
+      ).toLowerCase();
+
+      const isImage = mime.includes('image') || /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(src);
+      const isVideo = mime.includes('video') || /\.(mp4|mov|webm|ogg|m4v)$/i.test(src);
+
+      return {
+        id: `${src}-${index}`,
+        src,
+        type: isImage ? 'image' : (isVideo ? 'video' : 'file'),
+        alt: attachment?.originalName || report?.title || `Attachment ${index + 1}`,
+      };
+    })
+    .filter(Boolean);
+}
+
 function getDuplicateLocationLabel(report) {
   const rawAddress = String(report?.location?.address || '').trim();
   if (rawAddress) {
@@ -1205,6 +1243,10 @@ export default function StaffPanel() {
   );
 
   const selectedReportPreviewImage = selectedReport ? getReportPreviewImage(selectedReport) : null;
+  const selectedReportMediaItems = useMemo(
+    () => (selectedReport ? getReportMediaItems(selectedReport) : []),
+    [selectedReport]
+  );
   const duplicateTargetReport = useMemo(
     () => reports.find((report) => String(report?.id || '').trim() === duplicateTargetReportId) || null,
     [reports, duplicateTargetReportId]
@@ -1802,29 +1844,41 @@ export default function StaffPanel() {
                       </div>
 
                       <div className="ap-report-details-media">
-                        <p className="form-label">Image</p>
-                        {selectedReportPreviewImage ? (
-                          <div className="ap-report-image-frame">
-                            <img
-                              src={selectedReportPreviewImage}
-                              alt={selectedReport.title || 'Report attachment'}
-                              className="ap-report-modal-image"
-                            />
-                            <div className="ap-report-media-actions">
-                              <button
-                                type="button"
-                                className="ap-btn-outline ap-btn-sm ap-report-image-enlarge-btn"
-                                onClick={() => setExpandedReportImage({
-                                  src: selectedReportPreviewImage,
-                                  alt: selectedReport.title || 'Report attachment',
-                                })}
-                              >
-                                Enlarge image
-                              </button>
-                            </div>
+                        <p className="form-label">Media attachments</p>
+                        {selectedReportMediaItems.length > 0 ? (
+                          <div className="ap-report-media-list">
+                            {selectedReportMediaItems.map((item) => (
+                              <div key={item.id} className="ap-report-image-frame">
+                                {item.type === 'video' ? (
+                                  <video src={item.src} controls className="ap-report-modal-image" />
+                                ) : (
+                                  <img src={item.src} alt={item.alt} className="ap-report-modal-image" />
+                                )}
+
+                                <div className="ap-report-media-actions">
+                                  {item.type === 'image' ? (
+                                    <button
+                                      type="button"
+                                      className="ap-btn-outline ap-btn-sm ap-report-image-enlarge-btn"
+                                      onClick={() => setExpandedReportImage({ src: item.src, alt: item.alt })}
+                                    >
+                                      Enlarge image
+                                    </button>
+                                  ) : null}
+                                  <a
+                                    href={item.src}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="ap-btn-outline ap-btn-sm ap-report-image-enlarge-btn"
+                                  >
+                                    Open file
+                                  </a>
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         ) : (
-                          <p className="ap-muted">No image attachment for this report.</p>
+                          <p className="ap-muted">No media attachment for this report.</p>
                         )}
                       </div>
 

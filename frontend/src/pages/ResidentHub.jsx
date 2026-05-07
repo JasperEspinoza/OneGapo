@@ -1014,6 +1014,7 @@ export default function ResidentHub() {
                 lng={selectedLng}
                 onPick={handleMapPick}
                 helpText="Tap the map to pin location."
+                enableRouteControls={false}
               />
 
               <button
@@ -1124,6 +1125,7 @@ export default function ResidentHub() {
             <ReportLocationMap
               markers={markers}
               helpText="Locations of reports submitted by residents."
+              enableRouteControls={false}
             />
           </section>
         )}

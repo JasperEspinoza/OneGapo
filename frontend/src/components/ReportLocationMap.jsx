@@ -406,6 +406,7 @@ function MarkerDetailsSidebar({
   marker,
   onClose,
   onOpenImage,
+  enableRouteControls = true,
   onBuildRoute,
   onClearRoute,
   routeLoading,
@@ -468,33 +469,37 @@ function MarkerDetailsSidebar({
         {marker.address ? <p className="report-map-sidebar-meta">Address: {marker.address}</p> : null}
         {marker.description ? <p className="report-map-sidebar-description">{marker.description}</p> : null}
 
-        <div className="report-map-route-actions">
-          <button
-            type="button"
-            className="btn-outline report-map-route-btn"
-            onClick={onBuildRoute}
-            disabled={routeLoading}
-          >
-            {routeLoading ? 'Routing...' : 'Route from my location'}
-          </button>
-          {routeAvailable ? (
-            <button
-              type="button"
-              className="btn-outline report-map-route-btn"
-              onClick={onClearRoute}
-            >
-              Clear route
-            </button>
-          ) : null}
-        </div>
+        {enableRouteControls ? (
+          <>
+            <div className="report-map-route-actions">
+              <button
+                type="button"
+                className="btn-outline report-map-route-btn"
+                onClick={onBuildRoute}
+                disabled={routeLoading}
+              >
+                {routeLoading ? 'Routing...' : 'Route from my location'}
+              </button>
+              {routeAvailable ? (
+                <button
+                  type="button"
+                  className="btn-outline report-map-route-btn"
+                  onClick={onClearRoute}
+                >
+                  Clear route
+                </button>
+              ) : null}
+            </div>
 
-        {routeSummary ? (
-          <p className="report-map-route-summary">
-            Distance: {formatRouteDistance(routeSummary.distance)} | ETA: {formatRouteDuration(routeSummary.duration)}
-          </p>
+            {routeSummary ? (
+              <p className="report-map-route-summary">
+                Distance: {formatRouteDistance(routeSummary.distance)} | ETA: {formatRouteDuration(routeSummary.duration)}
+              </p>
+            ) : null}
+
+            {routeError ? <p className="report-map-route-error">{routeError}</p> : null}
+          </>
         ) : null}
-
-        {routeError ? <p className="report-map-route-error">{routeError}</p> : null}
 
         {previewImage ? (
           <>
@@ -533,6 +538,7 @@ export default function ReportLocationMap({
   autoRouteRequestKey = 0,
   enableHeatmapToggle = false,
   enableCategoryFilter = false,
+  enableRouteControls = true,
 }) {
   const [tileSourceIndex, setTileSourceIndex] = useState(0);
   const [showFullscreenMap, setShowFullscreenMap] = useState(false);
@@ -977,8 +983,8 @@ export default function ReportLocationMap({
               expandKey="inline"
               activeMarkerId={activeMarker?.id || null}
               onMarkerClick={handleMarkerSelect}
-              routePath={routePath}
-              userPosition={userPosition}
+              routePath={enableRouteControls ? routePath : []}
+              userPosition={enableRouteControls ? userPosition : null}
               freezeMarkerAutoFit={preserveViewOnRefresh}
               showHeatmap={heatmapEnabled}
             />
@@ -987,6 +993,7 @@ export default function ReportLocationMap({
             marker={activeMarker}
             onClose={handleSidebarClose}
             onOpenImage={openImagePreview}
+            enableRouteControls={enableRouteControls}
             onBuildRoute={handleBuildRoute}
             onClearRoute={handleClearRoute}
             routeLoading={routeLoading}
@@ -1087,8 +1094,8 @@ export default function ReportLocationMap({
                     expandKey="modal"
                     activeMarkerId={activeMarker?.id || null}
                     onMarkerClick={handleMarkerSelect}
-                    routePath={routePath}
-                    userPosition={userPosition}
+                    routePath={enableRouteControls ? routePath : []}
+                    userPosition={enableRouteControls ? userPosition : null}
                     freezeMarkerAutoFit={preserveViewOnRefresh}
                     showHeatmap={heatmapEnabled}
                   />
@@ -1116,6 +1123,7 @@ export default function ReportLocationMap({
                     marker={activeMarker}
                     onClose={handleSidebarClose}
                     onOpenImage={openImagePreview}
+                    enableRouteControls={enableRouteControls}
                     onBuildRoute={handleBuildRoute}
                     onClearRoute={handleClearRoute}
                     routeLoading={routeLoading}
