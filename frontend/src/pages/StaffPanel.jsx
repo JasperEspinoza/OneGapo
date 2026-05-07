@@ -509,6 +509,13 @@ export default function StaffPanel() {
           setReports((prev) => prev.filter((r) => r.id !== id));
         });
 
+        socket.on('reports:refresh', () => {
+          if (!active) return;
+          // eslint-disable-next-line no-console
+          console.debug('[client][staff] reports:refresh');
+          loadReports({ silent: true });
+        });
+
         socket.on('connect_error', (err) => {
           if (!active) return;
           // eslint-disable-next-line no-console
