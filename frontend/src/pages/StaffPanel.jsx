@@ -441,6 +441,14 @@ export default function StaffPanel() {
           setReportsError('');
         });
 
+        socket.on('reports:refresh', (payload) => {
+          if (!active) return;
+          // eslint-disable-next-line no-console
+          console.debug('[client][staff] reports:refresh', payload || {});
+          // reload reports (silent to avoid flicker)
+          loadReports({ silent: true });
+        });
+
         socket.on('connect_error', (err) => {
           if (!active) return;
           // eslint-disable-next-line no-console

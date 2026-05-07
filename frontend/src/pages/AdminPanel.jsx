@@ -848,6 +848,13 @@ export default function AdminPanel() {
           setReportsError('');
         });
 
+        socket.on('reports:refresh', (payload) => {
+          if (!active) return;
+          // eslint-disable-next-line no-console
+          console.debug('[client][admin] reports:refresh', payload || {});
+          loadReports({ silent: true });
+        });
+
         socket.on('connect_error', (err) => {
           if (!active) return;
           // eslint-disable-next-line no-console

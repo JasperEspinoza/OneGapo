@@ -1,5 +1,6 @@
 const { Server } = require('socket.io');
 const admin = require('../config/firebaseAdmin');
+const socketInstance = require('./socketInstance');
 
 const notificationStreams = new Map();
 const reportStreams = new Map();
@@ -301,6 +302,13 @@ function initSocketServer(httpServer, { allowedOrigin }) {
     },
     transports: ['websocket', 'polling'],
   });
+
+  // make the io instance available to other modules (controllers)
+  try {
+    socketInstance.set(io);
+  } catch {
+    // no-op if instance cannot be set
+  }
 
   io.use(async (socket, next) => {
     try {

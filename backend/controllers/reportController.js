@@ -1109,6 +1109,18 @@ async function createReport(req, res, next) {
 
     await reportRef.set(payload);
 
+    // Emit a lightweight refresh event so connected operator clients can reload
+    try {
+      const socketInstance = require('../realtime/socketInstance');
+      const io = socketInstance.get();
+      if (io) {
+        // broadcast a hint that reports changed; clients may react by reloading
+        io.emit('reports:refresh', { reportId: reportRef.id });
+      }
+    } catch {
+      // ignore failures to emit realtime event
+    }
+
     try {
       await notifyUsersForEmergencySubmission({
         db,
