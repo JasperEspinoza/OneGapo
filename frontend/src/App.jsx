@@ -8,6 +8,8 @@ import Register       from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
 import VerifyEmail    from './pages/VerifyEmail';
 import Legal          from './pages/Legal';
+import Terms          from './pages/Terms';
+import Privacy        from './pages/Privacy';
 import Dashboard      from './pages/Dashboard';
 import StaffPanel     from './pages/StaffPanel';
 import AdminPanel     from './pages/AdminPanel';
@@ -114,6 +116,8 @@ function App() {
               <Route path="/forgot-password" element={<ForgotPassword />} />
               <Route path="/verify-email"    element={<VerifyEmail />} />
               <Route path="/legal"           element={<Legal />} />
+              <Route path="/terms"           element={<Terms />} />
+              <Route path="/privacy"         element={<Privacy />} />
               <Route path="/unauthorized"    element={<Unauthorized />} />
 
               {/* ── Any authenticated + verified user ────────────── */}

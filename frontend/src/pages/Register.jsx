@@ -186,11 +186,11 @@ export default function Register() {
             />
             <label htmlFor="policyConsent" className="register-consent-text">
               I agree to the{' '}
-              <Link to="/legal#terms" className="register-consent-link">
+              <Link to="/terms" className="register-consent-link">
                 Terms and Conditions
               </Link>{' '}
               and{' '}
-              <Link to="/legal#privacy" className="register-consent-link">
+              <Link to="/privacy" className="register-consent-link">
                 Privacy Policy
               </Link>
               .
