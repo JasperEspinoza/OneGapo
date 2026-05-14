@@ -4,9 +4,9 @@
   align-items: center;
   justify-content: center;
   padding: 2rem 1rem;
-  color: #f8fafc;
+  color: var(--color-text);
   background:
-    linear-gradient(rgba(7, 17, 33, 0.78), rgba(7, 17, 33, 0.78)),
+    linear-gradient(var(--color-overlay), var(--color-overlay)),
     url('/assets/OneGapoBG.png') center / cover no-repeat;
 }
 
@@ -31,7 +31,7 @@
   align-items: center;
   gap: 0.65rem;
   min-width: 0;
-  color: #ffffff;
+  color: var(--color-text);
   font-size: 1.1rem;
   font-weight: 800;
   letter-spacing: -0.03em;
@@ -56,7 +56,7 @@
   gap: 1.5rem;
   align-items: stretch;
   padding: 2rem;
-  border: 1px solid rgba(255, 255, 255, 0.09);
+  border: 1px solid var(--color-border);
   border-radius: 14px;
   background: transparent;
   backdrop-filter: blur(10px);
@@ -68,7 +68,7 @@
   content: '';
   position: absolute;
   inset: 0;
-  background: rgba(7, 17, 33, 0.1);
+  background: transparent;
   pointer-events: none;
   z-index: 0;
 }
@@ -90,7 +90,7 @@
   font-size: clamp(2.4rem, 6vw, 4.8rem);
   line-height: 0.95;
   letter-spacing: -0.05em;
-  color: #ffffff;
+  color: var(--color-text);
   text-wrap: balance;
 }
 
@@ -99,7 +99,7 @@
   max-width: 42rem;
   font-size: clamp(1rem, 1.45vw, 1.2rem);
   line-height: 1.75;
-  color: rgba(255, 255, 255, 0.82);
+  color: var(--color-text-muted);
 }
 
 .landing-actions {
@@ -138,28 +138,28 @@
 }
 
 .btn-primary.landing-button {
-  background: #ffffff;
+  background: var(--color-surface);
   color: var(--color-primary);
   border: 1px solid transparent;
-  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.22);
+  box-shadow: var(--shadow-md);
 }
 
 .btn-primary.landing-button:hover {
   transform: translateY(-1px);
-  background: #c7ddff;
-  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.24);
+  background: var(--color-surface-soft);
+  box-shadow: var(--shadow-lg);
 }
 
 .btn-outline.landing-button {
   background: transparent;
-  color: #ffffff;
-  border: 1px solid rgba(255, 255, 255, 0.28);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
 }
 
 .btn-outline.landing-button:hover {
   transform: translateY(-1px);
-  border-color: rgba(255, 255, 255, 0.5);
-  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--color-border-strong);
+  background: var(--color-surface-muted);
 }
 
 .landing-compact-button {
@@ -199,16 +199,17 @@
 
 .landing-panel-card,
 .landing-card {
-  background: rgba(255, 255, 255, 0.94);
+  background: linear-gradient(135deg, var(--color-bg-gradient-a), var(--color-bg-gradient-b));
   color: var(--color-text);
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   padding: 1.25rem;
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+  box-shadow: var(--shadow-md);
 }
 
 .landing-panel-card-soft {
-  background: rgba(255, 255, 255, 0.88);
+  background: linear-gradient(135deg, var(--color-bg-gradient-b), var(--color-bg-gradient-a));
+  color: var(--color-text);
 }
 
 .landing-panel-title {
@@ -251,7 +252,7 @@
   width: 0.4rem;
   height: 0.4rem;
   border-radius: 999px;
-  background: var(--color-primary-strong);
+  background: #1c385f;
 }
 
 .landing-grid {
@@ -381,6 +382,22 @@
   .landing-install-note {
     display: none;
   }
+}
+
+/* Footer */
+.landing-footer {
+  padding: 0.85rem 1rem;
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+  border-top: 1px solid var(--color-border);
+  background: transparent;
+  border-radius: 0 0 10px 10px;
+}
+
+.landing-footer-inner {
+  max-width: 72rem;
+  margin: 0 auto;
 }
 
 /* ========================================================================== */

@@ -223,6 +223,11 @@ export default function LandingPage() {
             </article>
           </section>
         </main>
+        <footer className="landing-footer" role="contentinfo">
+          <div className="landing-footer-inner">
+            <span>© {new Date().getFullYear()} OneGapo — All rights reserved.</span>
+          </div>
+        </footer>
       </div>
     </div>
   );
