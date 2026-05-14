@@ -5,6 +5,7 @@
   justify-content: center;
   padding: 2rem 1rem;
   color: var(--color-text);
+  background-color: var(--color-bg);
   background:
     linear-gradient(var(--color-overlay), var(--color-overlay)),
     url('/assets/OneGapoBG.png') center / cover no-repeat;
@@ -58,8 +59,7 @@
   padding: 2rem;
   border: 1px solid var(--color-border);
   border-radius: 14px;
-  background: transparent;
-  backdrop-filter: blur(10px);
+  background: linear-gradient(135deg, var(--color-surface), var(--color-surface-soft));
   position: relative;
   overflow: hidden;
 }
@@ -188,7 +188,7 @@
   max-width: 38rem;
   font-size: 0.95rem;
   line-height: 1.55;
-  color: rgba(255, 255, 255, 0.78);
+  color: var(--color-text-muted);
 }
 
 .landing-panel {
@@ -199,7 +199,7 @@
 
 .landing-panel-card,
 .landing-card {
-  background: linear-gradient(135deg, var(--color-bg-gradient-a), var(--color-bg-gradient-b));
+  background: var(--color-surface);
   color: var(--color-text);
   border: 1px solid var(--color-border);
   border-radius: 12px;
@@ -208,7 +208,7 @@
 }
 
 .landing-panel-card-soft {
-  background: linear-gradient(135deg, var(--color-bg-gradient-b), var(--color-bg-gradient-a));
+  background: var(--color-surface-soft);
   color: var(--color-text);
 }
 
