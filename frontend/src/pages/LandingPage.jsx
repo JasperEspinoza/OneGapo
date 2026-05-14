@@ -20,20 +20,20 @@ export default function LandingPage() {
   const [installMessage, setInstallMessage] = useState('');
   const [isLoading, setIsLoading] = useState(true);
 
-  // Force light mode on landing page, independent of cached theme preference
+  // Force dark mode on landing page, independent of cached theme preference
   useLayoutEffect(() => {
     if (typeof document === 'undefined') return undefined;
 
     const root = document.documentElement;
     const hadThemeDark = root.classList.contains('theme-dark');
 
-    // Remove dark theme class to force light mode
-    root.classList.remove('theme-dark');
+    // Add dark theme class to force dark mode
+    root.classList.add('theme-dark');
 
     // Restore original theme state when leaving landing page
     return () => {
-      if (hadThemeDark) {
-        root.classList.add('theme-dark');
+      if (!hadThemeDark) {
+        root.classList.remove('theme-dark');
       }
     };
   }, []);
