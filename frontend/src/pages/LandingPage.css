@@ -10,6 +10,33 @@
     url('/assets/OneGapoBG.png') center / cover no-repeat;
 }
 
+/* Keep the landing page visually locked to the light theme ---
+   override theme variables locally so .theme-dark elsewhere
+   does not change the landing page appearance. */
+.landing-page,
+.landing-shell {
+  --color-text: #0f172a;
+  --color-text-soft: #1f2937;
+  --color-text-muted: #667085;
+
+  --color-surface: #ffffff;
+  --color-surface-muted: #f1f4f8;
+  --color-surface-soft: #f8fafc;
+
+  --color-primary: #1c385f;
+  --color-primary-strong: #2d5fa3;
+  --color-primary-soft: #dbe7f5;
+
+  --color-border: #d8dee8;
+  --color-border-strong: #b8c2d1;
+
+  --color-bg-gradient-a: rgba(28, 56, 95, 0.045);
+  --color-bg-gradient-b: rgba(45, 95, 163, 0.08);
+  --color-overlay: rgba(15, 23, 42, 0.5);
+
+  color-scheme: light;
+}
+
 .landing-shell {
   width: 100%;
   max-width: 72rem;
