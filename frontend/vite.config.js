@@ -13,7 +13,8 @@ export default defineConfig({
     react(),
     VitePWA({
       disable: isVercelPreview,
-      registerType: 'prompt',
+      registerType: 'autoUpdate',
+      injectRegister: 'auto',
       includeAssets: ['assets/OneGapo.png'],
       manifest: {
         name: 'OneGapo Resident',
@@ -35,6 +36,9 @@ export default defineConfig({
         ],
       },
       workbox: {
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
         navigateFallback: '/index.html',
         runtimeCaching: [
           {
