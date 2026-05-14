@@ -241,11 +241,10 @@ img, svg {
 .app-page {
   min-height: calc(100vh - 3.5rem);
   padding: 2rem 1.25rem;
-  animation: page-fade-in 0.35s ease-out;
 }
 
 .page-transition {
-  animation: page-fade-in 0.35s ease-out;
+  animation: none;
 }
 
 .app-page-inner {

@@ -44,6 +44,44 @@
 	padding-bottom: 0.55rem;
 }
 
+.register-consent {
+	display: flex;
+	align-items: flex-start;
+	gap: 0.65rem;
+	padding: 0.15rem 0 0.1rem;
+	font-size: 0.875rem;
+	line-height: 1.5;
+	color: var(--color-text-muted);
+}
+
+.register-consent-checkbox {
+	flex: 0 0 auto;
+	width: 1rem;
+	height: 1rem;
+	margin-top: 0.2rem;
+	accent-color: var(--color-primary-strong);
+}
+
+.register-consent-text {
+	min-width: 0;
+	cursor: pointer;
+}
+
+.register-consent-link {
+	font-weight: 600;
+	color: var(--color-primary-strong);
+}
+
+.register-consent-link:hover {
+	text-decoration: underline;
+}
+
+.register-consent-link:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+	border-radius: 0.2rem;
+}
+
 @media (max-height: 760px) {
 	.register-card {
 		padding: 0.9rem 1rem;

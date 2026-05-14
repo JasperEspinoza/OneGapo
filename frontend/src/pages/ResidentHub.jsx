@@ -27,6 +27,22 @@ const INITIAL_FORM = {
   address: '',
 };
 
+const OLONGAPO_BOUNDS = {
+  minLat: 14.73,
+  maxLat: 14.92,
+  minLng: 120.22,
+  maxLng: 120.34,
+};
+
+function isWithinOlongapoBounds(lat, lng) {
+  return (
+    lat >= OLONGAPO_BOUNDS.minLat
+    && lat <= OLONGAPO_BOUNDS.maxLat
+    && lng >= OLONGAPO_BOUNDS.minLng
+    && lng <= OLONGAPO_BOUNDS.maxLng
+  );
+}
+
 function formatReportDate(value) {
   if (!value) return 'Just now';
   const date = new Date(value);
@@ -236,6 +252,7 @@ export default function ResidentHub() {
   const [submitError, setSubmitError] = useState('');
   const [submitSuccess, setSubmitSuccess] = useState('');
   const [autoLocationAttempted, setAutoLocationAttempted] = useState(false);
+  const [outsideOlongapoModalOpen, setOutsideOlongapoModalOpen] = useState(false);
 
   const [myReports, setMyReports] = useState([]);
   const [reportsLoading, setReportsLoading] = useState(false);
@@ -764,6 +781,10 @@ export default function ResidentHub() {
         showSubmitFeedback('error', 'Selected map location is out of range.');
         return;
       }
+      if (!isWithinOlongapoBounds(lat, lng)) {
+        setOutsideOlongapoModalOpen(true);
+        return;
+      }
 
       const payload = new FormData();
       payload.append('title', title);
@@ -1188,6 +1209,28 @@ export default function ResidentHub() {
                 </div>
               );
             })()}
+          </AppModal>
+        ) : null}
+
+        {outsideOlongapoModalOpen ? (
+          <AppModal
+            title="Location Outside Olongapo City"
+            titleId="outside-olongapo-resident-title"
+            onClose={() => setOutsideOlongapoModalOpen(false)}
+          >
+            <div className="resident-geo-modal-body">
+              <p>
+                This report location is outside Olongapo City and cannot be submitted.
+                Please pin a location within Olongapo City to continue.
+              </p>
+              <button
+                type="button"
+                className="btn-primary resident-geo-modal-btn"
+                onClick={() => setOutsideOlongapoModalOpen(false)}
+              >
+                I understand
+              </button>
+            </div>
           </AppModal>
         ) : null}
 

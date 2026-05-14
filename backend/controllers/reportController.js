@@ -378,6 +378,13 @@ const METRICS_BARANGAYS = [
   'Sta. Rita',
 ];
 
+const OLONGAPO_CITY_BOUNDS = {
+  minLat: 14.73,
+  maxLat: 14.92,
+  minLng: 120.22,
+  maxLng: 120.34,
+};
+
 function normalizeToken(value) {
   return String(value || '')
     .toLowerCase()
@@ -626,6 +633,20 @@ function validateLatLng(lat, lng) {
   }
   if (lng < -180 || lng > 180) {
     const err = new Error('Longitude must be between -180 and 180.');
+    err.status = 400;
+    throw err;
+  }
+}
+
+function validateInsideOlongapo(lat, lng) {
+  const isInside =
+    lat >= OLONGAPO_CITY_BOUNDS.minLat
+    && lat <= OLONGAPO_CITY_BOUNDS.maxLat
+    && lng >= OLONGAPO_CITY_BOUNDS.minLng
+    && lng <= OLONGAPO_CITY_BOUNDS.maxLng;
+
+  if (!isInside) {
+    const err = new Error('Report location is outside Olongapo City and cannot be submitted.');
     err.status = 400;
     throw err;
   }
@@ -1036,6 +1057,7 @@ async function createReport(req, res, next) {
     const lat = parseCoordinate(req.body?.latitude, 'latitude');
     const lng = parseCoordinate(req.body?.longitude, 'longitude');
     validateLatLng(lat, lng);
+    validateInsideOlongapo(lat, lng);
 
     if (!title || title.length < 5) {
       return res.status(400).json({ error: 'Title is required and must be at least 5 characters.' });

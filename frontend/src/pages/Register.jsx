@@ -36,6 +36,7 @@ export default function Register() {
   const [email,    setEmail]      = useState('');
   const [password, setPassword]   = useState('');
   const [confirm,  setConfirm]    = useState('');
+  const [acceptedPolicies, setAcceptedPolicies] = useState(false);
   const [error,    setError]      = useState('');
   const [loading,  setLoading]    = useState(false);
 
@@ -53,6 +54,7 @@ export default function Register() {
 
     if (password !== confirm) return setError('Passwords do not match.');
     if (password.length < 8)  return setError('Password must be at least 8 characters.');
+    if (!acceptedPolicies) return setError('You must agree to the Terms and Conditions and Privacy Policy.');
 
     setLoading(true);
     let newUser = null;
@@ -173,9 +175,31 @@ export default function Register() {
             />
           </div>
 
+          <div className="register-consent">
+            <input
+              id="policyConsent"
+              type="checkbox"
+              checked={acceptedPolicies}
+              onChange={(e) => setAcceptedPolicies(e.target.checked)}
+              disabled={loading}
+              className="register-consent-checkbox"
+            />
+            <label htmlFor="policyConsent" className="register-consent-text">
+              I agree to the{' '}
+              <Link to="/legal#terms" className="register-consent-link">
+                Terms and Conditions
+              </Link>{' '}
+              and{' '}
+              <Link to="/legal#privacy" className="register-consent-link">
+                Privacy Policy
+              </Link>
+              .
+            </label>
+          </div>
+
           <button
             type="submit"
-            disabled={loading || !fullName || !email || !password || !confirm}
+            disabled={loading || !fullName || !email || !password || !confirm || !acceptedPolicies}
             className="btn-primary"
           >
             {loading ? 'Creating account…' : 'Create account'}

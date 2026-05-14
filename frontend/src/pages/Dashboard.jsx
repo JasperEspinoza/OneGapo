@@ -2,6 +2,7 @@ import './Dashboard.css';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import ReportLocationMap from '../components/ReportLocationMap';
+import AppModal from '../components/AppModal';
 
 const REPORT_CATEGORIES = [
   { value: 'infrastructure', label: 'Infrastructure' },
@@ -19,6 +20,22 @@ const INITIAL_FORM = {
   longitude: '',
   address: '',
 };
+
+const OLONGAPO_BOUNDS = {
+  minLat: 14.73,
+  maxLat: 14.92,
+  minLng: 120.22,
+  maxLng: 120.34,
+};
+
+function isWithinOlongapoBounds(lat, lng) {
+  return (
+    lat >= OLONGAPO_BOUNDS.minLat
+    && lat <= OLONGAPO_BOUNDS.maxLat
+    && lng >= OLONGAPO_BOUNDS.minLng
+    && lng <= OLONGAPO_BOUNDS.maxLng
+  );
+}
 
 function formatReportDate(value) {
   if (!value) return 'Just now';
@@ -39,6 +56,7 @@ export default function Dashboard() {
   const [submitError, setSubmitError] = useState('');
   const [submitSuccess, setSubmitSuccess] = useState('');
   const [autoLocationAttempted, setAutoLocationAttempted] = useState(false);
+  const [outsideOlongapoModalOpen, setOutsideOlongapoModalOpen] = useState(false);
   const composeSectionRef = useRef(null);
 
   const [myReports, setMyReports] = useState([]);
@@ -199,6 +217,10 @@ export default function Dashboard() {
       }
       if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
         showSubmitFeedback('error', 'Latitude/Longitude values are out of range.');
+        return;
+      }
+      if (!isWithinOlongapoBounds(lat, lng)) {
+        setOutsideOlongapoModalOpen(true);
         return;
       }
 
@@ -447,6 +469,28 @@ export default function Dashboard() {
             </form>
           </section>
         )}
+
+        {outsideOlongapoModalOpen ? (
+          <AppModal
+            title="Location Outside Olongapo City"
+            titleId="outside-olongapo-dashboard-title"
+            onClose={() => setOutsideOlongapoModalOpen(false)}
+          >
+            <div className="report-geo-modal-body">
+              <p>
+                This report location is outside Olongapo City and cannot be submitted.
+                Please pin a location within Olongapo City to continue.
+              </p>
+              <button
+                type="button"
+                className="btn-primary report-geo-modal-btn"
+                onClick={() => setOutsideOlongapoModalOpen(false)}
+              >
+                I understand
+              </button>
+            </div>
+          </AppModal>
+        ) : null}
 
         {isResident && (
           <section className="dashboard-card report-list-card">
