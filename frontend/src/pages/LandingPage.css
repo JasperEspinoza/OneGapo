@@ -1,4 +1,18 @@
 .landing-page {
+  --color-bg: #f8fafc;
+  --color-surface: #ffffff;
+  --color-surface-soft: #eef2ff;
+  --color-surface-container-low: #ffffff;
+  --color-surface-bright: #f8fafc;
+  --color-text: #0f172a;
+  --color-text-muted: #475569;
+  --color-border: rgba(148, 163, 184, 0.28);
+  --color-border-strong: rgba(100, 116, 139, 0.42);
+  --color-primary: #2563eb;
+  --color-primary-strong: #1d4ed8;
+  --color-on-surface-variant: #475569;
+  --color-outline-variant: rgba(148, 163, 184, 0.35);
+  color-scheme: light;
   min-height: 100vh;
   display: flex;
   align-items: center;
