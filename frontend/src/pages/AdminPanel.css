@@ -762,11 +762,6 @@
   .ap-content { padding: 1.25rem 1rem; }
 }
 
-.ap-content::-webkit-scrollbar { width: 6px; }
-.ap-content::-webkit-scrollbar-track { background: transparent; }
-.ap-content::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
-.ap-content::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-
 /* Section layout */
 
 .ap-section {
@@ -1239,6 +1234,12 @@
   color: var(--status-in-review-text);
   background: var(--status-in-review-bg);
   border-color: var(--status-in-review-border);
+}
+
+.ap-report-status-in_progress {
+  color: var(--status-in-progress-text);
+  background: var(--status-in-progress-bg);
+  border-color: var(--status-in-progress-border);
 }
 
 .ap-report-status-resolved {
@@ -2028,13 +2029,6 @@
   box-shadow: 0 1px 4px rgba(2, 12, 28, 0.45);
 }
 
-.theme-dark .ap-content::-webkit-scrollbar-thumb {
-  background: #325173;
-}
-
-.theme-dark .ap-content::-webkit-scrollbar-thumb:hover {
-  background: #456d98;
-}
 
 .theme-dark .ap-nav-signout {
   color: #fda4af;

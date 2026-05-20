@@ -22,9 +22,9 @@ const TILE_SOURCES = [
 
 const REPORT_CATEGORY_LEGEND = [
   { key: 'infrastructure', label: 'Infrastructure', color: '#2E7D32' },
-  { key: 'safety', label: 'Public Safety', color: '#D32F2F' },
+  { key: 'safety', label: 'Public Safety', color: '#1976D2' },
   { key: 'sanitation', label: 'Sanitation', color: '#F59E0B' },
-  { key: 'disaster', label: 'Disaster / Emergency', color: '#1976D2' },
+  { key: 'disaster', label: 'Disaster / Emergency', color: '#D32F2F' },
   { key: 'general', label: 'General Concern', color: '#7B1FA2' },
 ];
 

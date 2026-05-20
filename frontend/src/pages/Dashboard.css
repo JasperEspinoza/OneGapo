@@ -250,6 +250,12 @@
   color: var(--status-in-review-text);
 }
 
+.report-status-in_progress {
+  background: var(--status-in-progress-bg);
+  border-color: var(--status-in-progress-border);
+  color: var(--status-in-progress-text);
+}
+
 .report-status-resolved {
   background: var(--status-resolved-bg);
   border-color: var(--status-resolved-border);

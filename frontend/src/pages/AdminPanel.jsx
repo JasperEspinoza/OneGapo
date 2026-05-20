@@ -97,11 +97,11 @@ const NAV_ITEMS = [
 ];
 
 const REPORT_CATEGORY_META = {
-  infrastructure: { label: 'Infrastructure', color: '#f59e0b' },
-  safety: { label: 'Public Safety', color: '#ef4444' },
-  sanitation: { label: 'Sanitation', color: '#0ea5e9' },
-  disaster: { label: 'Disaster / Emergency', color: '#dc2626' },
-  general: { label: 'General Concern', color: '#14b8a6' },
+  infrastructure: { label: 'Infrastructure', color: '#2E7D32' },
+  safety: { label: 'Public Safety', color: '#1976D2' },
+  sanitation: { label: 'Sanitation', color: '#F59E0B' },
+  disaster: { label: 'Disaster / Emergency', color: '#D32F2F' },
+  general: { label: 'General Concern', color: '#7B1FA2' },
 };
 
 const REPORT_STATUS_FILTER_OPTIONS = [

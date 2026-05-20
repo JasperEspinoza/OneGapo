@@ -338,9 +338,106 @@
   letter-spacing: 0.03em;
 }
 
+.report-status {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid;
+  border-radius: 0.4rem;
+  font-size: 0.72rem;
+  text-transform: capitalize;
+  padding: 0.16rem 0.48rem;
+  font-weight: 700;
+}
+
+.report-status-submitted {
+  background: var(--status-submitted-bg);
+  border-color: var(--status-submitted-border);
+  color: var(--status-submitted-text);
+}
+
+.report-status-in_review {
+  background: var(--status-in-review-bg);
+  border-color: var(--status-in-review-border);
+  color: var(--status-in-review-text);
+}
+
+.report-status-in_progress {
+  background: var(--status-in-progress-bg);
+  border-color: var(--status-in-progress-border);
+  color: var(--status-in-progress-text);
+}
+
+.report-status-resolved {
+  background: var(--status-resolved-bg);
+  border-color: var(--status-resolved-border);
+  color: var(--status-resolved-text);
+}
+
+.report-status-rejected {
+  background: var(--status-rejected-bg);
+  border-color: var(--status-rejected-border);
+  color: var(--status-rejected-text);
+}
+
+.report-status-archived {
+  background: var(--color-surface-muted);
+  border-color: var(--color-border);
+  color: var(--color-text-soft);
+}
+
 .res-pill-cat {
   background: var(--res-primary-soft);
   color: var(--res-primary);
+}
+
+.res-pill-cat-infrastructure {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.res-pill-cat-safety {
+  background: #e3f2fd;
+  color: #1976d2;
+}
+
+.res-pill-cat-sanitation {
+  background: #fff7ed;
+  color: #f59e0b;
+}
+
+.res-pill-cat-disaster {
+  background: #ffebee;
+  color: #d32f2f;
+}
+
+.res-pill-cat-general {
+  background: #f3e8ff;
+  color: #7b1fa2;
+}
+
+.theme-dark .res-pill-cat-infrastructure {
+  background: #2e7d32;
+  color: #f8fafc;
+}
+
+.theme-dark .res-pill-cat-safety {
+  background: #1976d2;
+  color: #f8fafc;
+}
+
+.theme-dark .res-pill-cat-sanitation {
+  background: #f59e0b;
+  color: #f8fafc;
+}
+
+.theme-dark .res-pill-cat-disaster {
+  background: #d32f2f;
+  color: #f8fafc;
+}
+
+.theme-dark .res-pill-cat-general {
+  background: #7b1fa2;
+  color: #f8fafc;
 }
 
 .resident-report-title {

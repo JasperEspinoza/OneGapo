@@ -5,6 +5,12 @@ const {
   verifyEmailToken,
 } = require('../services/verificationService');
 
+const CONTACT_NUMBER_REGEX = /^[+()\-\s\d]{7,20}$/;
+
+function normalizeText(value) {
+  return String(value || '').trim();
+}
+
 /**
  * POST /api/auth/complete-registration
  *
@@ -16,6 +22,22 @@ const {
 async function completeResidentRegistration(req, res, next) {
   try {
     const { uid, role } = req.user;
+    const contactNumber = normalizeText(req.body?.contactNumber);
+    const address = normalizeText(req.body?.address);
+
+    if (!contactNumber) {
+      return res.status(400).json({ error: 'Contact number is required.' });
+    }
+
+    if (!CONTACT_NUMBER_REGEX.test(contactNumber)) {
+      return res.status(400).json({
+        error: 'Contact number format is invalid. Use digits and optional +, spaces, parentheses, or dashes.',
+      });
+    }
+
+    if (!address) {
+      return res.status(400).json({ error: 'Address is required.' });
+    }
 
     // Guard: prevent overwriting claims on already-provisioned staff/admin accounts.
     if (role) {
@@ -34,6 +56,8 @@ async function completeResidentRegistration(req, res, next) {
       uid,
       fullName:  userRecord.displayName || '',
       email:     userRecord.email || '',
+      phone:     contactNumber,
+      address,
       role:      'resident',
       verified:  false,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),

@@ -230,15 +230,21 @@
 }
 
 .ss-status-submitted {
+  color: var(--status-submitted-text);
+  background: var(--status-submitted-bg);
+  border-color: var(--status-submitted-border);
+}
+
+.ss-status-in_review {
   color: var(--status-in-review-text);
   background: var(--status-in-review-bg);
   border-color: var(--status-in-review-border);
 }
 
-.ss-status-in_review {
-  color: var(--status-submitted-text);
-  background: var(--status-submitted-bg);
-  border-color: var(--status-submitted-border);
+.ss-status-in_progress {
+  color: var(--status-in-progress-text);
+  background: var(--status-in-progress-bg);
+  border-color: var(--status-in-progress-border);
 }
 
 .ss-status-resolved {

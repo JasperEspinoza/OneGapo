@@ -18,6 +18,14 @@ const REPORT_CATEGORIES = [
   { value: 'general', label: 'General Concern' },
 ];
 
+function normalizeCategoryKey(value) {
+  return String(value || 'general').toLowerCase().trim() || 'general';
+}
+
+function getCategoryPillClass(category) {
+  return `res-pill-cat-${normalizeCategoryKey(category)}`;
+}
+
 const INITIAL_FORM = {
   title: '',
   description: '',
@@ -261,6 +269,7 @@ export default function ResidentHub() {
 
   const [installPrompt, setInstallPrompt] = useState(null);
   const [signingOut, setSigningOut] = useState(false);
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const [activeApprovalReport, setActiveApprovalReport] = useState(null);
   const [activeTicketReport, setActiveTicketReport] = useState(null);
   const [ticketLogsExpanded, setTicketLogsExpanded] = useState(false);
@@ -837,6 +846,7 @@ export default function ResidentHub() {
   };
 
   const handleLogout = async () => {
+    setLogoutConfirmOpen(false);
     setSigningOut(true);
     try {
       await logout();
@@ -844,6 +854,11 @@ export default function ResidentHub() {
       navigate('/login', { replace: true });
       setSigningOut(false);
     }
+  };
+
+  const handleRequestLogout = () => {
+    if (signingOut) return;
+    setLogoutConfirmOpen(true);
   };
 
   const dismissResidentAlert = (alertId) => {
@@ -962,7 +977,9 @@ export default function ResidentHub() {
                           <span className={`res-pill report-status-${report.status || 'submitted'}`}>
                             {normalizeStatus(report.status)}
                           </span>
-                          <span className="res-pill res-pill-cat">{report.category}</span>
+                          <span className={`res-pill res-pill-cat ${getCategoryPillClass(report.category)}`}>
+                            {report.category}
+                          </span>
                         </div>
                         <p className="resident-report-title">{report.title}</p>
                         <p className="resident-report-desc">{report.description}</p>
@@ -1165,9 +1182,41 @@ export default function ResidentHub() {
               Manage your account details, profile information, password, and appearance.
             </p>
 
-            <SettingsContent showLogout onLogout={handleLogout} logoutLoading={signingOut} />
+            <SettingsContent showLogout onLogout={handleRequestLogout} logoutLoading={signingOut} />
           </section>
         )}
+
+        {logoutConfirmOpen ? (
+          <AppModal
+            title="Confirm logout"
+            titleId="resident-logout-confirm-title"
+            onClose={() => {
+              if (!signingOut) setLogoutConfirmOpen(false);
+            }}
+          >
+            <div className="app-confirm-modal-body">
+              <p className="app-confirm-modal-text">Are you sure you want to log out?</p>
+              <div className="app-confirm-modal-actions">
+                <button
+                  type="button"
+                  className="btn-outline"
+                  onClick={() => setLogoutConfirmOpen(false)}
+                  disabled={signingOut}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={handleLogout}
+                  disabled={signingOut}
+                >
+                  {signingOut ? 'Logging out...' : 'Log out'}
+                </button>
+              </div>
+            </div>
+          </AppModal>
+        ) : null}
 
         {activeApprovalReport ? (
           <AppModal

@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useSettingsModal } from '../context/SettingsModalContext';
 import OneGapoLogo from './OneGapoLogo';
+import AppModal from './AppModal';
 
 const ICONS = {
     menu: (
@@ -27,11 +28,25 @@ export default function Navbar() {
     role === 'admin' ||
     permissions.some((permission) => ['add_branches', 'add_roles', 'add_staffs'].includes(permission));
   const [menuOpen, setMenuOpen] = useState(false);
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
+  const [logoutLoading, setLogoutLoading] = useState(false);
 
-  const handleLogout = async () => {
+  const confirmLogout = async () => {
+    setLogoutLoading(true);
+    setLogoutConfirmOpen(false);
     setMenuOpen(false);
-    await logout();
-    navigate('/login');
+    try {
+      await logout();
+    } finally {
+      setLogoutLoading(false);
+      navigate('/login');
+    }
+  };
+
+  const handleLogout = () => {
+    if (logoutLoading) return;
+    setMenuOpen(false);
+    setLogoutConfirmOpen(true);
   };
 
   const handleOpenSettings = () => {
@@ -97,6 +112,38 @@ export default function Navbar() {
           </button>
         </div>
       )}
+
+      {logoutConfirmOpen ? (
+        <AppModal
+          title="Confirm logout"
+          titleId="navbar-logout-confirm-title"
+          onClose={() => {
+            if (!logoutLoading) setLogoutConfirmOpen(false);
+          }}
+        >
+          <div className="app-confirm-modal-body">
+            <p className="app-confirm-modal-text">Are you sure you want to log out?</p>
+            <div className="app-confirm-modal-actions">
+              <button
+                type="button"
+                className="btn-outline"
+                onClick={() => setLogoutConfirmOpen(false)}
+                disabled={logoutLoading}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={confirmLogout}
+                disabled={logoutLoading}
+              >
+                {logoutLoading ? 'Logging out...' : 'Log out'}
+              </button>
+            </div>
+          </div>
+        </AppModal>
+      ) : null}
     </nav>
   );
 }

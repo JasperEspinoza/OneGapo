@@ -19,6 +19,7 @@ const PERMISSION_LABELS = {
 
 const STATUS_OPTIONS = [
   { value: 'submitted', label: 'Submitted' },
+  { value: 'in_progress', label: 'In Progress' },
   { value: 'in_review', label: 'In Review' },
   { value: 'resolved', label: 'Resolved' },
   { value: 'rejected', label: 'Rejected' },

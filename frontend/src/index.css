@@ -47,18 +47,28 @@
   --color-sidebar-item-active-bg: rgba(255, 255, 255, 0.14);
   --color-sidebar-item-active-text: #ffffff;
   --color-sidebar-accent: #2d5fa3;
-  --status-submitted-bg: #eef2ff;
-  --status-submitted-border: #c7d2fe;
-  --status-submitted-text: #3730a3;
-  --status-in-review-bg: #fef3c7;
-  --status-in-review-border: #fcd34d;
-  --status-in-review-text: #92400e;
-  --status-resolved-bg: #dcfce7;
-  --status-resolved-border: #86efac;
-  --status-resolved-text: #166534;
-  --status-rejected-bg: #fee2e2;
-  --status-rejected-border: #fca5a5;
-  --status-rejected-text: #991b1b;
+  --status-submitted-bg: #EAF2FF;
+  --status-submitted-border: #93C5FD;
+  --status-submitted-text: #1D4ED8;
+
+  --status-in-progress-bg: #E8FCFF;
+  --status-in-progress-border: #67E8F9;
+  --status-in-progress-text: #0F766E;
+
+  --status-in-review-bg: #FFF4E5;
+  --status-in-review-border: #FDBA74;
+  --status-in-review-text: #B45309;
+
+  --status-resolved-bg: #ECFDF3;
+  --status-resolved-border: #86EFAC;
+  --status-resolved-text: #15803D;
+
+  --status-rejected-bg: #FEEEEE;
+  --status-rejected-border: #FCA5A5;
+  --status-rejected-text: #B91C1C;
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: #b8c2d1;
+  --scrollbar-thumb-hover: #8ea0b8;
   --shadow-sm: 0 2px 6px rgba(15, 23, 42, 0.08);
   --shadow-md: 0 6px 16px rgba(15, 23, 42, 0.08);
   --shadow-lg: 0 14px 30px rgba(15, 23, 42, 0.12);
@@ -96,21 +106,61 @@
   --color-sidebar-item-active-bg: #263a5a;
   --color-sidebar-item-active-text: #f0f7ff;
   --color-sidebar-accent: #7aa2f7;
-  --status-submitted-bg: #1d2433;
-  --status-submitted-border: #48566d;
-  --status-submitted-text: #d5def0;
-  --status-in-review-bg: #372b16;
-  --status-in-review-border: #8b5f2b;
-  --status-in-review-text: #f8deb0;
-  --status-resolved-bg: #173126;
-  --status-resolved-border: #21784a;
-  --status-resolved-text: #bbf7d0;
-  --status-rejected-bg: #3b1f24;
-  --status-rejected-border: #99414b;
-  --status-rejected-text: #fecdd3;
+  --status-submitted-bg: #22304A;
+  --status-submitted-border: #60A5FA;
+  --status-submitted-text: #EAF2FF;
+
+  --status-in-progress-bg: #17353D;
+  --status-in-progress-border: #67E8F9;
+  --status-in-progress-text: #E8FCFF;
+
+  --status-in-review-bg: #3B2A1E;
+  --status-in-review-border: #F6C177;
+  --status-in-review-text: #FFF4E5;
+
+  --status-resolved-bg: #183222;
+  --status-resolved-border: #4ADE80;
+  --status-resolved-text: #ECFDF3;
+
+  --status-rejected-bg: #3D2327;
+  --status-rejected-border: #F87171;
+  --status-rejected-text: #FEEEEE;
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: #4b647d;
+  --scrollbar-thumb-hover: #6284a6;
   --shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 8px 20px rgba(0, 0, 0, 0.3);
   --shadow-lg: 0 16px 36px rgba(0, 0, 0, 0.38);
+}
+
+html,
+body,
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
+  border-radius: 9999px;
+  border: 3px solid var(--scrollbar-track);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
+}
+
+*::-webkit-scrollbar-corner {
+  background: var(--scrollbar-track);
 }
 
 html {
@@ -354,6 +404,24 @@ img, svg {
   hyphens: auto;
 }
 
+.app-confirm-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.app-confirm-modal-text {
+  margin: 0;
+  color: var(--color-text);
+  line-height: 1.55;
+}
+
+.app-confirm-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
 @media (max-width: 640px) {
   .app-modal {
     /* use most of the viewport on small screens but leave safe-area gaps */
@@ -369,6 +437,15 @@ img, svg {
 
   .app-modal-body {
     padding: 1rem;
+  }
+
+  .app-confirm-modal-actions {
+    flex-direction: column-reverse;
+  }
+
+  .app-confirm-modal-actions .btn-outline,
+  .app-confirm-modal-actions .btn-primary {
+    width: 100%;
   }
 }
 

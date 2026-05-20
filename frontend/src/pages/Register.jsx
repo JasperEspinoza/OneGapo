@@ -28,11 +28,18 @@ function getErrorMessage(code) {
   }
 }
 
+function isValidPhilippineMobileNumber(value) {
+  const normalized = String(value || '').replace(/[\s()-]/g, '');
+  return /^09\d{9}$/.test(normalized) || /^\+639\d{9}$/.test(normalized);
+}
+
 export default function Register() {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
 
   const [fullName, setFullName]   = useState('');
+  const [contactNumber, setContactNumber] = useState('');
+  const [address, setAddress] = useState('');
   const [email,    setEmail]      = useState('');
   const [password, setPassword]   = useState('');
   const [confirm,  setConfirm]    = useState('');
@@ -51,6 +58,15 @@ export default function Register() {
       setError(firebaseConfigErrorMessage || 'Firebase is not configured for this deployment.');
       return;
     }
+
+    const trimmedContactNumber = contactNumber.trim();
+    const trimmedAddress = address.trim();
+
+    if (!trimmedContactNumber) return setError('Contact number is required.');
+    if (!isValidPhilippineMobileNumber(trimmedContactNumber)) {
+      return setError('Enter a valid Philippine mobile number (e.g. 09171234567 or +639171234567).');
+    }
+    if (!trimmedAddress) return setError('Address is required.');
 
     if (password !== confirm) return setError('Passwords do not match.');
     if (password.length < 8)  return setError('Password must be at least 8 characters.');
@@ -75,7 +91,14 @@ export default function Register() {
       const idToken = await newUser.getIdToken();
       const res = await fetch('/api/auth/complete-registration', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${idToken}` },
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contactNumber: trimmedContactNumber,
+          address: trimmedAddress,
+        }),
       });
 
       if (!res.ok) {
@@ -146,6 +169,38 @@ export default function Register() {
           </div>
 
           <div>
+            <label htmlFor="contactNumber" className="form-label">Contact number</label>
+            <input
+              id="contactNumber"
+              type="tel"
+              autoComplete="tel"
+              required
+              pattern="^(09\d{9}|\+639\d{9})$"
+              title="Use 11-digit mobile (09XXXXXXXXX) or +63 format (+639XXXXXXXXX)."
+              value={contactNumber}
+              onChange={(e) => setContactNumber(e.target.value)}
+              className="form-input"
+              placeholder="09171234567 or +639171234567"
+              disabled={loading}
+            />
+          </div>
+
+          <div>
+            <label htmlFor="address" className="form-label">Address</label>
+            <input
+              id="address"
+              type="text"
+              autoComplete="street-address"
+              required
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              className="form-input"
+              placeholder="House / Street / Barangay"
+              disabled={loading}
+            />
+          </div>
+
+          <div>
             <label htmlFor="password" className="form-label">Password</label>
             <input
               id="password"
@@ -199,7 +254,16 @@ export default function Register() {
 
           <button
             type="submit"
-            disabled={loading || !fullName || !email || !password || !confirm || !acceptedPolicies}
+            disabled={
+              loading ||
+              !fullName ||
+              !email ||
+              !contactNumber.trim() ||
+              !address.trim() ||
+              !password ||
+              !confirm ||
+              !acceptedPolicies
+            }
             className="btn-primary"
           >
             {loading ? 'Creating account…' : 'Create account'}
