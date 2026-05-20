@@ -10,10 +10,56 @@ function hashToken(token) {
 }
 
 function buildFrontendVerificationLink(token) {
-  const baseUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+  const envUrl = process.env.FRONTEND_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null);
+  if (!envUrl) {
+    console.warn('[VerificationService] FRONTEND_URL not set; using http://localhost:5173 fallback. Set FRONTEND_URL in production.');
+  }
+
+  let baseUrl = envUrl || 'http://localhost:5173';
+
+  // Ensure baseUrl is a valid absolute URL. If a hostname was provided without protocol,
+  // try to coerce to https first.
+  try {
+    new URL(baseUrl);
+  } catch (err) {
+    try {
+      baseUrl = `https://${baseUrl}`;
+      new URL(baseUrl);
+    } catch (err2) {
+      console.warn('[VerificationService] Provided FRONTEND_URL is invalid; falling back to http://localhost:5173');
+      baseUrl = 'http://localhost:5173';
+    }
+  }
+
   const verificationUrl = new URL('/verify-email', baseUrl);
   verificationUrl.searchParams.set('token', token);
   return verificationUrl.toString();
+}
+
+// Diagnostic helper: return token document info (does not reveal the raw token)
+async function debugTokenInfo(token) {
+  const normalizedToken = String(token || '').trim();
+  if (!normalizedToken) return { found: false };
+  const tokenHash = hashToken(normalizedToken);
+
+  const snap = await admin
+    .firestore()
+    .collection(TOKEN_COLLECTION)
+    .where('tokenHash', '==', tokenHash)
+    .limit(1)
+    .get();
+
+  if (snap.empty) return { found: false };
+  const doc = snap.docs[0];
+  const data = doc.data();
+  return {
+    found: true,
+    uid: data.uid || null,
+    email: data.email || null,
+    usedAt: data.usedAt || null,
+    expiresAt: data.expiresAt || null,
+    createdAt: data.createdAt || null,
+  };
 }
 
 async function createVerificationToken(uid, email) {
@@ -217,4 +263,5 @@ module.exports = {
   getVerificationStatus,
   sendAccountVerificationEmail,
   verifyEmailToken,
+  debugTokenInfo,
 };

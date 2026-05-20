@@ -4,6 +4,30 @@ import { auth, isFirebaseConfigured } from '../config/firebase';
 
 const AuthContext = createContext(null);
 
+function normalizeRoleKey(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function mergeSessionProfile(tokenClaims = {}, sessionProfile = null) {
+  const profile = sessionProfile?.profile || {};
+
+  const roleKey = normalizeRoleKey(tokenClaims.role || profile.role);
+  const customRoleKey = normalizeRoleKey(tokenClaims.customRoleName || profile.customRoleName);
+  const effectiveRole = roleKey || customRoleKey || '';
+
+  return {
+    ...tokenClaims,
+    ...(profile || {}),
+    role: effectiveRole || tokenClaims.role || profile.role || '',
+    customRoleName: tokenClaims.customRoleName || profile.customRoleName || null,
+    branchId: tokenClaims.branchId || profile.branchId || null,
+    location: tokenClaims.location || profile.location || profile.branchName || null,
+    branchName: tokenClaims.branchName || profile.branchName || profile.location || null,
+    entityType: tokenClaims.entityType || profile.entityType || null,
+    permissions: Array.isArray(tokenClaims.permissions) ? tokenClaims.permissions : Array.isArray(profile.permissions) ? profile.permissions : [],
+  };
+}
+
 export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [userClaims,  setUserClaims]  = useState(null);
@@ -49,10 +73,7 @@ export function AuthProvider({ children }) {
           }
 
           setCurrentUser(user);
-          setUserClaims({
-            ...tokenResult.claims,
-            ...(sessionProfile?.profile || {}),
-          });
+          setUserClaims(mergeSessionProfile(tokenResult.claims, sessionProfile));
           setAccountVerified(verified);
         } else {
           setCurrentUser(null);
@@ -85,10 +106,7 @@ export function AuthProvider({ children }) {
     }
 
     setCurrentUser(auth.currentUser);
-    setUserClaims({
-      ...tokenResult.claims,
-      ...(sessionProfile?.profile || {}),
-    });
+    setUserClaims(mergeSessionProfile(tokenResult.claims, sessionProfile));
     setAccountVerified(verified);
     return verified;
   };
