@@ -53,6 +53,9 @@ async function markUserVerified(uid) {
     const currentClaims = userRecord.customClaims || {};
 
     const results = await Promise.allSettled([
+      admin.auth().updateUser(uid, {
+        emailVerified: true,
+      }),
       admin.auth().setCustomUserClaims(uid, {
         ...currentClaims,
         verified: true,
