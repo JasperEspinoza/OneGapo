@@ -52,38 +52,47 @@ async function markUserVerified(uid) {
     const userRecord = await admin.auth().getUser(uid);
     const currentClaims = userRecord.customClaims || {};
 
-    await admin.auth().updateUser(uid, {
-      emailVerified: true,
-    });
+    const verificationBatch = db.batch();
+    const userRef = db.collection('users').doc(uid);
+    const tokenRef = db.collection(TOKEN_COLLECTION).doc(uid);
 
-    const [claimResult, userResult, tokenResult] = await Promise.allSettled([
+    verificationBatch.set(userRef, {
+      verified: true,
+      verifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    verificationBatch.set(tokenRef, {
+      usedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    await verificationBatch.commit();
+
+    const userSnap = await userRef.get();
+    if (!userSnap.exists || userSnap.data()?.verified !== true) {
+      throw new Error('Verification write did not persist to the user profile.');
+    }
+
+    const [claimResult, authResult] = await Promise.allSettled([
       admin.auth().setCustomUserClaims(uid, {
         ...currentClaims,
         verified: true,
       }),
-      db.collection('users').doc(uid).set({
-        verified: true,
-        verifiedAt: admin.firestore.FieldValue.serverTimestamp(),
-      }, { merge: true }),
-      db.collection(TOKEN_COLLECTION).doc(uid).set({
-        usedAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      }, { merge: true }),
+      admin.auth().updateUser(uid, {
+        emailVerified: true,
+      }),
     ]);
 
     const nonFatalFailures = [];
     if (claimResult.status === 'rejected') {
       nonFatalFailures.push(`Firebase Auth claim: ${claimResult.reason?.message || String(claimResult.reason)}`);
     }
-    if (userResult.status === 'rejected') {
-      nonFatalFailures.push(`Firestore user: ${userResult.reason?.message || String(userResult.reason)}`);
-    }
-    if (tokenResult.status === 'rejected') {
-      nonFatalFailures.push(`Firestore token: ${tokenResult.reason?.message || String(tokenResult.reason)}`);
+    if (authResult.status === 'rejected') {
+      nonFatalFailures.push(`Firebase Auth user: ${authResult.reason?.message || String(authResult.reason)}`);
     }
 
     if (nonFatalFailures.length > 0) {
-      console.warn(`[markUserVerified] Verification completed for uid ${uid}, but some backfill writes failed: ${nonFatalFailures.join('; ')}`);
+      console.warn(`[markUserVerified] Verification persisted for uid ${uid}, but some Auth updates failed: ${nonFatalFailures.join('; ')}`);
     }
   } catch (err) {
     console.error(`[markUserVerified] Error marking uid ${uid} as verified:`, err);
