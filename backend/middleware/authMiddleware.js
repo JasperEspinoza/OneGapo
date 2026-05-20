@@ -78,6 +78,20 @@ async function verifyToken(req, res, next) {
       decodedToken?.firebase?.identities?.email?.[0] ||
       '';
 
+    if (decodedToken.uid) {
+      try {
+        const userSnap = await admin.firestore().collection('users').doc(decodedToken.uid).get();
+        if (userSnap.exists) {
+          hydratedToken = {
+            ...hydratedToken,
+            ...userSnap.data(),
+          };
+        }
+      } catch {
+        // Continue with token claims if the profile lookup fails.
+      }
+    }
+
     const tokenIsPrimaryAdmin =
       normalizeEmail(tokenEmail) === normalizeEmail(PRIMARY_ADMIN_EMAIL) ||
       Boolean(primaryAdminUid && decodedToken.uid === primaryAdminUid);

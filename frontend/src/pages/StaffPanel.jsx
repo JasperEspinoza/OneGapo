@@ -253,6 +253,7 @@ export default function StaffPanel() {
   const { openSettings } = useSettingsModal();
   const navigate = useNavigate();
 
+  const isPrimaryAdmin = String(currentUser?.email || '').toLowerCase() === 'onegapo2026@gmail.com';
   const role = userClaims?.role;
   const permissions = Array.isArray(userClaims?.permissions) ? userClaims.permissions : [];
   const effectivePermissions = permissions;
@@ -365,11 +366,10 @@ export default function StaffPanel() {
   }, [api, canViewReports]);
 
   const loadBranchStaff = useCallback(async () => {
-    if (!canManageStaff) {
+    if (!userClaims?.branchId) {
       setBranchStaff([]);
       return;
     }
-    if (!userClaims?.branchId) return;
     setStaffLoading(true);
     setStaffError('');
     try {
@@ -1335,11 +1335,21 @@ export default function StaffPanel() {
     !selectedReport?.isDuplicateChild &&
     String(selectedReport?.status || '').toLowerCase() !== 'archived'
   );
-  const isPrimaryAdmin = String(currentUser?.email || '').trim().toLowerCase() === 'onegapo2026@gmail.com';
-  const canAssignResponders = Boolean(selectedReport && canUpdateReports && !isPrimaryAdmin && userClaims?.branchId);
+  const customRole = String(userClaims?.customRoleName || '').trim().toLowerCase();
+  // Only the branch main admin (has add_staffs permission or Branch Admin/Main Admin custom role name, not primary admin, assigned to a branch) can assign responders
+  const isBranchMainAdmin = !isPrimaryAdmin && Boolean(userClaims?.branchId) && (
+    permissions.includes('add_staffs') ||
+    customRole === 'branch admin' ||
+    customRole === 'main admin'
+  );
+  const canAssignResponders = Boolean(selectedReport && isBranchMainAdmin);
+  const isResponderAccount = (member) => {
+    const roleKey = String(member?.roleKey || member?.role || member?.customRoleName || '').trim().toLowerCase();
+    return roleKey === 'responder';
+  };
   const branchResponderOptions = useMemo(() => (
     Array.isArray(branchStaff)
-      ? branchStaff.filter((member) => String(member?.customRoleName || '').trim().toLowerCase() === 'responder')
+      ? branchStaff.filter((member) => isResponderAccount(member))
       : []
   ), [branchStaff]);
   const selectedReportAssignedResponder = useMemo(() => {
@@ -1356,14 +1366,19 @@ export default function StaffPanel() {
     const options = [...branchResponderOptions];
     const assignedResponder = selectedReport?.assignedResponder;
     const assignedUid = String(assignedResponder?.uid || '').trim();
-    const assignedRole = String(assignedResponder?.customRoleName || '').trim().toLowerCase();
+    const assignedRoleKey = String(assignedResponder?.roleKey || assignedResponder?.role || assignedResponder?.customRoleName || '').trim().toLowerCase();
 
-    if (assignedUid && assignedRole === 'responder' && !options.some((member) => String(member?.uid || '').trim() === assignedUid)) {
+    if (
+      assignedUid &&
+      assignedRoleKey === 'responder' &&
+      !options.some((member) => String(member?.uid || '').trim() === assignedUid)
+    ) {
       options.unshift({
         uid: assignedUid,
         email: assignedResponder?.email || '',
         fullName: assignedResponder?.fullName || assignedResponder?.displayName || assignedResponder?.username || assignedResponder?.email || assignedUid,
         displayName: assignedResponder?.displayName || assignedResponder?.fullName || assignedResponder?.username || assignedResponder?.email || assignedUid,
+        roleKey: 'responder',
         customRoleName: assignedResponder?.customRoleName || 'Responder',
         branchName: assignedResponder?.branchName || '',
       });
@@ -2043,7 +2058,7 @@ export default function StaffPanel() {
                                   {selectedReportResponderOptions.map((user) => (
                                     <option key={user.uid} value={user.uid}>
                                       {getPersonDisplayName(user)}
-                                      {user.customRoleName ? ` (${user.customRoleName})` : ''}
+                                      {user.customRoleName ? ` (${user.customRoleName})` : user.roleKey === 'responder' ? ' (Responder)' : ''}
                                       {user.branchName ? ` • ${user.branchName}` : ''}
                                     </option>
                                   ))}
@@ -2068,7 +2083,7 @@ export default function StaffPanel() {
                             ) : (
                               <p className="ap-field-hint">No users with the Responder role are available in this branch.</p>
                             )}
-                            <p className="ap-field-hint">Only users with the custom role Responder can be assigned here.</p>
+                            <p className="ap-field-hint">Only users with the Responder role can be assigned here.</p>
                           </div>
                         ) : null}
 
@@ -2452,7 +2467,7 @@ export default function StaffPanel() {
                               <tr key={member.uid}>
                                 <td>{member.email}</td>
                                 <td>{member.fullName || '—'}</td>
-                                <td>{member.customRoleName || '—'}</td>
+                                <td>{member.customRoleLabel || member.customRoleName || (member.roleKey === 'responder' ? 'Responder' : '—')}</td>
                                 <td>{member.verified ? 'Verified' : 'Unverified'}</td>
                               </tr>
                             ))}

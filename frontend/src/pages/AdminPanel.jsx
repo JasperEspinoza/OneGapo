@@ -112,6 +112,14 @@ const REPORT_STATUS_FILTER_OPTIONS = [
   { value: 'rejected', label: 'Rejected' },
 ];
 
+const OPERATIONAL_ROLES = new Set(['staff', 'admin', 'responder']);
+
+function isOperationalUser(user) {
+  const role = String(user?.role || '').trim().toLowerCase();
+  const customRoleName = String(user?.customRoleName || '').trim().toLowerCase();
+  return OPERATIONAL_ROLES.has(role) || customRoleName === 'responder';
+}
+
 function getReportPreviewImage(report) {
   if (!Array.isArray(report?.attachments)) return null;
 
@@ -1054,13 +1062,13 @@ export default function AdminPanel() {
     totalPublic:        branches.filter((b) => b.type === 'public').length,
     totalPrivate:       branches.filter((b) => b.type === 'private').length,
     totalUsers:         users.length,
-    totalStaff:         users.filter((u) => u.role === 'staff').length,
+    totalStaff:         users.filter((u) => isOperationalUser(u)).length,
     totalAdmins:        users.filter((u) => u.role === 'admin').length,
     totalResidents:     users.filter((u) => u.role === 'resident').length,
   }), [branches, users]);
 
   const reportOperators = useMemo(
-    () => users.filter((u) => u.role === 'staff' || u.role === 'admin'),
+    () => users.filter((u) => isOperationalUser(u)),
     [users]
   );
 
@@ -1458,14 +1466,15 @@ export default function AdminPanel() {
       ''
     ).trim();
 
-    return users
-      .filter((user) => user?.uid && (user.role === 'staff' || user.role === 'admin'))
+    const filtered = users
+      .filter((user) => user?.uid && isOperationalUser(user))
       .filter((user) => {
         if (!reportBranchId) return true;
         if (user.role === 'admin') return true;
         return String(user.branchId || '').trim() === reportBranchId;
       })
       .sort((a, b) => getUserDisplayName(a).localeCompare(getUserDisplayName(b)));
+
     const assignedUid = String(selectedReport?.assignedResponder?.uid || '').trim();
     if (assignedUid && !filtered.some((user) => user.uid === assignedUid)) {
       const assignedUser = usersByUid.get(assignedUid) || selectedReport.assignedResponder;
@@ -1743,11 +1752,17 @@ export default function AdminPanel() {
     try {
       const res  = await api('/api/admin/create-staff', {
         method: 'POST',
-        body: JSON.stringify({ email: staffEmail.trim(), password: staffPassword, role: staffRole, branchId: staffBranchId, customRoleId: staffCustomRoleId || undefined }),
+        body: JSON.stringify({
+          email: staffEmail.trim(),
+          password: staffPassword.trim() || undefined,
+          role: staffRole,
+          branchId: staffBranchId,
+          customRoleId: staffCustomRoleId || undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to create account.');
-      setStaffSuccess(data.message || `Account created for ${data.email} — ${data.role} at ${data.location}. Verification email sent via Brevo.`);
+      setStaffSuccess(data.message || `Account saved for ${data.email}.`);
       setStaffEmail('');
       setStaffPassword('');
       setStaffRole('staff');
@@ -2017,6 +2032,7 @@ export default function AdminPanel() {
     () => (selectedReport ? getReportMediaItems(selectedReport) : []),
     [selectedReport]
   );
+  const canAssignResponders = canAccessReports && !isPrimaryAdmin;
 
   return (
     <div className={`ap-shell${sidebarCollapsed ? ' ap-shell-sidebar-collapsed' : ''}`}>
@@ -2577,7 +2593,44 @@ export default function AdminPanel() {
                     <div className="ap-report-details-row"><span>Address</span><strong>{selectedReport?.location?.address || '—'}</strong></div>
                     <div className="ap-report-details-row"><span>Created</span><strong>{selectedReport.createdAt ? new Date(selectedReport.createdAt).toLocaleString() : '—'}</strong></div>
                     <div className="ap-report-details-row"><span>Updated</span><strong>{selectedReport.updatedAt ? new Date(selectedReport.updatedAt).toLocaleString() : '—'}</strong></div>
+                    <div className="ap-report-details-row"><span>Assigned responder</span><strong>{selectedReportAssignedResponder ? getUserDisplayName(selectedReportAssignedResponder) : 'Unassigned'}</strong></div>
                   </div>
+
+                  {canAssignResponders ? (
+                    <div className="ap-report-details-description">
+                      <p className="form-label">Assign responder</p>
+                      <div className="ap-form-row" style={{ alignItems: 'flex-end' }}>
+                        <div style={{ flex: '1' }}>
+                          <label htmlFor="selected-report-responder" className="form-label">Responder</label>
+                          <select
+                            id="selected-report-responder"
+                            className="form-select"
+                            value={selectedReportResponderUid}
+                            onChange={(event) => setSelectedReportResponderUid(event.target.value)}
+                            disabled={assigningResponderReportId === selectedReport.id}
+                          >
+                            <option value="">Unassigned</option>
+                            {selectedReportResponderOptions.map((user) => (
+                              <option key={user.uid} value={user.uid}>
+                                {getUserDisplayName(user)}{user.customRoleName ? ` (${user.customRoleName})` : ''}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <button
+                          type="button"
+                          className="ap-report-action-btn"
+                          onClick={() => handleAssignResponder(selectedReport)}
+                          disabled={assigningResponderReportId === selectedReport.id || selectedReportResponderOptions.length === 0}
+                        >
+                          {assigningResponderReportId === selectedReport.id ? 'Saving…' : 'Save responder'}
+                        </button>
+                      </div>
+                      {selectedReportResponderOptions.length === 0 ? (
+                        <p className="ap-field-hint">No responders are available for this report's branch.</p>
+                      ) : null}
+                    </div>
+                  ) : null}
 
                   <div className="ap-report-details-description">
                     <p className="form-label">Description</p>
@@ -3116,18 +3169,18 @@ export default function AdminPanel() {
                       />
                     </div>
                     <div style={{ flex: '1' }}>
-                      <label htmlFor="adm-password" className="form-label">Temporary password</label>
+                      <label htmlFor="adm-password" className="form-label">Temporary password (optional)</label>
                       <input
                         id="adm-password"
                         type="password"
-                        required
                         minLength={8}
                         value={staffPassword}
                         onChange={(e) => setStaffPassword(e.target.value)}
                         className="form-input"
-                        placeholder="At least 8 characters"
+                        placeholder="Required only for new accounts"
                         disabled={staffLoading}
                       />
+                      
                     </div>
                   </div>
                   <div className="ap-form-row">
@@ -3171,7 +3224,7 @@ export default function AdminPanel() {
                   </div>
                   <button
                     type="submit"
-                    disabled={staffLoading || !staffEmail || !staffPassword}
+                    disabled={staffLoading || !staffEmail || !staffBranchId}
                     className="ap-btn-primary"
                   >
                     {staffLoading ? 'Creating account…' : 'Create account'}
@@ -3240,9 +3293,9 @@ export default function AdminPanel() {
                   </button>
                 </div>
                 {(() => {
-                  const staffList = users.filter((u) => u.role === 'staff' || u.role === 'admin');
+                  const staffList = users.filter((u) => isOperationalUser(u));
                   if (usersLoading) return <p className="ap-loading">Loading…</p>;
-                  if (staffList.length === 0) return <p className="ap-empty">No staff or admin accounts yet.</p>;
+                  if (staffList.length === 0) return <p className="ap-empty">No staff, responder, or admin accounts yet.</p>;
                   return (
                     <div className="ap-table-wrap">
                       <table className="ap-table">
@@ -3331,6 +3384,7 @@ export default function AdminPanel() {
                       <option value="all">All Roles</option>
                       <option value="resident">Resident</option>
                       <option value="staff">Staff</option>
+                      <option value="responder">Responder</option>
                       <option value="admin">Admin</option>
                     </select>
                   </div>

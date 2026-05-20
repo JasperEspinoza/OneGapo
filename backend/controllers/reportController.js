@@ -1231,8 +1231,8 @@ async function listOwnReports(req, res, next) {
 async function listReportsForOperators(req, res, next) {
   try {
     const role = req.user?.role;
-    if (role !== 'staff' && role !== 'admin') {
-      return res.status(403).json({ error: 'Only staff and admins can access this endpoint.' });
+    if (role !== 'staff' && role !== 'admin' && role !== 'responder') {
+      return res.status(403).json({ error: 'Only staff, responders, and admins can access this endpoint.' });
     }
 
     const db = admin.firestore();
@@ -1278,6 +1278,14 @@ async function listReportsForOperators(req, res, next) {
       });
     }
 
+    if (role === 'responder') {
+      const requesterUid = String(req.user?.uid || '').trim();
+      hydratedReports = hydratedReports.filter((report) => {
+        const assignedResponderUid = String(report?.assignedResponder?.uid || '').trim();
+        return Boolean(assignedResponderUid && requesterUid && assignedResponderUid === requesterUid);
+      });
+    }
+
     return res.json(hydratedReports);
   } catch (err) {
     if (!err.status) {
@@ -1288,12 +1296,14 @@ async function listReportsForOperators(req, res, next) {
   }
 }
 
+const RESPONDER_ALLOWED_STATUSES = new Set(['in_progress', 'resolved']);
+
 async function updateReportStatus(req, res, next) {
   try {
     const requesterUid = getRequesterUid(req);
     const role = req.user?.role;
-    if (role !== 'staff' && role !== 'admin') {
-      return res.status(403).json({ error: 'Only staff and admins can update report status.' });
+    if (role !== 'staff' && role !== 'admin' && role !== 'responder') {
+      return res.status(403).json({ error: 'Only staff, responders, and admins can update report status.' });
     }
 
     const reportId = String(req.params?.reportId || '').trim();
@@ -1303,6 +1313,13 @@ async function updateReportStatus(req, res, next) {
     if (!REPORT_STATUSES.includes(status)) {
       return res.status(400).json({
         error: `Invalid status. Allowed values: ${REPORT_STATUSES.join(', ')}`,
+      });
+    }
+
+    // Responders may only set in_progress or resolved
+    if (role === 'responder' && !RESPONDER_ALLOWED_STATUSES.has(status)) {
+      return res.status(403).json({
+        error: 'Responders can only set a report to In Progress or Resolved.',
       });
     }
 
@@ -1318,6 +1335,17 @@ async function updateReportStatus(req, res, next) {
 
     if (!snap.exists) {
       return res.status(404).json({ error: 'Report not found.' });
+    }
+
+    // Responders can only update reports assigned to them
+    if (role === 'responder') {
+      const currentReport = snap.data();
+      const assignedUid = String(currentReport?.assignedResponder?.uid || '').trim();
+      if (!assignedUid || assignedUid !== requesterUid) {
+        return res.status(403).json({
+          error: 'You can only update reports that are assigned to you.',
+        });
+      }
     }
 
     if (role === 'staff') {
@@ -1538,11 +1566,26 @@ async function updateReportAssignment(req, res, next) {
   try {
     const requesterUid = getRequesterUid(req);
     const role = req.user?.role;
+
+    // Primary admin cannot assign responders (they have no branch context)
     if (req.user?.isPrimaryAdmin) {
       return res.status(403).json({ error: 'Primary admin accounts cannot assign report responders.' });
     }
+
     if (role !== 'staff' && role !== 'admin') {
       return res.status(403).json({ error: 'Only staff and admins can assign report responders.' });
+    }
+
+    // Only the branch main admin (staff with add_staffs permission or Branch Admin/Main Admin custom role) can assign responders
+    if (role === 'staff') {
+      const permissions = Array.isArray(req.user?.permissions) ? req.user.permissions : [];
+      const customRole = String(req.user?.customRoleName || '').trim().toLowerCase();
+      const isBranchAdmin = permissions.includes('add_staffs') || customRole === 'branch admin' || customRole === 'main admin';
+      if (!isBranchAdmin) {
+        return res.status(403).json({
+          error: 'Only the branch admin can assign report responders.',
+        });
+      }
     }
 
     const reportId = String(req.params?.reportId || '').trim();
@@ -1577,8 +1620,10 @@ async function updateReportAssignment(req, res, next) {
       }
 
       const userData = userSnap.data() || {};
+      const responderRole = String(userData.role || '').trim().toLowerCase();
       const responderRoleName = String(userData.customRoleName || '').trim().toLowerCase();
-      if (responderRoleName !== 'responder') {
+      const isResponderAccount = responderRole === 'responder' || responderRoleName === 'responder';
+      if (!isResponderAccount) {
         return res.status(400).json({ error: 'Only users with the Responder role can be assigned as responders.' });
       }
 

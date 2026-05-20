@@ -248,11 +248,12 @@ function buildResidentNotificationEvents(reports = []) {
     .slice(0, 30);
 }
 
-export default function ResidentHub() {
-  const { currentUser, logout } = useAuth();
+export default function ResidentHub({ viewMode = 'resident' }) {
+  const { currentUser, logout, userClaims } = useAuth();
   const navigate = useNavigate();
+  const isResponder = viewMode === 'responder' || userClaims?.role === 'responder';
 
-  const [activeTab, setActiveTab] = useState('home');
+  const [activeTab, setActiveTab] = useState(isResponder ? 'reports' : 'home');
 
   const [form, setForm] = useState(INITIAL_FORM);
   const [attachments, setAttachments] = useState([]);
@@ -276,6 +277,15 @@ export default function ResidentHub() {
   const [cameraModalOpen, setCameraModalOpen] = useState(false);
   const [cameraPermissionDenied, setCameraPermissionDenied] = useState(false);
   const [cameraError, setCameraError] = useState('');
+
+  // Responder resolve modal state
+  const [resolveModalOpen, setResolveModalOpen] = useState(false);
+  const [resolveTargetReport, setResolveTargetReport] = useState(null);
+  const [resolveNote, setResolveNote] = useState('');
+  const [resolvePhotos, setResolvePhotos] = useState([]);
+  const [resolveError, setResolveError] = useState('');
+  const [updatingResponderStatus, setUpdatingResponderStatus] = useState(false);
+  const [responderStatusError, setResponderStatusError] = useState('');
 
   const composeSectionRef = useRef(null);
   const cameraCaptureInputRef = useRef(null);
@@ -388,6 +398,84 @@ export default function ResidentHub() {
 
   const [ticketImageIndex, setTicketImageIndex] = useState(0);
 
+  // Responder: update assigned report status (in_progress or resolve flow)
+  const handleResponderStatusUpdate = async ({ reportId, status, note = '', photos = [] }) => {
+    setUpdatingResponderStatus(true);
+    setResponderStatusError('');
+    try {
+      let res;
+      if (photos.length > 0) {
+        const formData = new FormData();
+        formData.append('status', status);
+        if (note) formData.append('progressNote', note);
+        photos.forEach((file) => formData.append('resolutionPhotos', file));
+        res = await api(`/api/reports/${reportId}/status`, { method: 'PATCH', body: formData });
+      } else {
+        const payload = { status, ...(note ? { progressNote: note } : {}) };
+        res = await api(`/api/reports/${reportId}/status`, {
+          method: 'PATCH',
+          body: JSON.stringify(payload),
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to update report status.');
+
+      // Patch local state
+      const updatedReport = data?.report || {};
+      setMyReports((prev) => prev.map((r) => (r.id === reportId ? { ...r, ...updatedReport } : r)));
+      if (activeTicketReport?.id === reportId) {
+        setActiveTicketReport((prev) => ({ ...prev, ...updatedReport }));
+      }
+
+      // Close resolve modal on success
+      setResolveModalOpen(false);
+      setResolveTargetReport(null);
+      setResolveNote('');
+      setResolvePhotos([]);
+      setResolveError('');
+    } catch (err) {
+      setResponderStatusError(err.message || 'Failed to update status.');
+    } finally {
+      setUpdatingResponderStatus(false);
+    }
+  };
+
+  const handleOpenResolveModal = (report) => {
+    setResolveTargetReport(report);
+    setResolveNote('');
+    setResolvePhotos([]);
+    setResolveError('');
+    setResolveSuccess('');
+    setResolveModalOpen(true);
+  };
+
+  const handleSubmitResolve = async (event) => {
+    event.preventDefault();
+    const note = resolveNote.trim();
+    if (!note && resolvePhotos.length === 0) {
+      setResolveError('Please provide a progress note or at least one resolution photo.');
+      return;
+    }
+    await handleResponderStatusUpdate({
+      reportId: resolveTargetReport.id,
+      status: 'resolved',
+      note,
+      photos: resolvePhotos,
+    });
+  };
+
+  const responderAssignedReports = useMemo(() => {
+    if (!isResponder) return myReports;
+    const currentUid = String(currentUser?.uid || '').trim();
+    return myReports.filter((report) => {
+      const assignedUid = String(report?.assignedResponder?.uid || '').trim();
+      return Boolean(currentUid && assignedUid && assignedUid === currentUid);
+    });
+  }, [isResponder, myReports, currentUser?.uid]);
+
+  const visibleReports = isResponder ? responderAssignedReports : myReports;
+
   useEffect(() => {
     setTicketImageIndex(0);
   }, [activeTicketReport]);
@@ -399,10 +487,18 @@ export default function ResidentHub() {
     }
 
     try {
-      const response = await api('/api/reports/me');
+      const response = await api(isResponder ? '/api/reports' : '/api/reports/me');
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to load reports.');
-      applyReportsSnapshot(Array.isArray(data) ? data : []);
+      const reportsData = Array.isArray(data) ? data : [];
+      if (isResponder) {
+        const currentUid = String(currentUser?.uid || '').trim();
+        applyReportsSnapshot(
+          reportsData.filter((report) => String(report?.assignedResponder?.uid || '').trim() === currentUid)
+        );
+      } else {
+        applyReportsSnapshot(reportsData);
+      }
     } catch (err) {
       if (!silent) {
         setReportsError(err.message || 'Unable to load reports.');
@@ -412,13 +508,14 @@ export default function ResidentHub() {
         setReportsLoading(false);
       }
     }
-  }, [api, applyReportsSnapshot]);
+  }, [api, applyReportsSnapshot, isResponder, currentUser?.uid]);
 
   useEffect(() => {
     loadMyReports();
   }, [loadMyReports]);
 
   useEffect(() => {
+    if (isResponder) return undefined;
     if (!currentUser) {
       return undefined;
     }
@@ -511,7 +608,7 @@ export default function ResidentHub() {
         socket.disconnect();
       }
     };
-  }, [applyReportsSnapshot, currentUser, loadMyReports]);
+  }, [applyReportsSnapshot, currentUser, loadMyReports, isResponder]);
 
   useEffect(() => {
     const handleInstallPrompt = (event) => {
@@ -539,7 +636,7 @@ export default function ResidentHub() {
   }, [form.longitude]);
 
   const markers = useMemo(
-    () => myReports
+    () => visibleReports
       .filter((report) => String(report?.status || '').toLowerCase() !== 'archived')
       .filter((report) => Number.isFinite(Number(report?.location?.latitude)) && Number.isFinite(Number(report?.location?.longitude)))
       .map((report) => ({
@@ -554,7 +651,7 @@ export default function ResidentHub() {
         createdAt: report.createdAt,
         attachments: Array.isArray(report.attachments) ? report.attachments : [],
       })),
-    [myReports]
+    [visibleReports]
   );
 
 
@@ -829,7 +926,7 @@ export default function ResidentHub() {
       showSubmitFeedback('success', data.message || 'Report submitted successfully.');
       setForm(INITIAL_FORM);
       setAttachments([]);
-      setActiveTab('home');
+      setActiveTab(isResponder ? 'reports' : 'home');
       await loadMyReports();
     } catch (err) {
       showSubmitFeedback('error', err.message || 'Unexpected error while submitting report.');
@@ -924,34 +1021,38 @@ export default function ResidentHub() {
       <section className="resident-body">
         {activeTab === 'home' && (
           <div className="resident-section resident-section-gap">
-            <div className="resident-hero-card" onClick={() => setActiveTab('compose')}>
+            <div className="resident-hero-card" onClick={() => setActiveTab(isResponder ? 'reports' : 'compose')}>
               <div className="resident-hero-content">
-                <h2 className="resident-hero-title">Report an Issue</h2>
-                <p className="resident-hero-desc">Help keep our city clean and safe. Report an issue to the local government.</p>
+                <h2 className="resident-hero-title">{isResponder ? 'Assigned Reports' : 'Report an Issue'}</h2>
+                <p className="resident-hero-desc">
+                  {isResponder
+                    ? 'Track and monitor reports assigned to your account.'
+                    : 'Help keep our city clean and safe. Report an issue to the local government.'}
+                </p>
                 <span className="resident-hero-btn">
-                  <span className="material-symbols-outlined" aria-hidden="true">edit_square</span>
-                  Submit Report
+                  <span className="material-symbols-outlined" aria-hidden="true">{isResponder ? 'assignment' : 'edit_square'}</span>
+                  {isResponder ? 'View Reports' : 'Submit Report'}
                 </span>
               </div>
-              <span className="material-symbols-outlined resident-hero-bg-icon" aria-hidden="true">report</span>
+              <span className="material-symbols-outlined resident-hero-bg-icon" aria-hidden="true">{isResponder ? 'assignment' : 'report'}</span>
             </div>
 
             <div className="resident-summary-row">
               <article className="resident-summary-card">
-                <p className="resident-summary-label">Total Reports</p>
-                <p className="resident-summary-value">{myReports.length}</p>
+                <p className="resident-summary-label">{isResponder ? 'Assigned Reports' : 'Total Reports'}</p>
+                <p className="resident-summary-value">{visibleReports.length}</p>
               </article>
               <article className="resident-summary-card">
                 <p className="resident-summary-label">Open Reports</p>
                 <p className="resident-summary-value">
-                  {myReports.filter((report) => report.status !== 'resolved').length}
+                  {visibleReports.filter((report) => report.status !== 'resolved').length}
                 </p>
               </article>
             </div>
 
             <div className="resident-section">
               <div className="resident-card-header">
-                <p className="resident-section-title">My submitted reports</p>
+                <p className="resident-section-title">{isResponder ? 'My assigned reports' : 'My submitted reports'}</p>
                 <button type="button" className="btn-outline btn-sm" onClick={loadMyReports} disabled={reportsLoading}>
                   {reportsLoading ? 'Refreshing...' : 'Refresh'}
                 </button>
@@ -961,11 +1062,11 @@ export default function ResidentHub() {
 
               {reportsLoading ? (
                 <p className="resident-muted">Loading your reports...</p>
-              ) : myReports.length === 0 ? (
-                <p className="resident-muted">No reports yet. Tap New Report to submit one.</p>
+              ) : visibleReports.length === 0 ? (
+                <p className="resident-muted">{isResponder ? 'No reports are assigned to your account yet.' : 'No reports yet. Tap New Report to submit one.'}</p>
               ) : (
                 <div className="resident-report-list">
-                  {myReports.map((report) => {
+                  {visibleReports.map((report) => {
                     return (
                       <button
                         key={report.id}
@@ -996,7 +1097,7 @@ export default function ResidentHub() {
           </div>
         )}
 
-        {activeTab === 'compose' && (
+        {!isResponder && activeTab === 'compose' && (
           <section className="resident-card resident-compose" ref={composeSectionRef}>
             <p className="resident-card-title">New report</p>
             <p className="resident-muted">Pin the exact location and include details so staff can act quickly.</p>
@@ -1153,6 +1254,52 @@ export default function ResidentHub() {
                 {submitting ? 'Submitting report...' : 'Submit report'}
               </button>
             </form>
+          </section>
+        )}
+
+        {isResponder && activeTab === 'reports' && (
+          <section className="resident-card resident-map-card">
+            <div className="resident-card-header">
+              <p className="resident-card-title">Assigned Reports</p>
+              <button type="button" className="btn-outline btn-sm" onClick={loadMyReports} disabled={reportsLoading}>
+                {reportsLoading ? 'Refreshing...' : 'Refresh'}
+              </button>
+            </div>
+
+            {reportsError ? <div className="dashboard-alert dashboard-alert-error">{reportsError}</div> : null}
+            {responderStatusError ? <div className="dashboard-alert dashboard-alert-error">{responderStatusError}</div> : null}
+
+            {reportsLoading ? (
+              <p className="resident-muted">Loading assigned reports...</p>
+            ) : visibleReports.length === 0 ? (
+              <p className="resident-muted">No reports are assigned to your account yet.</p>
+            ) : (
+              <div className="resident-report-list">
+                {visibleReports.map((report) => (
+                  <button
+                    key={report.id}
+                    type="button"
+                    className="resident-report-item"
+                    onClick={() => setActiveTicketReport(report)}
+                  >
+                    <div className="resident-report-pills">
+                      <span className={`res-pill report-status-${report.status || 'submitted'}`}>
+                        {normalizeStatus(report.status)}
+                      </span>
+                      <span className={`res-pill res-pill-cat ${getCategoryPillClass(report.category)}`}>
+                        {report.category}
+                      </span>
+                    </div>
+                    <p className="resident-report-title">{report.title}</p>
+                    <p className="resident-report-desc">{report.description}</p>
+                    <div className="resident-report-meta">
+                      <span className="material-symbols-outlined" aria-hidden="true">schedule</span>
+                      {formatReportDate(report.createdAt)}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
           </section>
         )}
 
@@ -1318,6 +1465,38 @@ export default function ResidentHub() {
                     </div>
                   ) : null}
 
+                  {/* Responder action buttons */}
+                  {isResponder && !isResolved && String(activeTicketReport?.status || '').toLowerCase() !== 'rejected' ? (
+                    <div className="resident-report-actions">
+                      {String(activeTicketReport?.status || '').toLowerCase() !== 'in_progress' ? (
+                        <button
+                          type="button"
+                          className="btn-outline"
+                          disabled={updatingResponderStatus}
+                          onClick={() => handleResponderStatusUpdate({
+                            reportId: activeTicketReport.id,
+                            status: 'in_progress',
+                          })}
+                        >
+                          {updatingResponderStatus ? 'Updating…' : 'Mark In Progress'}
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="btn-primary"
+                        disabled={updatingResponderStatus}
+                        onClick={() => handleOpenResolveModal(activeTicketReport)}
+                      >
+                        Resolve Report
+                      </button>
+                      {responderStatusError ? (
+                        <p className="resident-muted" style={{ color: 'var(--color-danger, #e53e3e)', marginTop: '0.5rem' }}>
+                          {responderStatusError}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
+
                   {/* Attachment image viewer with prev/next when multiple photos */}
                   {(() => {
                     const attachmentsList = Array.isArray(activeTicketReport.attachments) ? activeTicketReport.attachments : [];
@@ -1407,6 +1586,78 @@ export default function ResidentHub() {
                 </div>
               );
             })()}
+          </AppModal>
+        ) : null}
+
+
+        {resolveModalOpen && resolveTargetReport ? (
+          <AppModal
+            title={`Resolve: ${resolveTargetReport.title || 'Report'}`}
+            titleId="responder-resolve-modal-title"
+            size="wide"
+            onClose={() => {
+              if (updatingResponderStatus) return;
+              setResolveModalOpen(false);
+              setResolveTargetReport(null);
+              setResolveNote('');
+              setResolvePhotos([]);
+              setResolveError('');
+            }}
+          >
+            <form onSubmit={handleSubmitResolve} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {resolveError ? <div className="dashboard-alert dashboard-alert-error">{resolveError}</div> : null}
+
+              <div>
+                <label className="form-label" htmlFor="responder-resolve-note">Resolution Notes</label>
+                <textarea
+                  id="responder-resolve-note"
+                  className="form-input report-textarea"
+                  rows={4}
+                  placeholder="Describe what action was taken to resolve this report."
+                  value={resolveNote}
+                  onChange={(e) => setResolveNote(e.target.value)}
+                  disabled={updatingResponderStatus}
+                />
+              </div>
+
+              <div>
+                <label className="form-label" htmlFor="responder-resolve-photos">
+                  Resolution Photo(s) <span style={{ fontWeight: 400, opacity: 0.7 }}>(required if no notes)</span>
+                </label>
+                <input
+                  id="responder-resolve-photos"
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="form-input"
+                  onChange={(e) => setResolvePhotos(Array.from(e.target.files || []))}
+                  disabled={updatingResponderStatus}
+                />
+                {resolvePhotos.length > 0 ? (
+                  <p className="resident-muted" style={{ marginTop: '0.25rem' }}>{resolvePhotos.length} photo(s) selected.</p>
+                ) : null}
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                <button type="submit" className="btn-primary" disabled={updatingResponderStatus}>
+                  {updatingResponderStatus ? 'Submitting…' : 'Submit Resolution'}
+                </button>
+                <button
+                  type="button"
+                  className="btn-outline"
+                  disabled={updatingResponderStatus}
+                  onClick={() => {
+                    setResolveModalOpen(false);
+                    setResolveTargetReport(null);
+                    setResolveNote('');
+                    setResolvePhotos([]);
+                    setResolveError('');
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
           </AppModal>
         ) : null}
 
@@ -1549,15 +1800,27 @@ export default function ResidentHub() {
           <span className="material-symbols-outlined resident-tab-icon" aria-hidden="true">home</span>
           <span>Home</span>
         </button>
-        <button
-          type="button"
-          className={`resident-tab ${activeTab === 'compose' ? 'resident-tab-active' : ''}`}
-          onClick={() => setActiveTab('compose')}
-          aria-label="Create report"
-        >
-          <span className="material-symbols-outlined resident-tab-icon" aria-hidden="true">edit_square</span>
-          <span>Report</span>
-        </button>
+        {!isResponder ? (
+          <button
+            type="button"
+            className={`resident-tab ${activeTab === 'compose' ? 'resident-tab-active' : ''}`}
+            onClick={() => setActiveTab('compose')}
+            aria-label="Create report"
+          >
+            <span className="material-symbols-outlined resident-tab-icon" aria-hidden="true">edit_square</span>
+            <span>Report</span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            className={`resident-tab ${activeTab === 'reports' ? 'resident-tab-active' : ''}`}
+            onClick={() => setActiveTab('reports')}
+            aria-label="Assigned reports"
+          >
+            <span className="material-symbols-outlined resident-tab-icon" aria-hidden="true">assignment</span>
+            <span>Reports</span>
+          </button>
+        )}
         <button
           type="button"
           className={`resident-tab ${activeTab === 'map' ? 'resident-tab-active' : ''}`}

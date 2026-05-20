@@ -10,7 +10,7 @@ export function AuthProvider({ children }) {
   const [accountVerified, setAccountVerified] = useState(false);
   const [loading,     setLoading]     = useState(true);
 
-  const fetchVerificationStatus = async (user) => {
+  const fetchSessionProfile = async (user) => {
     const idToken = await user.getIdToken();
     const response = await fetch('/api/auth/verification-status', {
       headers: {
@@ -22,8 +22,7 @@ export function AuthProvider({ children }) {
       throw new Error('Could not load verification status.');
     }
 
-    const data = await response.json();
-    return data.verified === true;
+    return response.json();
   };
 
   useEffect(() => {
@@ -40,15 +39,20 @@ export function AuthProvider({ children }) {
         if (user) {
           const tokenResult = await user.getIdTokenResult(true);
           let verified = tokenResult.claims.verified === true;
+          let sessionProfile = null;
 
           try {
-            verified = await fetchVerificationStatus(user);
+            sessionProfile = await fetchSessionProfile(user);
+            verified = sessionProfile?.verified === true;
           } catch {
             verified = tokenResult.claims.verified === true;
           }
 
           setCurrentUser(user);
-          setUserClaims(tokenResult.claims);
+          setUserClaims({
+            ...tokenResult.claims,
+            ...(sessionProfile?.profile || {}),
+          });
           setAccountVerified(verified);
         } else {
           setCurrentUser(null);
@@ -71,15 +75,20 @@ export function AuthProvider({ children }) {
     await auth.currentUser.reload();
     const tokenResult = await auth.currentUser.getIdTokenResult(true);
     let verified = tokenResult.claims.verified === true;
+    let sessionProfile = null;
 
     try {
-      verified = await fetchVerificationStatus(auth.currentUser);
+      sessionProfile = await fetchSessionProfile(auth.currentUser);
+      verified = sessionProfile?.verified === true;
     } catch {
       verified = tokenResult.claims.verified === true;
     }
 
     setCurrentUser(auth.currentUser);
-    setUserClaims({ ...tokenResult.claims });
+    setUserClaims({
+      ...tokenResult.claims,
+      ...(sessionProfile?.profile || {}),
+    });
     setAccountVerified(verified);
     return verified;
   };

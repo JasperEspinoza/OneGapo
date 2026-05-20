@@ -108,7 +108,22 @@ async function getResidentVerificationStatus(req, res, next) {
     }
 
     const verified = await getVerificationStatus(uid);
-    return res.json({ verified });
+    return res.json({
+      verified,
+      profile: {
+        uid: req.user?.uid || uid,
+        email: req.user?.email || '',
+        role: req.user?.role || null,
+        branchId: req.user?.branchId || null,
+        branchName: req.user?.branchName || req.user?.location || null,
+        location: req.user?.location || null,
+        entityType: req.user?.entityType || null,
+        customRoleId: req.user?.customRoleId || null,
+        customRoleName: req.user?.customRoleName || null,
+        permissions: Array.isArray(req.user?.permissions) ? req.user.permissions : [],
+        isPrimaryAdmin: req.user?.isPrimaryAdmin === true,
+      },
+    });
   } catch (err) {
     if (err?.code === 'auth/user-not-found') {
       return res.status(404).json({ error: 'User account not found.' });
