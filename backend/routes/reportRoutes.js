@@ -8,6 +8,7 @@ const {
   listReportsForOperators,
   getPerformanceMetrics,
   updateReportStatus,
+  updateReportAssignment,
   archiveReport,
   unarchiveReport,
   deleteReport,
@@ -96,6 +97,7 @@ router.patch('/:reportId/unarchive', verifyToken, requireStaffOrAdmin, unarchive
 router.delete('/:reportId', verifyToken, requireStaffOrAdmin, deleteReport);
 router.get('/notifications', verifyToken, requireStaffOrAdmin, rateLimitNotificationsRead, listNotifications);
 router.patch('/notifications/:notificationId/read', verifyToken, requireStaffOrAdmin, markNotificationRead);
+router.patch('/:reportId/assignment', verifyToken, requireStaffOrAdmin, updateReportAssignment);
 router.patch('/:reportId/status', verifyToken, uploadResolutionEvidence.array('resolutionPhotos', 4), updateReportStatus);
 
 module.exports = router;

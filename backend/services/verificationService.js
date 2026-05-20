@@ -37,23 +37,40 @@ async function createVerificationToken(uid, email) {
 
 async function markUserVerified(uid) {
   const db = admin.firestore();
-  const userRecord = await admin.auth().getUser(uid);
-  const currentClaims = userRecord.customClaims || {};
+  
+  try {
+    const userRecord = await admin.auth().getUser(uid);
+    const currentClaims = userRecord.customClaims || {};
 
-  await Promise.all([
-    admin.auth().setCustomUserClaims(uid, {
-      ...currentClaims,
-      verified: true,
-    }),
-    db.collection('users').doc(uid).set({
-      verified: true,
-      verifiedAt: admin.firestore.FieldValue.serverTimestamp(),
-    }, { merge: true }),
-    db.collection(TOKEN_COLLECTION).doc(uid).set({
-      usedAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    }, { merge: true }),
-  ]);
+    const results = await Promise.allSettled([
+      admin.auth().setCustomUserClaims(uid, {
+        ...currentClaims,
+        verified: true,
+      }),
+      db.collection('users').doc(uid).set({
+        verified: true,
+        verifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true }),
+      db.collection(TOKEN_COLLECTION).doc(uid).set({
+        usedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true }),
+    ]);
+
+    // Check if all operations succeeded
+    const failures = results.filter(r => r.status === 'rejected');
+    if (failures.length > 0) {
+      const errors = failures.map((f, i) => {
+        const op = ['Firebase Auth claim', 'Firestore user', 'Firestore token'][i];
+        return `${op}: ${f.reason?.message || String(f.reason)}`;
+      }).join('; ');
+      console.error(`[markUserVerified] Partial failure for uid ${uid}: ${errors}`);
+      throw new Error(`Verification update failed: ${errors}`);
+    }
+  } catch (err) {
+    console.error(`[markUserVerified] Error marking uid ${uid} as verified:`, err);
+    throw err;
+  }
 }
 
 async function getVerificationStatus(uid) {
@@ -103,12 +120,21 @@ async function verifyEmailToken(token) {
   }
 
   const tokenHash = hashToken(normalizedToken);
-  const snap = await admin
-    .firestore()
-    .collection(TOKEN_COLLECTION)
-    .where('tokenHash', '==', tokenHash)
-    .limit(1)
-    .get();
+  let snap;
+  
+  try {
+    snap = await admin
+      .firestore()
+      .collection(TOKEN_COLLECTION)
+      .where('tokenHash', '==', tokenHash)
+      .limit(1)
+      .get();
+  } catch (err) {
+    console.error('[verifyEmailToken] Error querying token collection:', err);
+    const error = new Error('Could not verify token. Please try again or contact support.');
+    error.status = 503;
+    throw error;
+  }
 
   if (snap.empty) {
     const err = new Error('This verification link is invalid or has already been replaced.');
@@ -120,7 +146,12 @@ async function verifyEmailToken(token) {
   const tokenData = tokenDoc.data();
 
   if (tokenData.usedAt) {
-    await markUserVerified(tokenData.uid);
+    try {
+      await markUserVerified(tokenData.uid);
+    } catch (err) {
+      console.warn('[verifyEmailToken] Verification backfill failed for already-used token:', err.message);
+      // Even if backfill fails, return success since token was already used
+    }
     return { uid: tokenData.uid, alreadyVerified: true };
   }
 
@@ -131,7 +162,13 @@ async function verifyEmailToken(token) {
     throw err;
   }
 
-  await markUserVerified(tokenData.uid);
+  try {
+    await markUserVerified(tokenData.uid);
+  } catch (err) {
+    console.error('[verifyEmailToken] Failed to mark user verified:', err);
+    throw new Error(`Could not complete verification: ${err.message}`);
+  }
+  
   return { uid: tokenData.uid, alreadyVerified: false };
 }
 

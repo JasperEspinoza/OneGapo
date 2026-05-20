@@ -153,6 +153,17 @@ function getReportMediaItems(report) {
     .filter(Boolean);
 }
 
+function getPersonDisplayName(person) {
+  return (
+    person?.fullName ||
+    person?.displayName ||
+    person?.username ||
+    person?.email ||
+    person?.name ||
+    'Unknown'
+  );
+}
+
 function getDuplicateLocationLabel(report) {
   const rawAddress = String(report?.location?.address || '').trim();
   if (rawAddress) {
@@ -276,6 +287,8 @@ export default function StaffPanel() {
   const [resolvePhotos, setResolvePhotos] = useState([]);
   const [rejectTargetReportId, setRejectTargetReportId] = useState('');
   const [rejectReason, setRejectReason] = useState('');
+  const [selectedReportResponderUid, setSelectedReportResponderUid] = useState('');
+  const [assigningResponderReportId, setAssigningResponderReportId] = useState('');
   const [forwardTargets, setForwardTargets] = useState([]);
   const [forwardTargetByReport, setForwardTargetByReport] = useState({});
   const [forwardingReportId, setForwardingReportId] = useState('');
@@ -396,6 +409,29 @@ export default function StaffPanel() {
       setForwardTargets([]);
     }
   }, [api, canUpdateReports]);
+
+  const handleAssignResponder = useCallback(async (report, responderUid) => {
+    const reportId = report?.id;
+    if (!reportId || assigningResponderReportId === reportId) return;
+
+    setAssigningResponderReportId(reportId);
+    setReportActionError('');
+    try {
+      const res = await api(`/api/reports/${reportId}/assignment`, {
+        method: 'PATCH',
+        body: JSON.stringify({ responderUid }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to update responder assignment.');
+
+      setReports((prev) => prev.map((item) => (item.id === reportId ? { ...item, ...data.report } : item)));
+      setSelectedReport((prev) => (prev?.id === reportId ? { ...prev, ...data.report } : prev));
+    } catch (err) {
+      setReportActionError(err.message || 'Failed to update responder assignment.');
+    } finally {
+      setAssigningResponderReportId('');
+    }
+  }, [api, assigningResponderReportId]);
 
   const openConfirmDialog = useCallback(({ title, message, confirmLabel = 'Confirm', confirmClassName = 'ap-btn-primary', onConfirm }) => {
     setConfirmDialog({ title, message, confirmLabel, confirmClassName, onConfirm });
@@ -1299,6 +1335,46 @@ export default function StaffPanel() {
     !selectedReport?.isDuplicateChild &&
     String(selectedReport?.status || '').toLowerCase() !== 'archived'
   );
+  const isPrimaryAdmin = String(currentUser?.email || '').trim().toLowerCase() === 'onegapo2026@gmail.com';
+  const canAssignResponders = Boolean(selectedReport && canUpdateReports && !isPrimaryAdmin && userClaims?.branchId);
+  const branchResponderOptions = useMemo(() => (
+    Array.isArray(branchStaff)
+      ? branchStaff.filter((member) => String(member?.customRoleName || '').trim().toLowerCase() === 'responder')
+      : []
+  ), [branchStaff]);
+  const selectedReportAssignedResponder = useMemo(() => {
+    const assignedUid = String(selectedReport?.assignedResponder?.uid || '').trim();
+    if (!assignedUid) return null;
+
+    return (
+      branchStaff.find((member) => String(member?.uid || '').trim() === assignedUid) ||
+      selectedReport?.assignedResponder ||
+      null
+    );
+  }, [branchStaff, selectedReport?.assignedResponder?.uid]);
+  const selectedReportResponderOptions = useMemo(() => {
+    const options = [...branchResponderOptions];
+    const assignedResponder = selectedReport?.assignedResponder;
+    const assignedUid = String(assignedResponder?.uid || '').trim();
+    const assignedRole = String(assignedResponder?.customRoleName || '').trim().toLowerCase();
+
+    if (assignedUid && assignedRole === 'responder' && !options.some((member) => String(member?.uid || '').trim() === assignedUid)) {
+      options.unshift({
+        uid: assignedUid,
+        email: assignedResponder?.email || '',
+        fullName: assignedResponder?.fullName || assignedResponder?.displayName || assignedResponder?.username || assignedResponder?.email || assignedUid,
+        displayName: assignedResponder?.displayName || assignedResponder?.fullName || assignedResponder?.username || assignedResponder?.email || assignedUid,
+        customRoleName: assignedResponder?.customRoleName || 'Responder',
+        branchName: assignedResponder?.branchName || '',
+      });
+    }
+
+    return options;
+  }, [branchResponderOptions, selectedReport?.assignedResponder]);
+
+  useEffect(() => {
+    setSelectedReportResponderUid(String(selectedReport?.assignedResponder?.uid || ''));
+  }, [selectedReport?.id, selectedReport?.assignedResponder?.uid]);
 
   const initials = (currentUser?.displayName || currentUser?.email || 'S')[0].toUpperCase();
   const displayName = currentUser?.displayName || currentUser?.email?.split('@')[0] || 'Staff';
@@ -1746,6 +1822,10 @@ export default function StaffPanel() {
                         <div className="ap-report-details-row"><span>Category</span><strong>{selectedReport.category || '—'}</strong></div>
                         <div className="ap-report-details-row"><span>Barangay</span><strong>{selectedReport?.location?.barangay || '—'}</strong></div>
                         <div className="ap-report-details-row"><span>Address</span><strong>{selectedReport?.location?.address || '—'}</strong></div>
+                        <div className="ap-report-details-row">
+                          <span>Assigned responder</span>
+                          <strong>{selectedReportAssignedResponder ? getPersonDisplayName(selectedReportAssignedResponder) : 'Unassigned'}</strong>
+                        </div>
                         <div className="ap-report-details-row"><span>Created</span><strong>{selectedReport.createdAt ? new Date(selectedReport.createdAt).toLocaleString() : '—'}</strong></div>
                         <div className="ap-report-details-row"><span>Updated</span><strong>{selectedReport.updatedAt ? new Date(selectedReport.updatedAt).toLocaleString() : '—'}</strong></div>
                       </div>
@@ -1944,6 +2024,51 @@ export default function StaffPanel() {
                                 </span>
                               </button>
                             </div>
+                          </div>
+                        ) : null}
+
+                        {canAssignResponders ? (
+                          <div className="ap-modal-action-group">
+                            <label htmlFor="modal-report-responder" className="form-label">Assign responder</label>
+                            {selectedReportResponderOptions.length > 0 ? (
+                              <div className="ap-modal-action-row ap-modal-action-row-stackable">
+                                <select
+                                  id="modal-report-responder"
+                                  className="form-select"
+                                  value={selectedReportResponderUid}
+                                  onChange={(event) => setSelectedReportResponderUid(event.target.value)}
+                                  disabled={assigningResponderReportId === selectedReport.id}
+                                >
+                                  <option value="">Unassigned</option>
+                                  {selectedReportResponderOptions.map((user) => (
+                                    <option key={user.uid} value={user.uid}>
+                                      {getPersonDisplayName(user)}
+                                      {user.customRoleName ? ` (${user.customRoleName})` : ''}
+                                      {user.branchName ? ` • ${user.branchName}` : ''}
+                                    </option>
+                                  ))}
+                                </select>
+                                <button
+                                  type="button"
+                                  className="ap-btn-outline"
+                                  onClick={() => handleAssignResponder(selectedReport, '')}
+                                  disabled={assigningResponderReportId === selectedReport.id || !selectedReportAssignedResponder}
+                                >
+                                  Clear
+                                </button>
+                                <button
+                                  type="button"
+                                  className="ap-btn-primary"
+                                  onClick={() => handleAssignResponder(selectedReport, selectedReportResponderUid)}
+                                  disabled={assigningResponderReportId === selectedReport.id || !selectedReportResponderUid}
+                                >
+                                  {assigningResponderReportId === selectedReport.id ? 'Saving…' : 'Save assignment'}
+                                </button>
+                              </div>
+                            ) : (
+                              <p className="ap-field-hint">No users with the Responder role are available in this branch.</p>
+                            )}
+                            <p className="ap-field-hint">Only users with the custom role Responder can be assigned here.</p>
                           </div>
                         ) : null}
 

@@ -1754,6 +1754,20 @@
   /* align-items: flex-end; */
 }
 
+.ap-modal-action-row-stackable {
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.ap-modal-action-row-stackable > .form-select {
+  flex: 1 1 16rem;
+  min-width: 16rem;
+}
+
+.ap-modal-action-row-stackable > button {
+  white-space: nowrap;
+}
+
 .ap-modal-action-row > select {
   flex: 1;
 }

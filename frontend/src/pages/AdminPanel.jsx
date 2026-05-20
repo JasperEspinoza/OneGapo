@@ -207,6 +207,28 @@ function getReporterDisplayName(report, usersByUid) {
   return String(reporter.email || matchedUser?.email || '').trim() || '—';
 }
 
+function getUserDisplayName(user) {
+  if (!user) return '—';
+  return String(user.fullName || user.displayName || user.username || user.email || '—').trim() || '—';
+}
+
+function getAssignedResponderDisplayName(report, usersByUid) {
+  const assignedResponder = report?.assignedResponder || {};
+  const assignedUid = String(assignedResponder.uid || '').trim();
+  const matchedUser = assignedUid ? usersByUid.get(assignedUid) : null;
+
+  return String(
+    assignedResponder.displayName ||
+    assignedResponder.fullName ||
+    matchedUser?.fullName ||
+    matchedUser?.displayName ||
+    matchedUser?.username ||
+    assignedResponder.email ||
+    matchedUser?.email ||
+    '—'
+  ).trim() || '—';
+}
+
 function getReportCategoryLabel(category) {
   const key = String(category || '').toLowerCase();
   const knownLabel = REPORT_CATEGORY_META[key]?.label;
@@ -658,6 +680,8 @@ export default function AdminPanel() {
   const [archivingReportId, setArchivingReportId] = useState('');
   const [unarchivingReportId, setUnarchivingReportId] = useState('');
   const [deletingReportId, setDeletingReportId] = useState('');
+  const [assigningResponderReportId, setAssigningResponderReportId] = useState('');
+  const [selectedReportResponderUid, setSelectedReportResponderUid] = useState('');
   const [selectedReport, setSelectedReport] = useState(null);
   const [expandedReportImage, setExpandedReportImage] = useState(null);
   const [confirmDialog, setConfirmDialog] = useState(null);
@@ -699,6 +723,10 @@ export default function AdminPanel() {
   const [analyticsSearchQuery, setAnalyticsSearchQuery] = useState('');
   const [analyticsStatusFilter, setAnalyticsStatusFilter] = useState('all');
   const [analyticsBranchTypeFilter, setAnalyticsBranchTypeFilter] = useState('all');
+
+  useEffect(() => {
+    setSelectedReportResponderUid(String(selectedReport?.assignedResponder?.uid || '').trim());
+  }, [selectedReport]);
 
   // ── UI state ────────────────────────────────────────────
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -1423,6 +1451,38 @@ export default function AdminPanel() {
     [users]
   );
 
+  const selectedReportResponderOptions = useMemo(() => {
+    const reportBranchId = String(
+      selectedReport?.forwarding?.to?.branchId ||
+      selectedReport?.branchId ||
+      ''
+    ).trim();
+
+    return users
+      .filter((user) => user?.uid && (user.role === 'staff' || user.role === 'admin'))
+      .filter((user) => {
+        if (!reportBranchId) return true;
+        if (user.role === 'admin') return true;
+        return String(user.branchId || '').trim() === reportBranchId;
+      })
+      .sort((a, b) => getUserDisplayName(a).localeCompare(getUserDisplayName(b)));
+    const assignedUid = String(selectedReport?.assignedResponder?.uid || '').trim();
+    if (assignedUid && !filtered.some((user) => user.uid === assignedUid)) {
+      const assignedUser = usersByUid.get(assignedUid) || selectedReport.assignedResponder;
+      if (assignedUser?.uid) {
+        return [...filtered, assignedUser].sort((a, b) => getUserDisplayName(a).localeCompare(getUserDisplayName(b)));
+      }
+    }
+
+    return filtered;
+  }, [selectedReport, users, usersByUid]);
+
+  const selectedReportAssignedResponder = useMemo(() => {
+    const assignedUid = String(selectedReport?.assignedResponder?.uid || '').trim();
+    if (!assignedUid) return null;
+    return usersByUid.get(assignedUid) || selectedReport.assignedResponder || null;
+  }, [selectedReport, usersByUid]);
+
   const resolveReporterName = useCallback(
     (report) => getReporterDisplayName(report, usersByUid),
     [usersByUid]
@@ -1880,6 +1940,36 @@ export default function AdminPanel() {
       setReportActionError(err.message || 'Failed to delete report.');
     } finally {
       setDeletingReportId('');
+    }
+  };
+
+  const handleAssignResponder = async (report, responderUid = selectedReportResponderUid) => {
+    const reportId = String(report?.id || '').trim();
+    if (!reportId) return;
+
+    setReportActionError('');
+    setAssigningResponderReportId(reportId);
+
+    try {
+      const res = await api(`/api/reports/${reportId}/assignment`, {
+        method: 'PATCH',
+        body: JSON.stringify({ responderUid: String(responderUid || '').trim() || null }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to assign responder.');
+
+      setReports((prev) =>
+        prev.map((item) => (item.id === reportId ? { ...item, ...(data?.report || {}) } : item))
+      );
+      setSelectedReport((prev) => {
+        if (!prev || prev.id !== reportId) return prev;
+        return { ...prev, ...(data?.report || {}) };
+      });
+      setSelectedReportResponderUid(String(data?.report?.assignedResponder?.uid || '').trim());
+    } catch (err) {
+      setReportActionError(err.message || 'Failed to assign responder.');
+    } finally {
+      setAssigningResponderReportId('');
     }
   };
 

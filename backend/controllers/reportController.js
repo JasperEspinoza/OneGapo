@@ -658,6 +658,11 @@ function canStaffAccessReport(report, reqUser) {
     return false;
   }
 
+  const assignedResponderUid = String(report?.assignedResponder?.uid || '').trim();
+  if (assignedResponderUid && assignedResponderUid === String(reqUser?.uid || '').trim()) {
+    return true;
+  }
+
   if (isReportInCoverage(report, staffCoverage)) {
     return true;
   }
@@ -1317,6 +1322,13 @@ async function updateReportStatus(req, res, next) {
 
     if (role === 'staff') {
       const currentReport = snap.data();
+      const assignedResponderUid = String(currentReport?.assignedResponder?.uid || '').trim();
+      if (assignedResponderUid && assignedResponderUid !== String(req.user?.uid || '').trim()) {
+        return res.status(403).json({
+          error: 'This report is assigned to another responder.',
+        });
+      }
+
       if (!canStaffAccessReport(currentReport, req.user)) {
         return res.status(403).json({
           error: 'You can only update reports inside your assigned branch/barangay coverage.',
@@ -1512,6 +1524,125 @@ async function updateReportStatus(req, res, next) {
     return res.json({
       message: 'Report status updated.',
       report: {
+        ...data,
+        createdAt: toIso(data.createdAt),
+        updatedAt: toIso(data.updatedAt),
+      },
+    });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+async function updateReportAssignment(req, res, next) {
+  try {
+    const requesterUid = getRequesterUid(req);
+    const role = req.user?.role;
+    if (req.user?.isPrimaryAdmin) {
+      return res.status(403).json({ error: 'Primary admin accounts cannot assign report responders.' });
+    }
+    if (role !== 'staff' && role !== 'admin') {
+      return res.status(403).json({ error: 'Only staff and admins can assign report responders.' });
+    }
+
+    const reportId = String(req.params?.reportId || '').trim();
+    const responderUid = String(
+      req.body?.responderUid || req.body?.assignedResponderUid || req.body?.uid || ''
+    ).trim();
+
+    if (!reportId) {
+      return res.status(400).json({ error: 'reportId is required.' });
+    }
+
+    const db = admin.firestore();
+    const ref = db.collection('reports').doc(reportId);
+    const snap = await ref.get();
+
+    if (!snap.exists) {
+      return res.status(404).json({ error: 'Report not found.' });
+    }
+
+    const currentReport = snap.data() || {};
+    if (role === 'staff' && !canStaffAccessReport(currentReport, req.user)) {
+      return res.status(403).json({
+        error: 'You can only assign responders for reports inside your assigned branch/barangay coverage.',
+      });
+    }
+
+    let assignedResponder = null;
+    if (responderUid) {
+      const userSnap = await db.collection('users').doc(responderUid).get();
+      if (!userSnap.exists) {
+        return res.status(404).json({ error: 'Responder not found.' });
+      }
+
+      const userData = userSnap.data() || {};
+      const responderRoleName = String(userData.customRoleName || '').trim().toLowerCase();
+      if (responderRoleName !== 'responder') {
+        return res.status(400).json({ error: 'Only users with the Responder role can be assigned as responders.' });
+      }
+
+      if (role === 'staff' && String(req.user?.branchId || '').trim()) {
+        const requesterBranchId = String(req.user.branchId || '').trim();
+        const responderBranchId = String(userData.branchId || '').trim();
+        if (responderBranchId && responderBranchId !== requesterBranchId) {
+          return res.status(403).json({
+            error: 'You can only assign responders from your own branch.',
+          });
+        }
+      }
+
+      assignedResponder = {
+        uid: userSnap.id,
+        email: userData.email || null,
+        displayName: userData.fullName || userData.displayName || userData.username || userData.email || null,
+        role: userData.role || null,
+        branchId: userData.branchId || null,
+        branchName: userData.branchName || null,
+        customRoleId: userData.customRoleId || null,
+        customRoleName: userData.customRoleName || 'Responder',
+        assignedAt: new Date().toISOString(),
+        assignedBy: {
+          uid: requesterUid,
+          role,
+          email: req.user.email || '',
+          branchId: req.user.branchId || null,
+          branchName: req.user.location || null,
+        },
+      };
+    }
+
+    const nowIso = new Date().toISOString();
+    const auditEntry = {
+      type: assignedResponder ? 'assigned_responder' : 'unassigned_responder',
+      changedAt: nowIso,
+      changedBy: {
+        uid: requesterUid,
+        role,
+        email: req.user.email || '',
+        location: req.user.location || '',
+      },
+      assignedResponder,
+    };
+
+    await ref.update({
+      assignedResponder,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      lastUpdatedBy: {
+        uid: requesterUid,
+        role,
+        email: req.user.email || '',
+        location: req.user.location || '',
+      },
+      auditTrail: admin.firestore.FieldValue.arrayUnion(auditEntry),
+    });
+
+    const updatedSnap = await ref.get();
+    const data = updatedSnap.data() || {};
+    return res.json({
+      message: assignedResponder ? 'Responder assigned.' : 'Responder assignment cleared.',
+      report: {
+        id: updatedSnap.id,
         ...data,
         createdAt: toIso(data.createdAt),
         updatedAt: toIso(data.updatedAt),
@@ -2206,6 +2337,7 @@ module.exports = {
   listReportsForOperators,
   getPerformanceMetrics,
   updateReportStatus,
+  updateReportAssignment,
   archiveReport,
   unarchiveReport,
   deleteReport,
