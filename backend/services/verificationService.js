@@ -3,7 +3,7 @@ const admin = require('../config/firebaseAdmin');
 const { sendVerificationEmail } = require('./emailService');
 
 const TOKEN_COLLECTION = 'emailVerificationTokens';
-const TOKEN_TTL_HOURS = 24;
+const TOKEN_TTL_HOURS = Math.max(1, parseInt(process.env.VERIFICATION_TOKEN_TTL_HOURS, 10) || 72);
 
 function hashToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
@@ -25,6 +25,7 @@ async function createVerificationToken(uid, email) {
 
   console.log(`[createVerificationToken] Creating token for uid: ${uid}, email: ${email}`);
   console.log(`[createVerificationToken] Token hash: ${tokenHash}`);
+  console.log(`[createVerificationToken] Token expires in ${TOKEN_TTL_HOURS} hour(s)`);
 
   try {
     await admin.firestore().collection(TOKEN_COLLECTION).doc(uid).set({
