@@ -31,6 +31,7 @@ export default function VerifyEmail() {
   const [verificationMessage, setVerificationMessage] = useState('');
   const lastProcessedTokenRef = useRef('');
 
+  // Effect 1: Process the verification token from the URL
   useEffect(() => {
     if (!token || tokenProcessed) return;
     if (lastProcessedTokenRef.current === token) return;
@@ -65,12 +66,15 @@ export default function VerifyEmail() {
 
         const message = data.message || 'Email verified successfully.';
         setVerificationMessage(message);
-        if (currentUser && currentUser.uid === data.uid) {
-          await refreshUser().catch(() => {});
-          await logout().catch(() => {});
-        }
 
-        navigate('/login', { replace: true });
+        // Navigate to login so the user signs in with fresh claims.
+        // Do NOT call logout() here — it destroys the session before
+        // Firebase Auth custom claims can propagate to the client token,
+        // causing the "verified" flag to remain false on next sign-in.
+        navigate('/login', {
+          replace: true,
+          state: { verificationSuccess: message },
+        });
       } catch (err) {
         if (!active) return;
         if (err.name === 'AbortError') {
@@ -78,7 +82,6 @@ export default function VerifyEmail() {
         } else {
           setError(err.message || 'Could not verify email.');
         }
-        navigate('/verify-email', { replace: true });
       } finally {
         window.clearTimeout(timeoutId);
         if (active) {
@@ -94,17 +97,20 @@ export default function VerifyEmail() {
       window.clearTimeout(timeoutId);
       controller.abort();
     };
-  }, [token, tokenProcessed, currentUser, navigate, refreshUser, logout]);
+  }, [token, tokenProcessed, navigate]);
 
+  // Effect 2: Redirect privileged users (staff/admin) away from the verify page
   useEffect(() => {
+    if (verifyingToken) return; // Don't interfere while verification is in-flight
     const isPrivileged = userClaims?.role === 'staff' || userClaims?.role === 'admin';
     if (!token && isPrivileged) {
       navigate(getDestination(userClaims), { replace: true });
     }
-  }, [navigate, token, userClaims]);
+  }, [navigate, token, userClaims, verifyingToken]);
 
+  // Effect 3: If already verified (and not staff/admin), redirect to login
   useEffect(() => {
-    if (token) return;
+    if (token || verifyingToken) return; // Don't interfere while token is present or verification in-flight
     const isPrivileged = userClaims?.role === 'staff' || userClaims?.role === 'admin';
     if (isPrivileged || !accountVerified) return;
 
@@ -121,7 +127,7 @@ export default function VerifyEmail() {
     return () => {
       active = false;
     };
-  }, [accountVerified, logout, navigate, token, userClaims]);
+  }, [accountVerified, logout, navigate, token, userClaims, verifyingToken]);
 
   const handleCheckNow = async () => {
     setError('');

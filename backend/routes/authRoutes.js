@@ -5,7 +5,6 @@ const {
 	getResidentVerificationStatus,
 	resendOwnVerification,
 	confirmEmailVerification,
-	checkTokenStatus,
 } = require('../controllers/authController');
 
 const router = Router();
@@ -23,6 +22,6 @@ router.post('/complete-registration', verifyToken, completeResidentRegistration)
 router.get('/verification-status', verifyToken, getResidentVerificationStatus);
 router.post('/resend-verification', verifyToken, resendOwnVerification);
 router.post('/verify-email', confirmEmailVerification);
-router.get('/diagnostic/check-token', checkTokenStatus);
+
 
 module.exports = router;

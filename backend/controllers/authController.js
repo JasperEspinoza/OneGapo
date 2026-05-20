@@ -3,7 +3,6 @@ const {
   getVerificationStatus,
   sendAccountVerificationEmail,
   verifyEmailToken,
-  debugTokenInfo,
 } = require('../services/verificationService');
 
 const CONTACT_NUMBER_REGEX = /^[+()\-\s\d]{7,20}$/;
@@ -188,31 +187,9 @@ async function confirmEmailVerification(req, res, next) {
   }
 }
 
-// Diagnostic endpoint - check if a token exists and its state
-async function checkTokenStatus(req, res, next) {
-  const token = req.query.token || req.body.token;
-  console.log('[checkTokenStatus] Checking token status with diagnostic endpoint');
-  
-  try {
-    const info = await debugTokenInfo(token);
-    return res.json({
-      success: true,
-      data: info,
-      message: info.found ? 'Token found' : 'Token not found',
-    });
-  } catch (err) {
-    console.error('[checkTokenStatus] Diagnostic check failed:', err);
-    return res.status(500).json({
-      success: false,
-      error: err.message || 'Failed to check token',
-    });
-  }
-}
-
 module.exports = {
   completeResidentRegistration,
   getResidentVerificationStatus,
   resendOwnVerification,
   confirmEmailVerification,
-  checkTokenStatus,
 };
