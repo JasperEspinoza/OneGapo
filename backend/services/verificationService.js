@@ -18,19 +18,29 @@ function buildFrontendVerificationLink(token) {
 
 async function createVerificationToken(uid, email) {
   const token = crypto.randomBytes(32).toString('hex');
+  const tokenHash = hashToken(token);
   const expiresAt = admin.firestore.Timestamp.fromDate(
     new Date(Date.now() + TOKEN_TTL_HOURS * 60 * 60 * 1000)
   );
 
-  await admin.firestore().collection(TOKEN_COLLECTION).doc(uid).set({
-    uid,
-    email: String(email || '').toLowerCase().trim(),
-    tokenHash: hashToken(token),
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    expiresAt,
-    usedAt: null,
-  });
+  console.log(`[createVerificationToken] Creating token for uid: ${uid}, email: ${email}`);
+  console.log(`[createVerificationToken] Token hash: ${tokenHash}`);
+
+  try {
+    await admin.firestore().collection(TOKEN_COLLECTION).doc(uid).set({
+      uid,
+      email: String(email || '').toLowerCase().trim(),
+      tokenHash,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      expiresAt,
+      usedAt: null,
+    });
+    console.log(`[createVerificationToken] Token successfully saved to Firestore for uid: ${uid}`);
+  } catch (err) {
+    console.error(`[createVerificationToken] Failed to save token to Firestore for uid ${uid}:`, err);
+    throw err;
+  }
 
   return token;
 }
@@ -120,6 +130,8 @@ async function verifyEmailToken(token) {
   }
 
   const tokenHash = hashToken(normalizedToken);
+  console.log(`[verifyEmailToken] Looking for token with hash: ${tokenHash}`);
+
   let snap;
   
   try {
@@ -129,14 +141,16 @@ async function verifyEmailToken(token) {
       .where('tokenHash', '==', tokenHash)
       .limit(1)
       .get();
+    console.log(`[verifyEmailToken] Query returned ${snap.size} document(s)`);
   } catch (err) {
-    console.error('[verifyEmailToken] Error querying token collection:', err);
-    const error = new Error('Could not verify token. Please try again or contact support.');
+    console.error('[verifyEmailToken] Error querying token collection:', err.message);
+    const error = new Error(`Could not query verification tokens: ${err.message}`);
     error.status = 503;
     throw error;
   }
 
   if (snap.empty) {
+    console.warn(`[verifyEmailToken] No token found with hash: ${tokenHash}`);
     const err = new Error('This verification link is invalid or has already been replaced.');
     err.status = 400;
     throw err;
@@ -144,32 +158,41 @@ async function verifyEmailToken(token) {
 
   const tokenDoc = snap.docs[0];
   const tokenData = tokenDoc.data();
+  const uid = tokenData.uid;
+  
+  console.log(`[verifyEmailToken] Token found for uid: ${uid}, already used: ${Boolean(tokenData.usedAt)}`);
 
   if (tokenData.usedAt) {
+    console.log(`[verifyEmailToken] Token already used at ${tokenData.usedAt}`);
     try {
-      await markUserVerified(tokenData.uid);
+      await markUserVerified(uid);
     } catch (err) {
-      console.warn('[verifyEmailToken] Verification backfill failed for already-used token:', err.message);
+      console.warn(`[verifyEmailToken] Verification backfill failed for already-used token (uid: ${uid}):`, err.message);
       // Even if backfill fails, return success since token was already used
     }
-    return { uid: tokenData.uid, alreadyVerified: true };
+    return { uid, alreadyVerified: true };
   }
 
   const expiresAt = tokenData.expiresAt?.toDate?.();
+  console.log(`[verifyEmailToken] Token expires at: ${expiresAt?.toISOString()}, now: ${new Date().toISOString()}`);
+  
   if (!expiresAt || expiresAt.getTime() < Date.now()) {
+    console.warn(`[verifyEmailToken] Token expired for uid: ${uid}`);
     const err = new Error('This verification link has expired. Request a new email verification link.');
     err.status = 400;
     throw err;
   }
 
+  console.log(`[verifyEmailToken] Marking user ${uid} as verified...`);
   try {
-    await markUserVerified(tokenData.uid);
+    await markUserVerified(uid);
+    console.log(`[verifyEmailToken] Successfully marked user ${uid} as verified`);
   } catch (err) {
-    console.error('[verifyEmailToken] Failed to mark user verified:', err);
+    console.error(`[verifyEmailToken] Failed to mark user ${uid} as verified:`, err);
     throw new Error(`Could not complete verification: ${err.message}`);
   }
   
-  return { uid: tokenData.uid, alreadyVerified: false };
+  return { uid, alreadyVerified: false };
 }
 
 module.exports = {
