@@ -4,13 +4,37 @@ import { auth, isFirebaseConfigured } from '../config/firebase';
 
 const AuthContext = createContext(null);
 
+function normalizeRoleKey(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function mergeSessionProfile(tokenClaims = {}, sessionProfile = null) {
+  const profile = sessionProfile?.profile || {};
+
+  const roleKey = normalizeRoleKey(tokenClaims.role || profile.role);
+  const customRoleKey = normalizeRoleKey(tokenClaims.customRoleName || profile.customRoleName);
+  const effectiveRole = roleKey || customRoleKey || '';
+
+  return {
+    ...tokenClaims,
+    ...(profile || {}),
+    role: effectiveRole || tokenClaims.role || profile.role || '',
+    customRoleName: tokenClaims.customRoleName || profile.customRoleName || null,
+    branchId: tokenClaims.branchId || profile.branchId || null,
+    location: tokenClaims.location || profile.location || profile.branchName || null,
+    branchName: tokenClaims.branchName || profile.branchName || profile.location || null,
+    entityType: tokenClaims.entityType || profile.entityType || null,
+    permissions: Array.isArray(tokenClaims.permissions) ? tokenClaims.permissions : Array.isArray(profile.permissions) ? profile.permissions : [],
+  };
+}
+
 export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [userClaims,  setUserClaims]  = useState(null);
   const [accountVerified, setAccountVerified] = useState(false);
   const [loading,     setLoading]     = useState(true);
 
-  const fetchVerificationStatus = async (user) => {
+  const fetchSessionProfile = async (user) => {
     const idToken = await user.getIdToken();
     const response = await fetch('/api/auth/verification-status', {
       headers: {
@@ -22,8 +46,7 @@ export function AuthProvider({ children }) {
       throw new Error('Could not load verification status.');
     }
 
-    const data = await response.json();
-    return data.verified === true;
+    return response.json();
   };
 
   useEffect(() => {
@@ -40,15 +63,17 @@ export function AuthProvider({ children }) {
         if (user) {
           const tokenResult = await user.getIdTokenResult(true);
           let verified = tokenResult.claims.verified === true;
+          let sessionProfile = null;
 
           try {
-            verified = await fetchVerificationStatus(user);
+            sessionProfile = await fetchSessionProfile(user);
+            verified = sessionProfile?.verified === true;
           } catch {
             verified = tokenResult.claims.verified === true;
           }
 
           setCurrentUser(user);
-          setUserClaims(tokenResult.claims);
+          setUserClaims(mergeSessionProfile(tokenResult.claims, sessionProfile));
           setAccountVerified(verified);
         } else {
           setCurrentUser(null);
@@ -71,15 +96,17 @@ export function AuthProvider({ children }) {
     await auth.currentUser.reload();
     const tokenResult = await auth.currentUser.getIdTokenResult(true);
     let verified = tokenResult.claims.verified === true;
+    let sessionProfile = null;
 
     try {
-      verified = await fetchVerificationStatus(auth.currentUser);
+      sessionProfile = await fetchSessionProfile(auth.currentUser);
+      verified = sessionProfile?.verified === true;
     } catch {
       verified = tokenResult.claims.verified === true;
     }
 
     setCurrentUser(auth.currentUser);
-    setUserClaims({ ...tokenResult.claims });
+    setUserClaims(mergeSessionProfile(tokenResult.claims, sessionProfile));
     setAccountVerified(verified);
     return verified;
   };

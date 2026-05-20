@@ -12,9 +12,30 @@ const {
   sanitizePermissions,
 } = require('../constants/rbac');
 const PRIMARY_ADMIN_EMAIL = 'onegapo2026@gmail.com';
+const RESPONDER_ROLE_KEY = 'responder';
+const RESPONDER_ROLE_LABEL = 'Responder';
 
 // Basic email regex — prevents obviously malformed addresses from reaching Firebase
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function normalizeRoleKey(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function getEffectiveRoleKey(user = {}) {
+  const roleKey = normalizeRoleKey(user.role);
+  const customRoleKey = normalizeRoleKey(user.customRoleName);
+
+  if (roleKey === RESPONDER_ROLE_KEY || customRoleKey === RESPONDER_ROLE_KEY) {
+    return RESPONDER_ROLE_KEY;
+  }
+
+  return roleKey || customRoleKey || '';
+}
+
+function isResponderAccount(user = {}) {
+  return getEffectiveRoleKey(user) === RESPONDER_ROLE_KEY;
+}
 
 /**
  * POST /api/admin/create-staff
@@ -35,20 +56,17 @@ async function createStaff(req, res, next) {
   try {
     const { email, password, role, branchId, customRoleId } = req.body;
     const normalizedEmail = String(email || '').toLowerCase().trim();
+    const normalizedPassword = String(password || '');
 
     // --- Input validation ---
-    if (!email || !password || !role) {
+    if (!email || !role) {
       return res.status(400).json({
-        error: 'Missing required fields: email, password, and role are all required.',
+        error: 'Missing required fields: email and role are required.',
       });
     }
 
     if (!EMAIL_REGEX.test(email)) {
       return res.status(400).json({ error: 'Invalid email address format.' });
-    }
-
-    if (password.length < 8) {
-      return res.status(400).json({ error: 'Password must be at least 8 characters long.' });
     }
 
     if (!ALLOWED_ROLES.includes(role)) {
@@ -88,27 +106,58 @@ async function createStaff(req, res, next) {
       branch = branchSnap.data();
     }
 
-    // --- Create the Firebase Auth user ---
-    const userRecord = await admin.auth().createUser({
-      email:         normalizedEmail,
-      password,
-      emailVerified: false,
-    });
+    let userRecord = null;
+    let existingAccount = false;
+
+    try {
+      userRecord = await admin.auth().getUserByEmail(normalizedEmail);
+      existingAccount = true;
+    } catch (err) {
+      if (err.code !== 'auth/user-not-found') {
+        throw err;
+      }
+    }
+
+    if (!userRecord) {
+      if (!normalizedPassword) {
+        return res.status(400).json({
+          error: 'Temporary password is required when creating a new account.',
+        });
+      }
+
+      if (normalizedPassword.length < 8) {
+        return res.status(400).json({ error: 'Password must be at least 8 characters long.' });
+      }
+
+      userRecord = await admin.auth().createUser({
+        email: normalizedEmail,
+        password: normalizedPassword,
+        emailVerified: false,
+      });
+    }
+
+    const existingClaims = userRecord.customClaims || {};
+    const isVerified = Boolean(existingClaims.verified === true || userRecord.emailVerified === true);
 
     // --- Assign Custom Claims (role + location context + permissions) ---
     await admin.auth().setCustomUserClaims(userRecord.uid, {
+      ...existingClaims,
       role,
       branchId:    branchId || null,
       location:    branch ? branch.name : null,
       entityType:  branch ? branch.type : null,
+      customRoleId: customRoleId || null,
+      customRoleName: customRoleName || null,
       permissions: sanitizedPerms,
-      verified:    false,
+      verified:    isVerified,
     });
 
     // --- Write Firestore user document ---
-    await db.collection('users').doc(userRecord.uid).set({
+    const userDocRef = db.collection('users').doc(userRecord.uid);
+    const userDoc = await userDocRef.get();
+    await userDocRef.set({
       uid:         userRecord.uid,
-      fullName:    '',
+      fullName:    userDoc.exists ? (userDoc.data()?.fullName || '') : (userRecord.displayName || ''),
       email:       normalizedEmail,
       role,
       branchId:       branchId || null,
@@ -117,22 +166,32 @@ async function createStaff(req, res, next) {
       customRoleId:   customRoleId || null,
       customRoleName: customRoleName || null,
       permissions:    sanitizedPerms,
-      verified:       false,
-      createdAt:   admin.firestore.FieldValue.serverTimestamp(),
-      createdBy:   req.user.uid,
-    });
+      verified:       isVerified,
+      ...(userDoc.exists
+        ? {
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedBy: req.user.uid,
+          }
+        : {
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            createdBy: req.user.uid,
+          }),
+    }, { merge: true });
 
-    // Send verification and password reset emails
-    try {
-      await sendAccountVerificationEmail(userRecord.uid, userRecord.email, {
-        branchName: branch ? branch.name : null,
-      });
-    } catch (emailErr) {
-      console.warn('Failed to send verification email, but account was created. Admin can resend manually.', emailErr.message);
+    if (!existingAccount && !isVerified) {
+      try {
+        await sendAccountVerificationEmail(userRecord.uid, userRecord.email, {
+          branchName: branch ? branch.name : null,
+        });
+      } catch (emailErr) {
+        console.warn('Failed to send verification email, but account was created. Admin can resend manually.', emailErr.message);
+      }
     }
 
-    return res.status(201).json({
-      message:    'Staff account created successfully. Verification email sent.',
+    return res.status(existingAccount ? 200 : 201).json({
+      message: existingAccount
+        ? 'Existing account assigned successfully.'
+        : 'Staff account created successfully. Verification email sent.',
       uid:        userRecord.uid,
       email:      userRecord.email,
       role,
@@ -142,12 +201,9 @@ async function createStaff(req, res, next) {
       customRoleId:   customRoleId || null,
       customRoleName: customRoleName || null,
       permissions:    sanitizedPerms,
-      verified:       false,
+      verified:       isVerified,
     });
   } catch (err) {
-    if (err.code === 'auth/email-already-exists') {
-      return res.status(409).json({ error: 'A user with this email address already exists.' });
-    }
     if (err.code === 'auth/invalid-email') {
       return res.status(400).json({ error: 'The email address is invalid.' });
     }
@@ -258,14 +314,26 @@ async function updateStaff(req, res, next) {
         }
         const roleData = roleSnap.data();
         const sanitized = sanitizePermissions(roleData.permissions || []);
+        // If the custom role is 'Responder', promote to the 'responder' system role
+        const derivedRole = String(roleData.name || '').trim().toLowerCase() === 'responder'
+          ? 'responder'
+          : undefined; // leave current role unchanged if not responder
         firestoreUpdates.customRoleId   = customRoleId;
         firestoreUpdates.customRoleName = roleData.name;
         firestoreUpdates.permissions    = sanitized;
         claimUpdates.permissions        = sanitized;
+        claimUpdates.customRoleId       = customRoleId;
+        claimUpdates.customRoleName     = roleData.name;
+        if (derivedRole) {
+          firestoreUpdates.role = derivedRole;
+          claimUpdates.role     = derivedRole;
+        }
       } else {
         firestoreUpdates.customRoleId   = null;
         firestoreUpdates.customRoleName = null;
         firestoreUpdates.permissions    = [];
+        claimUpdates.customRoleId       = null;
+        claimUpdates.customRoleName     = null;
         claimUpdates.permissions        = [];
       }
     }
@@ -436,71 +504,111 @@ async function createBranchStaff(req, res, next) {
       customRoleName = roleData.name;
     }
 
-    const normalizedEmail = email.toLowerCase().trim();
+    // Determine effective role: if the custom role is named 'Responder', use the 'responder' system role
+    const effectiveBranchRole = String(customRoleName || '').trim().toLowerCase() === 'responder'
+      ? 'responder'
+      : 'staff';
 
-    // Create Firebase Auth user (no password — they set it via reset link)
-    const userRecord = await admin.auth().createUser({
-      email:         normalizedEmail,
-      emailVerified: false,
-    });
+    const normalizedEmail = email.toLowerCase().trim();
+    if (normalizedEmail === PRIMARY_ADMIN_EMAIL) {
+      return res.status(403).json({
+        error: `The primary admin account ${PRIMARY_ADMIN_EMAIL} cannot be reassigned.`
+      });
+    }
+
+    let userRecord = null;
+    let existingAccount = false;
+    try {
+      userRecord = await admin.auth().getUserByEmail(normalizedEmail);
+      existingAccount = true;
+    } catch (err) {
+      if (err.code !== 'auth/user-not-found') {
+        throw err;
+      }
+    }
+
+    if (!userRecord) {
+      // Create Firebase Auth user (no password — they set it via reset link)
+      userRecord = await admin.auth().createUser({
+        email: normalizedEmail,
+        emailVerified: false,
+      });
+    }
+
+    const existingClaims = userRecord.customClaims || {};
+    const isVerified = Boolean(existingClaims.verified === true || userRecord.emailVerified === true);
 
     await admin.auth().setCustomUserClaims(userRecord.uid, {
-      role:        'staff',
+      ...existingClaims,
+      role:        effectiveBranchRole,
+      roleKey:     effectiveBranchRole,
       branchId:    callerBranchId,
       location:    branch.name,
       entityType:  branch.type,
       permissions: sanitizedPerms,
-      verified:    false,
+      verified:    isVerified,
     });
 
-    await db.collection('users').doc(userRecord.uid).set({
+    const userDocRef = db.collection('users').doc(userRecord.uid);
+    const userDoc = await userDocRef.get();
+    await userDocRef.set({
       uid:            userRecord.uid,
-      fullName:       '',
+      fullName:       userDoc.exists ? (userDoc.data()?.fullName || '') : (userRecord.displayName || ''),
       email:          normalizedEmail,
-      role:           'staff',
+      role:           effectiveBranchRole,
+      roleKey:        effectiveBranchRole,
       branchId:       callerBranchId,
       branchName:     branch.name,
       entityType:     branch.type,
       customRoleId:   customRoleId || null,
       customRoleName: customRoleName,
       permissions:    sanitizedPerms,
-      verified:       false,
-      createdAt:      admin.firestore.FieldValue.serverTimestamp(),
-      createdBy:      req.user.uid,
-    });
+      verified:       isVerified,
+      ...(userDoc.exists
+        ? {
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedBy: req.user.uid,
+          }
+        : {
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            createdBy: req.user.uid,
+          }),
+    }, { merge: true });
 
-    // Generate password reset link
-    const resetLink = await admin.auth().generatePasswordResetLink(normalizedEmail);
+    let emailDelivery = null;
+    if (!existingAccount) {
+      // Generate password reset link only for newly created accounts.
+      const resetLink = await admin.auth().generatePasswordResetLink(normalizedEmail);
 
-    const emailResults = await Promise.allSettled([
-      sendPasswordResetEmail(normalizedEmail, resetLink, branch.name),
-      sendAccountVerificationEmail(userRecord.uid, normalizedEmail, { branchName: branch.name }),
-    ]);
-    const emailDelivery = summarizeEmailDeliveries({
-      passwordReset: emailResults[0],
-      verification: emailResults[1],
-    });
+      const emailResults = await Promise.allSettled([
+        sendPasswordResetEmail(normalizedEmail, resetLink, branch.name),
+        sendAccountVerificationEmail(userRecord.uid, normalizedEmail, { branchName: branch.name }),
+      ]);
+      emailDelivery = summarizeEmailDeliveries({
+        passwordReset: emailResults[0],
+        verification: emailResults[1],
+      });
 
-    if (!emailDelivery.allSent) {
-      console.warn('Staff account created, but one or more emails were not sent.', emailDelivery.summary);
+      if (!emailDelivery.allSent) {
+        console.warn('Staff account created, but one or more emails were not sent.', emailDelivery.summary);
+      }
     }
 
-    return res.status(201).json({
-      message: emailDelivery.allSent
-        ? 'Staff account created. Verification and password-reset emails sent.'
-        : 'Staff account created, but one or more emails were not sent.',
+    return res.status(existingAccount ? 200 : 201).json({
+      message: existingAccount
+        ? 'Existing staff account assigned to your branch.'
+        : emailDelivery?.allSent
+          ? 'Staff account created. Verification and password-reset emails sent.'
+          : 'Staff account created, but one or more emails were not sent.',
       uid:       userRecord.uid,
       email:     normalizedEmail,
       branchId:  callerBranchId,
       branchName: branch.name,
       customRoleId:   customRoleId || null,
       customRoleName,
-      emailDelivery: emailDelivery.summary,
+      emailDelivery: emailDelivery?.summary,
     });
   } catch (err) {
-    if (err.code === 'auth/email-already-exists') {
-      return res.status(409).json({ error: 'A user with this email address already exists.' });
-    }
     return next(err);
   }
 }
@@ -516,13 +624,33 @@ async function listBranchStaff(req, res, next) {
       return res.status(403).json({ error: 'You are not assigned to any branch.' });
     }
 
-    const snap = await admin
-      .firestore()
-      .collection('users')
-      .where('branchId', '==', callerBranchId)
-      .get();
+    const db = admin.firestore();
 
-    const docsData = snap.docs
+    // Fetch canonical branch name to include users that only have branchName set
+    const branchSnap = await db.collection('branches').doc(callerBranchId).get().catch(() => null);
+    const callerBranchName = branchSnap && branchSnap.exists ? (branchSnap.data().name || '') : String(req.user.location || '').trim();
+
+    // Query users by branchId and also by branchName as a fallback for legacy/missing branchId entries
+    const docs = [];
+    const snapById = await db.collection('users').where('branchId', '==', callerBranchId).get();
+    docs.push(...snapById.docs);
+
+    if (callerBranchName) {
+      try {
+        const snapByName = await db.collection('users').where('branchName', '==', callerBranchName).get();
+        docs.push(...snapByName.docs);
+      } catch (e) {
+        // Ignore query errors on branchName fallback and continue with branchId results
+      }
+    }
+
+    // Deduplicate documents by uid
+    const uniqueById = new Map();
+    for (const doc of docs) {
+      if (!uniqueById.has(doc.id)) uniqueById.set(doc.id, doc);
+    }
+
+    const docsData = Array.from(uniqueById.values())
       .map((doc) => doc.data())
       .sort((a, b) => {
         const aMs = a.createdAt?.toMillis?.() || 0;
@@ -535,11 +663,13 @@ async function listBranchStaff(req, res, next) {
       fullName:       d.fullName || '',
       email:          d.email || '',
       role:           d.role || '',
+      roleKey:        getEffectiveRoleKey(d),
       branchId:       d.branchId || null,
       branchName:     d.branchName || null,
       entityType:     d.entityType || null,
       customRoleId:   d.customRoleId || null,
       customRoleName: d.customRoleName || null,
+      customRoleLabel: d.customRoleName || (getEffectiveRoleKey(d) === RESPONDER_ROLE_KEY ? RESPONDER_ROLE_LABEL : null),
       permissions:    d.permissions || [],
       verified:       d.verified === true,
       createdAt:      d.createdAt ? d.createdAt.toDate().toISOString() : null,
@@ -551,5 +681,53 @@ async function listBranchStaff(req, res, next) {
   }
 }
 
-module.exports = { createStaff, createBranchStaff, listBranchStaff, listUsers, updateStaff, deleteUser, resendVerification };
+/**
+ * POST /api/admin/migrate-responder-roles
+ *
+ * One-time migration: finds all users whose customRoleName is 'Responder' but whose
+ * system role is still 'staff', and updates both Firebase Custom Claims and Firestore
+ * to role:'responder'.
+ *
+ * Protected: verifyToken + requirePermission('add_staffs').
+ */
+async function migrateResponderRoles(req, res, next) {
+  try {
+    const db = admin.firestore();
+    const snap = await db.collection('users').get();
+    const affected = snap.docs
+      .map((doc) => ({ id: doc.id, ...doc.data() }))
+      .filter((u) => String(u.customRoleName || '').trim().toLowerCase() === 'responder' && u.role !== 'responder');
+
+    if (affected.length === 0) {
+      return res.json({ message: 'No accounts need migration.', migrated: 0 });
+    }
+
+    const results = await Promise.allSettled(
+      affected.map(async (u) => {
+        const userRecord = await admin.auth().getUser(u.id);
+        const existingClaims = userRecord.customClaims || {};
+        await admin.auth().setCustomUserClaims(u.id, { ...existingClaims, role: 'responder' });
+        await db.collection('users').doc(u.id).update({
+          role: 'responder',
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedBy: req.user.uid,
+        });
+        return u.email;
+      })
+    );
+
+    const migrated = results.filter((r) => r.status === 'fulfilled').map((r) => r.value);
+    const failed   = results.filter((r) => r.status === 'rejected').map((r) => r.reason?.message || 'Unknown error');
+
+    return res.json({
+      message: `Migration complete. ${migrated.length} account(s) updated.`,
+      migrated,
+      failed,
+    });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+module.exports = { createStaff, createBranchStaff, listBranchStaff, listUsers, updateStaff, deleteUser, resendVerification, migrateResponderRoles };
 

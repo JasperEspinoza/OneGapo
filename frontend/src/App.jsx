@@ -48,6 +48,10 @@ const HomeRoute = () => {
     return <Navigate to="/resident" replace />;
   }
 
+  if (role === 'responder') {
+    return <Navigate to="/responder" replace />;
+  }
+
   if (canAccessAdminWorkspace) {
     return <Navigate to="/admin" replace />;
   }
@@ -90,6 +94,10 @@ const RootRoute = () => {
     return <Navigate to="/resident" replace />;
   }
 
+  if (role === 'responder') {
+    return <Navigate to="/responder" replace />;
+  }
+
   if (canAccessAdminWorkspace) {
     return <Navigate to="/admin" replace />;
   }
@@ -127,6 +135,10 @@ function App() {
 
               <Route element={<ProtectedRoute allowedRoles={['resident']} showNav={false} />}>
                 <Route path="/resident" element={<ResidentHub />} />
+              </Route>
+
+              <Route element={<ProtectedRoute allowedRoles={['responder']} showNav={false} />}>
+                <Route path="/responder" element={<ResidentHub viewMode="responder" />} />
               </Route>
 
               {/* ── Staff + Admin ─────────────────────────────────── */}

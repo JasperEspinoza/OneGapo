@@ -1,4 +1,4 @@
-const ALLOWED_ROLES = ['staff', 'admin'];
+const ALLOWED_ROLES = ['staff', 'admin', 'responder'];
 
 const ALLOWED_PERMISSIONS = [
   'view_reports',
