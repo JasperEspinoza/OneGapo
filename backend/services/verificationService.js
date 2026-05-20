@@ -47,15 +47,16 @@ async function createVerificationToken(uid, email) {
 
 async function markUserVerified(uid) {
   const db = admin.firestore();
-  
+
   try {
     const userRecord = await admin.auth().getUser(uid);
     const currentClaims = userRecord.customClaims || {};
 
-    const results = await Promise.allSettled([
-      admin.auth().updateUser(uid, {
-        emailVerified: true,
-      }),
+    await admin.auth().updateUser(uid, {
+      emailVerified: true,
+    });
+
+    const [claimResult, userResult, tokenResult] = await Promise.allSettled([
       admin.auth().setCustomUserClaims(uid, {
         ...currentClaims,
         verified: true,
@@ -70,15 +71,19 @@ async function markUserVerified(uid) {
       }, { merge: true }),
     ]);
 
-    // Check if all operations succeeded
-    const failures = results.filter(r => r.status === 'rejected');
-    if (failures.length > 0) {
-      const errors = failures.map((f, i) => {
-        const op = ['Firebase Auth claim', 'Firestore user', 'Firestore token'][i];
-        return `${op}: ${f.reason?.message || String(f.reason)}`;
-      }).join('; ');
-      console.error(`[markUserVerified] Partial failure for uid ${uid}: ${errors}`);
-      throw new Error(`Verification update failed: ${errors}`);
+    const nonFatalFailures = [];
+    if (claimResult.status === 'rejected') {
+      nonFatalFailures.push(`Firebase Auth claim: ${claimResult.reason?.message || String(claimResult.reason)}`);
+    }
+    if (userResult.status === 'rejected') {
+      nonFatalFailures.push(`Firestore user: ${userResult.reason?.message || String(userResult.reason)}`);
+    }
+    if (tokenResult.status === 'rejected') {
+      nonFatalFailures.push(`Firestore token: ${tokenResult.reason?.message || String(tokenResult.reason)}`);
+    }
+
+    if (nonFatalFailures.length > 0) {
+      console.warn(`[markUserVerified] Verification completed for uid ${uid}, but some backfill writes failed: ${nonFatalFailures.join('; ')}`);
     }
   } catch (err) {
     console.error(`[markUserVerified] Error marking uid ${uid} as verified:`, err);
