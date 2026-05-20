@@ -1,7 +1,7 @@
 import './Login.css';
 import { useState } from 'react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { useNavigate, Navigate, Link } from 'react-router-dom';
+import { useNavigate, Navigate, Link, useLocation } from 'react-router-dom';
 import { auth, firebaseConfigErrorMessage, isFirebaseConfigured } from '../config/firebase';
 import { useAuth } from '../context/AuthContext';
 import OneGapoLogo from '../components/OneGapoLogo';
@@ -32,8 +32,10 @@ function getErrorMessage(code) {
 }
 
 export default function Login() {
-  const { currentUser, userClaims } = useAuth();
+  const { currentUser, userClaims, accountVerified } = useAuth();
   const navigate                    = useNavigate();
+  const location                    = useLocation();
+  const verificationSuccess         = location.state?.verificationSuccess || '';
 
   const [email,    setEmail]    = useState('');
   const [password, setPassword] = useState('');
@@ -51,6 +53,9 @@ export default function Login() {
   if (currentUser) {
     if (currentHasAdminWorkspace) return <Navigate to="/admin" replace />;
     if (userClaims?.role === 'staff') return <Navigate to="/staff" replace />;
+    if (userClaims?.role === 'resident' && !accountVerified) {
+      return <Navigate to="/verify-email" replace />;
+    }
     return <Navigate to="/resident" replace />;
   }
 
@@ -70,9 +75,28 @@ export default function Login() {
       const permissions = Array.isArray(tokenResult.claims.permissions) ? tokenResult.claims.permissions : [];
       const canAccessAdminWorkspace = hasAdminWorkspaceAccess(role, permissions, credential.user.email);
 
-      if (canAccessAdminWorkspace) navigate('/admin', { replace: true });
-      else if (role === 'staff') navigate('/staff', { replace: true });
-      else navigate('/resident', { replace: true });
+      if (canAccessAdminWorkspace) {
+        navigate('/admin', { replace: true });
+      } else if (role === 'staff') {
+        navigate('/staff', { replace: true });
+      } else {
+        // For residents, check verification status before redirecting
+        try {
+          const idToken = await credential.user.getIdToken();
+          const verifyRes = await fetch('/api/auth/verification-status', {
+            headers: { Authorization: `Bearer ${idToken}` },
+          });
+          const verifyData = await verifyRes.json().catch(() => ({}));
+          if (verifyData.verified === true) {
+            navigate('/resident', { replace: true });
+          } else {
+            navigate('/verify-email', { replace: true });
+          }
+        } catch {
+          // If status check fails, let AuthContext handle it on next page
+          navigate('/resident', { replace: true });
+        }
+      }
     } catch (err) {
       setError(getErrorMessage(err.code));
     } finally {
@@ -89,6 +113,9 @@ export default function Login() {
           <p className="auth-subtitle">Sign in to OneGapo — Citizen Reporting Platform</p>
         </div>
 
+        {verificationSuccess && (
+          <div role="status" className="auth-success">{verificationSuccess}</div>
+        )}
         {error && <div role="alert" className="auth-error">{error}</div>}
 
         <form onSubmit={handleSubmit} className="auth-form" noValidate>
