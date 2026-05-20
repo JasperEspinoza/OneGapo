@@ -2,6 +2,7 @@ import './VerifyEmail.css';
 import { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { auth } from '../config/firebase';
+import { resolveApiUrl } from '../config/runtime';
 import { useAuth } from '../context/AuthContext';
 
 function getDestination(userClaims) {
@@ -47,7 +48,7 @@ export default function VerifyEmail() {
       setVerificationMessage('');
 
       try {
-        const response = await fetch('/api/auth/verify-email', {
+        const response = await fetch(resolveApiUrl('/api/auth/verify-email'), {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -150,7 +151,7 @@ export default function VerifyEmail() {
     setResent(false);
     try {
       const idToken = await auth.currentUser.getIdToken();
-      const response = await fetch('/api/auth/resend-verification', {
+      const response = await fetch(resolveApiUrl('/api/auth/resend-verification'), {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${idToken}`,
