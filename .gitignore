@@ -32,3 +32,5 @@ coverage/
 # AI tools and customizations
 .agents/
 .github/
+AI/
+docs/
