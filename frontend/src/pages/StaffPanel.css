@@ -68,6 +68,7 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 0.65rem;
+  flex-wrap: wrap;
 }
 
 .ss-report-title {
@@ -76,6 +77,8 @@
   color: var(--color-text);
   font-weight: 700;
   line-height: 1.35;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .ss-report-badges {
@@ -84,12 +87,14 @@
   gap: 0.4rem;
   flex-wrap: wrap;
   justify-content: flex-end;
+  max-width: 100%;
 }
 
 .ss-report-meta {
   margin: 0;
   font-size: 0.8rem;
   color: var(--color-text-muted);
+  overflow-wrap: anywhere;
 }
 
 .ss-report-description {
@@ -97,12 +102,14 @@
   font-size: 0.875rem;
   color: var(--color-text);
   line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .ss-report-address {
   margin: 0;
   font-size: 0.81rem;
   color: var(--color-text-soft);
+  overflow-wrap: anywhere;
 }
 
 .ss-report-actions {
@@ -624,8 +631,13 @@
 
 @media (max-width: 640px) {
   .ss-controls-inline {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
     width: 100%;
     justify-content: flex-start;
+    gap: 0.45rem;
+  }
 
   .ss-duplicate-report-item {
     align-items: flex-start;
@@ -635,7 +647,6 @@
   .ss-duplicate-report-actions {
     width: 100%;
     justify-content: space-between;
-  }
   }
 
   .ss-status-filter,

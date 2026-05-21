@@ -97,6 +97,8 @@ const NAV_ITEMS = [
   { id: 'analytics', label: 'Analytics',  icon: 'analytics' },
 ];
 
+const MOBILE_SIDEBAR_MEDIA_QUERY = '(max-width: 767px)';
+
 const REPORT_CATEGORY_META = {
   infrastructure: { label: 'Infrastructure', color: '#2E7D32' },
   safety: { label: 'Public Safety', color: '#1976D2' },
@@ -738,6 +740,10 @@ export default function AdminPanel() {
 
   // ── UI state ────────────────────────────────────────────
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isMobileSidebarViewport, setIsMobileSidebarViewport] = useState(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+    return window.matchMedia(MOBILE_SIDEBAR_MEDIA_QUERY).matches;
+  });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     if (typeof window === 'undefined') return false;
     return window.localStorage.getItem('ap-sidebar-collapsed') === 'true';
@@ -747,6 +753,39 @@ export default function AdminPanel() {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem('ap-sidebar-collapsed', sidebarCollapsed ? 'true' : 'false');
   }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
+
+    const mediaQuery = window.matchMedia(MOBILE_SIDEBAR_MEDIA_QUERY);
+    const syncViewport = (event) => {
+      setIsMobileSidebarViewport(event.matches);
+    };
+
+    setIsMobileSidebarViewport(mediaQuery.matches);
+
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', syncViewport);
+      return () => mediaQuery.removeEventListener('change', syncViewport);
+    }
+
+    mediaQuery.addListener(syncViewport);
+    return () => mediaQuery.removeListener(syncViewport);
+  }, []);
+
+  useEffect(() => {
+    if (isMobileSidebarViewport) return;
+    setSidebarOpen(false);
+  }, [isMobileSidebarViewport]);
+
+  const handleSidebarRailToggle = useCallback(() => {
+    if (isMobileSidebarViewport) {
+      setSidebarOpen((prev) => !prev);
+      return;
+    }
+
+    setSidebarCollapsed((prev) => !prev);
+  }, [isMobileSidebarViewport]);
 
   const loadBranches = useCallback(async () => {
     if (!canAccessBranches && !canAccessAccounts) {
@@ -2057,11 +2096,15 @@ export default function AdminPanel() {
           <button
             className="ap-sidebar-rail-toggle"
             type="button"
-            onClick={() => setSidebarCollapsed((prev) => !prev)}
-            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            onClick={handleSidebarRailToggle}
+            aria-label={isMobileSidebarViewport ? (sidebarOpen ? 'Close sidebar' : 'Open sidebar') : (sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar')}
+            title={isMobileSidebarViewport ? (sidebarOpen ? 'Close sidebar' : 'Open sidebar') : (sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar')}
           >
-            <span className="ap-hamburger-icon">{ICONS.chevron_left}</span>
+            <span className="ap-hamburger-icon">
+              {isMobileSidebarViewport
+                ? (sidebarOpen ? ICONS.close : ICONS.menu)
+                : ICONS.chevron_left}
+            </span>
           </button>
         </div>
 

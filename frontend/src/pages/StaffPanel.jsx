@@ -45,6 +45,8 @@ const NAV_ITEMS = [
   { id: 'team', label: 'Branch Staff', icon: 'groups' },
 ];
 
+const MOBILE_SIDEBAR_MEDIA_QUERY = '(max-width: 767px)';
+
 function formatDate(value) {
   if (!value) return 'Unknown date';
   const dt = new Date(value);
@@ -267,6 +269,10 @@ export default function StaffPanel() {
 
   const [activeSection, setActiveSection] = useState('overview');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isMobileSidebarViewport, setIsMobileSidebarViewport] = useState(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+    return window.matchMedia(MOBILE_SIDEBAR_MEDIA_QUERY).matches;
+  });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     return window.localStorage.getItem('sp-sidebar-collapsed') === 'true';
   });
@@ -342,6 +348,39 @@ export default function StaffPanel() {
   useEffect(() => {
     window.localStorage.setItem('sp-sidebar-collapsed', sidebarCollapsed ? 'true' : 'false');
   }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
+
+    const mediaQuery = window.matchMedia(MOBILE_SIDEBAR_MEDIA_QUERY);
+    const syncViewport = (event) => {
+      setIsMobileSidebarViewport(event.matches);
+    };
+
+    setIsMobileSidebarViewport(mediaQuery.matches);
+
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', syncViewport);
+      return () => mediaQuery.removeEventListener('change', syncViewport);
+    }
+
+    mediaQuery.addListener(syncViewport);
+    return () => mediaQuery.removeListener(syncViewport);
+  }, []);
+
+  useEffect(() => {
+    if (isMobileSidebarViewport) return;
+    setSidebarOpen(false);
+  }, [isMobileSidebarViewport]);
+
+  const handleSidebarRailToggle = useCallback(() => {
+    if (isMobileSidebarViewport) {
+      setSidebarOpen((prev) => !prev);
+      return;
+    }
+
+    setSidebarCollapsed((prev) => !prev);
+  }, [isMobileSidebarViewport]);
 
   const loadReports = useCallback(async ({ silent = false } = {}) => {
     if (!canViewReports) {
@@ -1378,11 +1417,13 @@ export default function StaffPanel() {
           <button
             type="button"
             className="ap-sidebar-rail-toggle"
-            onClick={() => setSidebarCollapsed((prev) => !prev)}
-            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            onClick={handleSidebarRailToggle}
+            aria-label={isMobileSidebarViewport ? (sidebarOpen ? 'Close sidebar' : 'Open sidebar') : (sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar')}
           >
             <span className="material-symbols-outlined ap-hamburger-icon" aria-hidden="true">
-              {sidebarCollapsed ? 'keyboard_double_arrow_right' : 'keyboard_double_arrow_left'}
+              {isMobileSidebarViewport
+                ? (sidebarOpen ? 'close' : 'menu')
+                : (sidebarCollapsed ? 'keyboard_double_arrow_right' : 'keyboard_double_arrow_left')}
             </span>
           </button>
         </div>
@@ -1420,9 +1461,11 @@ export default function StaffPanel() {
               type="button"
               className="ap-hamburger"
               onClick={() => setSidebarOpen((prev) => !prev)}
-              aria-label="Toggle sidebar"
+              aria-label={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
             >
-              <span className="material-symbols-outlined ap-hamburger-icon" aria-hidden="true">menu</span>
+              <span className="material-symbols-outlined ap-hamburger-icon" aria-hidden="true">
+                {sidebarOpen ? 'close' : 'menu'}
+              </span>
             </button>
             <div className="ap-search-wrap">
               <span className="ap-search-icon material-symbols-outlined" aria-hidden="true">search</span>
