@@ -7,8 +7,10 @@ import { useAuth } from '../context/AuthContext';
 // so bare /api/ paths work in both local dev (via Vite proxy) and production.
 
 function getDestination(userClaims) {
-  if (userClaims?.role === 'admin') return '/admin';
-  if (userClaims?.role === 'staff') {
+  const role = String(userClaims?.roleKey || userClaims?.role || userClaims?.customRoleName || '').trim().toLowerCase();
+
+  if (role === 'admin') return '/admin';
+  if (role === 'staff') {
     const permissions = Array.isArray(userClaims?.permissions) ? userClaims.permissions : [];
     const hasAdminWorkspaceAccess = permissions.some((permission) =>
       ['add_branches', 'add_roles', 'add_staffs'].includes(permission)
@@ -16,6 +18,13 @@ function getDestination(userClaims) {
     return hasAdminWorkspaceAccess ? '/admin' : '/staff';
   }
   return '/';
+}
+
+function getEffectiveRoleKey(claims = {}) {
+  const roleKey = String(claims?.roleKey || claims?.role || '').trim().toLowerCase();
+  const customRoleKey = String(claims?.customRoleName || '').trim().toLowerCase();
+
+  return roleKey || customRoleKey || '';
 }
 
 export default function VerifyEmail() {
@@ -136,7 +145,8 @@ export default function VerifyEmail() {
   // Effect 2: Redirect privileged users (staff/admin) away from the verify page
   useEffect(() => {
     if (verifyingToken) return; // Don't interfere while verification is in-flight
-    const isPrivileged = userClaims?.role === 'staff' || userClaims?.role === 'admin';
+    const currentRole = getEffectiveRoleKey(userClaims);
+    const isPrivileged = currentRole === 'staff' || currentRole === 'admin';
     if (!token && isPrivileged) {
       navigate(getDestination(userClaims), { replace: true });
     }
@@ -145,7 +155,8 @@ export default function VerifyEmail() {
   // Effect 3: If already verified (and not staff/admin), redirect to login
   useEffect(() => {
     if (token || verifyingToken) return; // Don't interfere while token is present or verification in-flight
-    const isPrivileged = userClaims?.role === 'staff' || userClaims?.role === 'admin';
+    const currentRole = getEffectiveRoleKey(userClaims);
+    const isPrivileged = currentRole === 'staff' || currentRole === 'admin';
     if (isPrivileged || !accountVerified) return;
 
     let active = true;

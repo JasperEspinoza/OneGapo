@@ -113,12 +113,11 @@ const REPORT_STATUS_FILTER_OPTIONS = [
   { value: 'rejected', label: 'Rejected' },
 ];
 
-const OPERATIONAL_ROLES = new Set(['staff', 'admin', 'responder']);
+const OPERATIONAL_ROLES = new Set(['staff', 'admin']);
 
 function isOperationalUser(user) {
   const role = String(user?.role || '').trim().toLowerCase();
-  const customRoleName = String(user?.customRoleName || '').trim().toLowerCase();
-  return OPERATIONAL_ROLES.has(role) || customRoleName === 'responder';
+  return OPERATIONAL_ROLES.has(role);
 }
 
 function getReportPreviewImage(report) {
@@ -2033,7 +2032,7 @@ export default function AdminPanel() {
     () => (selectedReport ? getReportMediaItems(selectedReport) : []),
     [selectedReport]
   );
-  const canAssignResponders = canAccessReports && !isPrimaryAdmin;
+  const canAssignResponders = false;
 
   return (
     <div className={`ap-shell${sidebarCollapsed ? ' ap-shell-sidebar-collapsed' : ''}`}>
@@ -2586,43 +2585,10 @@ export default function AdminPanel() {
                     <div className="ap-report-details-row"><span>Address</span><strong>{selectedReport?.location?.address || '—'}</strong></div>
                     <div className="ap-report-details-row"><span>Created</span><strong>{selectedReport.createdAt ? new Date(selectedReport.createdAt).toLocaleString() : '—'}</strong></div>
                     <div className="ap-report-details-row"><span>Updated</span><strong>{selectedReport.updatedAt ? new Date(selectedReport.updatedAt).toLocaleString() : '—'}</strong></div>
-                    <div className="ap-report-details-row"><span>Assigned responder</span><strong>{selectedReportAssignedResponder ? getUserDisplayName(selectedReportAssignedResponder) : 'Unassigned'}</strong></div>
                   </div>
 
                   {canAssignResponders ? (
-                    <div className="ap-report-details-description">
-                      <p className="form-label">Assign responder</p>
-                      <div className="ap-form-row" style={{ alignItems: 'flex-end' }}>
-                        <div style={{ flex: '1' }}>
-                          <label htmlFor="selected-report-responder" className="form-label">Responder</label>
-                          <select
-                            id="selected-report-responder"
-                            className="form-select"
-                            value={selectedReportResponderUid}
-                            onChange={(event) => setSelectedReportResponderUid(event.target.value)}
-                            disabled={assigningResponderReportId === selectedReport.id}
-                          >
-                            <option value="">Unassigned</option>
-                            {selectedReportResponderOptions.map((user) => (
-                              <option key={user.uid} value={user.uid}>
-                                {getUserDisplayName(user)}{user.customRoleName ? ` (${user.customRoleName})` : ''}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        <button
-                          type="button"
-                          className="ap-report-action-btn"
-                          onClick={() => handleAssignResponder(selectedReport)}
-                          disabled={assigningResponderReportId === selectedReport.id || selectedReportResponderOptions.length === 0}
-                        >
-                          {assigningResponderReportId === selectedReport.id ? 'Saving…' : 'Save responder'}
-                        </button>
-                      </div>
-                      {selectedReportResponderOptions.length === 0 ? (
-                        <p className="ap-field-hint">No responders are available for this report's branch.</p>
-                      ) : null}
-                    </div>
+                    null
                   ) : null}
 
                   <div className="ap-report-details-description">
@@ -3377,7 +3343,6 @@ export default function AdminPanel() {
                       <option value="all">All Roles</option>
                       <option value="resident">Resident</option>
                       <option value="staff">Staff</option>
-                      <option value="responder">Responder</option>
                       <option value="admin">Admin</option>
                     </select>
                   </div>

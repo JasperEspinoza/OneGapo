@@ -14,7 +14,6 @@ import Dashboard      from './pages/Dashboard';
 import StaffPanel     from './pages/StaffPanel';
 import AdminPanel     from './pages/AdminPanel';
 import ResidentHub    from './pages/ResidentHub';
-import ResponderPanel from './pages/ResponderPanel';
 import LandingPage    from './pages/LandingPage';
 import { useAuth } from './context/AuthContext';
 import { SettingsModalProvider } from './context/SettingsModalContext';
@@ -41,10 +40,6 @@ function getEffectiveRoleKey(userClaims = {}) {
   const roleKey = normalizeRole(userClaims?.roleKey || userClaims?.role);
   const customRoleKey = normalizeRole(userClaims?.customRoleName);
 
-  if (roleKey === 'responder' || customRoleKey === 'responder') {
-    return 'responder';
-  }
-
   return roleKey || customRoleKey || '';
 }
 
@@ -62,10 +57,6 @@ const HomeRoute = () => {
 
   if (role === 'resident') {
     return <Navigate to="/resident" replace />;
-  }
-
-  if (role === 'responder') {
-    return <Navigate to="/responder" replace />;
   }
 
   if (canAccessAdminWorkspace) {
@@ -110,10 +101,6 @@ const RootRoute = () => {
     return <Navigate to="/resident" replace />;
   }
 
-  if (role === 'responder') {
-    return <Navigate to="/responder" replace />;
-  }
-
   if (canAccessAdminWorkspace) {
     return <Navigate to="/admin" replace />;
   }
@@ -151,10 +138,6 @@ function App() {
 
               <Route element={<ProtectedRoute allowedRoles={['resident']} showNav={false} />}>
                 <Route path="/resident" element={<ResidentHub />} />
-              </Route>
-
-              <Route element={<ProtectedRoute allowedRoles={['responder']} showNav={false} />}>
-                <Route path="/responder" element={<ResponderPanel />} />
               </Route>
 
               {/* ── Staff + Admin ─────────────────────────────────── */}

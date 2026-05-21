@@ -1349,61 +1349,12 @@ export default function StaffPanel() {
     String(selectedReport?.status || '').toLowerCase() !== 'archived'
   );
   const customRole = String(userClaims?.customRoleName || '').trim().toLowerCase();
-  // Only the branch main admin (has assign_responders permission or Branch Admin/Main Admin custom role name, not primary admin, assigned to a branch) can assign responders
   const isBranchMainAdmin = !isPrimaryAdmin && Boolean(userClaims?.branchId) && (
-    permissions.includes('assign_responders') ||
     permissions.includes('add_staffs') ||
     customRole === 'branch admin' ||
     customRole === 'main admin'
   );
-  const canAssignResponders = Boolean(selectedReport && isBranchMainAdmin);
-  const isResponderAccount = (member) => {
-    const roleKey = String(member?.roleKey || member?.role || member?.customRoleName || '').trim().toLowerCase();
-    return roleKey === 'responder';
-  };
-  const branchResponderOptions = useMemo(() => (
-    Array.isArray(branchStaff)
-      ? branchStaff.filter((member) => isResponderAccount(member))
-      : []
-  ), [branchStaff]);
-  const selectedReportAssignedResponder = useMemo(() => {
-    const assignedUid = String(selectedReport?.assignedResponder?.uid || '').trim();
-    if (!assignedUid) return null;
-
-    return (
-      branchStaff.find((member) => String(member?.uid || '').trim() === assignedUid) ||
-      selectedReport?.assignedResponder ||
-      null
-    );
-  }, [branchStaff, selectedReport?.assignedResponder?.uid]);
-  const selectedReportResponderOptions = useMemo(() => {
-    const options = [...branchResponderOptions];
-    const assignedResponder = selectedReport?.assignedResponder;
-    const assignedUid = String(assignedResponder?.uid || '').trim();
-    const assignedRoleKey = String(assignedResponder?.roleKey || assignedResponder?.role || assignedResponder?.customRoleName || '').trim().toLowerCase();
-
-    if (
-      assignedUid &&
-      assignedRoleKey === 'responder' &&
-      !options.some((member) => String(member?.uid || '').trim() === assignedUid)
-    ) {
-      options.unshift({
-        uid: assignedUid,
-        email: assignedResponder?.email || '',
-        fullName: assignedResponder?.fullName || assignedResponder?.displayName || assignedResponder?.username || assignedResponder?.email || assignedUid,
-        displayName: assignedResponder?.displayName || assignedResponder?.fullName || assignedResponder?.username || assignedResponder?.email || assignedUid,
-        roleKey: 'responder',
-        customRoleName: assignedResponder?.customRoleName || 'Responder',
-        branchName: assignedResponder?.branchName || '',
-      });
-    }
-
-    return options;
-  }, [branchResponderOptions, selectedReport?.assignedResponder]);
-
-  useEffect(() => {
-    setSelectedReportResponderUid(String(selectedReport?.assignedResponder?.uid || ''));
-  }, [selectedReport?.id, selectedReport?.assignedResponder?.uid]);
+  const canAssignResponders = false;
 
   const initials = (currentUser?.displayName || currentUser?.email || 'S')[0].toUpperCase();
   const displayName = currentUser?.displayName || currentUser?.email?.split('@')[0] || 'Staff';
@@ -1854,10 +1805,6 @@ export default function StaffPanel() {
                         <div className="ap-report-details-row"><span>Category</span><strong>{selectedReport.category || '—'}</strong></div>
                         <div className="ap-report-details-row"><span>Barangay</span><strong>{selectedReport?.location?.barangay || '—'}</strong></div>
                         <div className="ap-report-details-row"><span>Address</span><strong>{selectedReport?.location?.address || '—'}</strong></div>
-                        <div className="ap-report-details-row">
-                          <span>Assigned responder</span>
-                          <strong>{selectedReportAssignedResponder ? getPersonDisplayName(selectedReportAssignedResponder) : 'Unassigned'}</strong>
-                        </div>
                         <div className="ap-report-details-row"><span>Created</span><strong>{selectedReport.createdAt ? new Date(selectedReport.createdAt).toLocaleString() : '—'}</strong></div>
                         <div className="ap-report-details-row"><span>Updated</span><strong>{selectedReport.updatedAt ? new Date(selectedReport.updatedAt).toLocaleString() : '—'}</strong></div>
                       </div>

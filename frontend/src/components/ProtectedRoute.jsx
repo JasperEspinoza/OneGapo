@@ -12,10 +12,6 @@ function getEffectiveRoleKey(userClaims = {}) {
   const roleKey = normalizeRole(userClaims?.roleKey || userClaims?.role);
   const customRoleKey = normalizeRole(userClaims?.customRoleName);
 
-  if (roleKey === 'responder' || customRoleKey === 'responder') {
-    return 'responder';
-  }
-
   return roleKey || customRoleKey || '';
 }
 
@@ -44,7 +40,7 @@ function ProtectedRoute({
   }
 
   if (requireVerified) {
-    const isPrivileged = effectiveRole === 'staff' || effectiveRole === 'admin' || effectiveRole === 'responder' || isPrimaryAdmin;
+    const isPrivileged = effectiveRole === 'staff' || effectiveRole === 'admin' || isPrimaryAdmin;
     if (!isPrivileged && !accountVerified) {
       return <Navigate to="/verify-email" replace />;
     }

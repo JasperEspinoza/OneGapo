@@ -14,10 +14,6 @@ function getEffectiveRoleKey(claims = {}) {
   const roleKey = normalizeRoleKey(claims.roleKey || claims.role);
   const customRoleKey = normalizeRoleKey(claims.customRoleName);
 
-  if (roleKey === 'responder' || customRoleKey === 'responder') {
-    return 'responder';
-  }
-
   return roleKey || customRoleKey || '';
 }
 

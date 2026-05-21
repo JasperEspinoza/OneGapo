@@ -9,6 +9,17 @@ import OneGapoLogo from '../components/OneGapoLogo';
 
 const PRIMARY_ADMIN_EMAIL = 'onegapo2026@gmail.com';
 
+function normalizeRole(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function getEffectiveRoleKey(claims = {}) {
+  const roleKey = normalizeRole(claims?.roleKey || claims?.role);
+  const customRoleKey = normalizeRole(claims?.customRoleName);
+
+  return roleKey || customRoleKey || '';
+}
+
 function hasAdminWorkspaceAccess(role, permissions, email = '') {
   return (
     role === 'admin' ||
@@ -44,17 +55,18 @@ export default function Login() {
   const [error,    setError]    = useState('');
   const [loading,  setLoading]  = useState(false);
 
+  const currentRole = getEffectiveRoleKey(userClaims);
   const currentPermissions = Array.isArray(userClaims?.permissions) ? userClaims.permissions : [];
   const currentHasAdminWorkspace = hasAdminWorkspaceAccess(
-    userClaims?.role,
+    currentRole,
     currentPermissions,
     currentUser?.email
   );
 
   if (currentUser) {
     if (currentHasAdminWorkspace) return <Navigate to="/admin" replace />;
-    if (userClaims?.role === 'staff') return <Navigate to="/staff" replace />;
-    if (userClaims?.role === 'resident') {
+    if (currentRole === 'staff') return <Navigate to="/staff" replace />;
+    if (currentRole === 'resident') {
       // Only bounce to /verify-email when we are certain accountVerified is
       // false. If the user just verified via email link, AuthContext may not
       // have caught up yet — we let them stay on the login page momentarily
@@ -66,7 +78,7 @@ export default function Login() {
       }
       if (!accountVerified) return <Navigate to="/verify-email" replace />;
     }
-    return <Navigate to="/resident" replace />;
+    return <Navigate to="/home" replace />;
   }
 
   const handleSubmit = async (e) => {
@@ -81,7 +93,7 @@ export default function Login() {
     try {
       const credential  = await signInWithEmailAndPassword(auth, email.trim(), password);
       const tokenResult = await credential.user.getIdTokenResult();
-      const role        = tokenResult.claims.role;
+      const role        = getEffectiveRoleKey(tokenResult.claims);
       const permissions = Array.isArray(tokenResult.claims.permissions) ? tokenResult.claims.permissions : [];
       const canAccessAdminWorkspace = hasAdminWorkspaceAccess(role, permissions, credential.user.email);
 

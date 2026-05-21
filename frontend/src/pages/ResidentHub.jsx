@@ -251,7 +251,7 @@ function buildResidentNotificationEvents(reports = []) {
 export default function ResidentHub({ viewMode = 'resident' }) {
   const { currentUser, logout, userClaims } = useAuth();
   const navigate = useNavigate();
-  const isResponder = viewMode === 'responder' || userClaims?.role === 'responder';
+  const isResponder = false;
 
   const [activeTab, setActiveTab] = useState(isResponder ? 'reports' : 'home');
 
