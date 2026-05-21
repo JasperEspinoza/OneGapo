@@ -262,6 +262,7 @@ export default function ResidentHub({ viewMode = 'resident' }) {
   const [submitSuccess, setSubmitSuccess] = useState('');
   const [autoLocationAttempted, setAutoLocationAttempted] = useState(false);
   const [outsideOlongapoModalOpen, setOutsideOlongapoModalOpen] = useState(false);
+  const [cooldownRemaining, setCooldownRemaining] = useState(0);
 
   const [myReports, setMyReports] = useState([]);
   const [reportsLoading, setReportsLoading] = useState(false);
@@ -513,6 +514,43 @@ export default function ResidentHub({ viewMode = 'resident' }) {
   useEffect(() => {
     loadMyReports();
   }, [loadMyReports]);
+
+  useEffect(() => {
+    const lastSubmittedStr = localStorage.getItem('onegapo_last_report_at');
+    if (!lastSubmittedStr) {
+      setCooldownRemaining(0);
+      return undefined;
+    }
+
+    const lastSubmittedAt = parseInt(lastSubmittedStr, 10);
+    if (Number.isNaN(lastSubmittedAt)) {
+      setCooldownRemaining(0);
+      return undefined;
+    }
+
+    const interval = setInterval(() => {
+      const elapsed = Date.now() - lastSubmittedAt;
+      const remaining = 5 * 60 * 1000 - elapsed;
+      if (remaining <= 0) {
+        setCooldownRemaining(0);
+        localStorage.removeItem('onegapo_last_report_at');
+        clearInterval(interval);
+      } else {
+        setCooldownRemaining(Math.ceil(remaining / 1000));
+      }
+    }, 1000);
+
+    // Initial check
+    const initialElapsed = Date.now() - lastSubmittedAt;
+    if (initialElapsed < 5 * 60 * 1000) {
+      setCooldownRemaining(Math.ceil((5 * 60 * 1000 - initialElapsed) / 1000));
+    } else {
+      setCooldownRemaining(0);
+      localStorage.removeItem('onegapo_last_report_at');
+    }
+
+    return () => clearInterval(interval);
+  }, [submitSuccess]);
 
   useEffect(() => {
     if (isResponder) return undefined;
@@ -924,11 +962,20 @@ export default function ResidentHub({ viewMode = 'resident' }) {
       }
 
       showSubmitFeedback('success', data.message || 'Report submitted successfully.');
+      localStorage.setItem('onegapo_last_report_at', Date.now().toString());
       setForm(INITIAL_FORM);
       setAttachments([]);
       setActiveTab(isResponder ? 'reports' : 'home');
       await loadMyReports();
     } catch (err) {
+      if (err.message && err.message.includes('5 minutes')) {
+        const match = err.message.match(/(\d+)\s+second/);
+        if (match && match[1]) {
+          const remainingSecs = parseInt(match[1], 10);
+          localStorage.setItem('onegapo_last_report_at', (Date.now() - (5 * 60 * 1000 - remainingSecs * 1000)).toString());
+          setCooldownRemaining(remainingSecs);
+        }
+      }
       showSubmitFeedback('error', err.message || 'Unexpected error while submitting report.');
     } finally {
       setSubmitting(false);
@@ -1250,8 +1297,8 @@ export default function ResidentHub({ viewMode = 'resident' }) {
                 ) : null}
               </div>
 
-              <button type="submit" className="btn-primary resident-submit-btn" disabled={submitting}>
-                {submitting ? 'Submitting report...' : 'Submit report'}
+              <button type="submit" className="btn-primary resident-submit-btn" disabled={submitting || cooldownRemaining > 0}>
+                {submitting ? 'Submitting report...' : cooldownRemaining > 0 ? `Wait ${Math.floor(cooldownRemaining / 60)}m ${cooldownRemaining % 60}s` : 'Submit report'}
               </button>
             </form>
           </section>

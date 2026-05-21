@@ -2,8 +2,9 @@ import './VerifyEmail.css';
 import { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { auth } from '../config/firebase';
-import { resolveApiUrl } from '../config/runtime';
 import { useAuth } from '../context/AuthContext';
+// NOTE: window.fetch is globally patched in main.jsx to rewrite /api/* URLs,
+// so bare /api/ paths work in both local dev (via Vite proxy) and production.
 
 function getDestination(userClaims) {
   if (userClaims?.role === 'admin') return '/admin';
@@ -28,13 +29,19 @@ export default function VerifyEmail() {
   const [resent,    setResent]    = useState(false);
   const [error,     setError]     = useState('');
   const [verifyingToken, setVerifyingToken] = useState(false);
-  const [tokenProcessed, setTokenProcessed] = useState(false);
   const [verificationMessage, setVerificationMessage] = useState('');
+  // lastProcessedTokenRef is the single source of truth for deduplication.
+  // We do NOT use a `tokenProcessed` state variable — setting state inside an
+  // effect causes the effect's dep-array to change, which triggers a cleanup
+  // (active=false) while the fetch is still in-flight, permanently killing the
+  // "Verifying your email…" spinner without ever calling navigate().
   const lastProcessedTokenRef = useRef('');
 
   // Effect 1: Process the verification token from the URL
   useEffect(() => {
-    if (!token || tokenProcessed) return;
+    if (!token) return;
+    // Ref-based guard prevents double-processing without causing a re-render
+    // that would re-trigger this effect and abort the in-flight fetch.
     if (lastProcessedTokenRef.current === token) return;
     lastProcessedTokenRef.current = token;
 
@@ -43,17 +50,14 @@ export default function VerifyEmail() {
     const timeoutId = window.setTimeout(() => controller.abort(), 15000);
 
     const confirmVerification = async () => {
-      setTokenProcessed(true);
       setVerifyingToken(true);
       setError('');
       setVerificationMessage('');
 
       try {
-        const response = await fetch(resolveApiUrl('/api/auth/verify-email'), {
+        const response = await fetch('/api/auth/verify-email', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           signal: controller.signal,
           body: JSON.stringify({ token }),
         });
@@ -68,14 +72,34 @@ export default function VerifyEmail() {
         const message = data.message || 'Email verified successfully.';
         setVerificationMessage(message);
 
-        // Navigate to login so the user signs in with fresh claims.
-        // Do NOT call logout() here — it destroys the session before
-        // Firebase Auth custom claims can propagate to the client token,
-        // causing the "verified" flag to remain false on next sign-in.
-        navigate('/login', {
-          replace: true,
-          state: { verificationSuccess: message },
-        });
+        // refreshUser() does three things in sequence:
+        //   1. Reloads the Firebase Auth user
+        //   2. Force-refreshes the ID token (picks up the new verified=true claim)
+        //   3. Re-fetches /api/auth/verification-status and sets accountVerified=true
+        //      in AuthContext — BEFORE we navigate, preventing the redirect loop
+        //      where RootRoute still sees accountVerified=false and sends the user
+        //      straight back to /verify-email.
+        let nowVerified = false;
+        try {
+          if (auth.currentUser) {
+            nowVerified = await refreshUser();
+          }
+        } catch {
+          // Non-fatal — navigate regardless; onAuthStateChanged will catch up.
+        }
+
+        if (!active) return;
+
+        // Logged-in + verified → go directly to the app root (RootRoute routes
+        // to /resident). Not logged in → login page with a success banner.
+        if (auth.currentUser && nowVerified) {
+          navigate('/', { replace: true });
+        } else {
+          navigate('/login', {
+            replace: true,
+            state: { verificationSuccess: message },
+          });
+        }
       } catch (err) {
         if (!active) return;
         if (err.name === 'AbortError') {
@@ -85,9 +109,9 @@ export default function VerifyEmail() {
         }
       } finally {
         window.clearTimeout(timeoutId);
-        if (active) {
-          setVerifyingToken(false);
-        }
+        // Always clear the spinner — even if active is false, the component may
+        // still be mounted (e.g. error branch). Worst case: benign no-op.
+        setVerifyingToken(false);
       }
     };
 
@@ -97,8 +121,17 @@ export default function VerifyEmail() {
       active = false;
       window.clearTimeout(timeoutId);
       controller.abort();
+      // Reset the ref so React StrictMode's intentional second mount can
+      // re-run the fetch. Without this, the ref blocks the second mount
+      // after StrictMode's cleanup kills the first in-flight request,
+      // leaving the UI permanently stuck on "Verifying your email…".
+      lastProcessedTokenRef.current = '';
     };
-  }, [token, tokenProcessed, navigate]);
+  // token and navigate are stable references — this effect runs once per unique
+  // token value. tokenProcessed was removed from deps (it was state, not a ref),
+  // which was causing the cleanup to fire mid-fetch and abort the verification.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, navigate]);
 
   // Effect 2: Redirect privileged users (staff/admin) away from the verify page
   useEffect(() => {
@@ -157,7 +190,7 @@ export default function VerifyEmail() {
     setResent(false);
     try {
       const idToken = await auth.currentUser.getIdToken();
-      const response = await fetch(resolveApiUrl('/api/auth/resend-verification'), {
+      const response = await fetch('/api/auth/resend-verification', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${idToken}`,

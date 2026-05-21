@@ -1,6 +1,8 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { auth, isFirebaseConfigured } from '../config/firebase';
+// NOTE: window.fetch is globally patched in main.jsx — bare /api/ paths work
+// in both local dev (via Vite proxy) and production (rewritten to VITE_API_BASE_URL).
 
 const AuthContext = createContext(null);
 

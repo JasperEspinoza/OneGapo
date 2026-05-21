@@ -5,6 +5,7 @@ import { useNavigate, Navigate, Link, useLocation } from 'react-router-dom';
 import { auth, firebaseConfigErrorMessage, isFirebaseConfigured } from '../config/firebase';
 import { useAuth } from '../context/AuthContext';
 import OneGapoLogo from '../components/OneGapoLogo';
+// NOTE: window.fetch is globally patched in main.jsx — bare /api/ paths work in production.
 
 const PRIMARY_ADMIN_EMAIL = 'onegapo2026@gmail.com';
 
@@ -53,8 +54,17 @@ export default function Login() {
   if (currentUser) {
     if (currentHasAdminWorkspace) return <Navigate to="/admin" replace />;
     if (userClaims?.role === 'staff') return <Navigate to="/staff" replace />;
-    if (userClaims?.role === 'resident' && !accountVerified) {
-      return <Navigate to="/verify-email" replace />;
+    if (userClaims?.role === 'resident') {
+      // Only bounce to /verify-email when we are certain accountVerified is
+      // false. If the user just verified via email link, AuthContext may not
+      // have caught up yet — we let them stay on the login page momentarily
+      // so they can sign in and trigger a fresh onAuthStateChanged fetch.
+      if (accountVerified === false && location.state?.verificationSuccess) {
+        // Verification success state is present — trust it and let them proceed
+        // rather than sending them back to the verify page.
+        return <Navigate to="/resident" replace />;
+      }
+      if (!accountVerified) return <Navigate to="/verify-email" replace />;
     }
     return <Navigate to="/resident" replace />;
   }

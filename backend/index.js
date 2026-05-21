@@ -4,6 +4,38 @@ const express = require('express');
 const cors = require('cors');
 const { initSocketServer } = require('./realtime/socketServer');
 
+// ─── Startup environment validation ────────────────────────────────────────
+(function validateEnv() {
+  const warnings = [];
+
+  if (!process.env.FIREBASE_SERVICE_ACCOUNT_JSON && !process.env.FIREBASE_SERVICE_ACCOUNT_PATH) {
+    warnings.push('  ❌ FIREBASE_SERVICE_ACCOUNT_JSON or FIREBASE_SERVICE_ACCOUNT_PATH is required');
+  }
+
+  if (!process.env.SMTP_HOST && !process.env.BREVO_API_KEY) {
+    warnings.push('  ⚠️  No email transport configured. Set SMTP_HOST+SMTP_USER+SMTP_PASS or BREVO_API_KEY');
+  }
+
+  if (process.env.SMTP_HOST && !process.env.BREVO_API_KEY) {
+    warnings.push('  ⚠️  BREVO_API_KEY is not set — SMTP fallback will not work if port 587 is blocked');
+  }
+
+  if (!process.env.FRONTEND_URL) {
+    warnings.push('  ⚠️  FRONTEND_URL is not set — verification links will use http://localhost:5173 fallback');
+  } else if (process.env.FRONTEND_URL.includes('localhost') && process.env.NODE_ENV === 'production') {
+    warnings.push('  ⚠️  FRONTEND_URL points to localhost but NODE_ENV=production — update for deployment');
+  }
+
+  if (warnings.length > 0) {
+    console.warn('\n[OneGapo] ⚠️  Configuration warnings:');
+    warnings.forEach((w) => console.warn(w));
+    console.warn('');
+  } else {
+    console.log('[OneGapo] ✅ Environment validated OK');
+  }
+})();
+
+
 const adminRoutes  = require('./routes/adminRoutes');
 const authRoutes   = require('./routes/authRoutes');
 const branchRoutes = require('./routes/branchRoutes');

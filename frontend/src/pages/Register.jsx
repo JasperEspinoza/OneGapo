@@ -8,6 +8,7 @@ import { Link, useNavigate, Navigate } from 'react-router-dom';
 import { auth, firebaseConfigErrorMessage, isFirebaseConfigured } from '../config/firebase';
 import { useAuth } from '../context/AuthContext';
 import OneGapoLogo from '../components/OneGapoLogo';
+// NOTE: window.fetch is globally patched in main.jsx — bare /api/ paths work in production.
 
 function getErrorMessage(code) {
   switch (code) {

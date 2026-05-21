@@ -14,6 +14,7 @@ import Dashboard      from './pages/Dashboard';
 import StaffPanel     from './pages/StaffPanel';
 import AdminPanel     from './pages/AdminPanel';
 import ResidentHub    from './pages/ResidentHub';
+import ResponderPanel from './pages/ResponderPanel';
 import LandingPage    from './pages/LandingPage';
 import { useAuth } from './context/AuthContext';
 import { SettingsModalProvider } from './context/SettingsModalContext';
@@ -138,7 +139,7 @@ function App() {
               </Route>
 
               <Route element={<ProtectedRoute allowedRoles={['responder']} showNav={false} />}>
-                <Route path="/responder" element={<ResidentHub viewMode="responder" />} />
+                <Route path="/responder" element={<ResponderPanel />} />
               </Route>
 
               {/* ── Staff + Admin ─────────────────────────────────── */}

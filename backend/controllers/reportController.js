@@ -6,6 +6,7 @@ const BAJAC_BAJAC_BRANCHES = new Set(['east bajac bajac', 'west bajac bajac']);
 const HIGH_PRIORITY_REPORT_CATEGORIES = new Set(['disaster', 'safety']);
 const PENDING_SLA_STATUSES = new Set(['submitted', 'in_progress', 'in_review']);
 const SLA_SYNC_BATCH_LIMIT = 400;
+const REPORT_SUBMISSION_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
 
 const TIER_TARGETS_MINUTES = {
   1: {
@@ -1054,6 +1055,23 @@ async function createReport(req, res, next) {
       return res.status(403).json({ error: 'Only residents can submit reports.' });
     }
 
+    // --- Report submission cooldown (5 minutes per user) ---
+    const db = admin.firestore();
+    const userDocSnap = await db.collection('users').doc(requesterUid).get();
+    const userData = userDocSnap.exists ? (userDocSnap.data() || {}) : {};
+    const lastSubmittedAt = toMillis(userData.lastReportSubmittedAt);
+    if (lastSubmittedAt) {
+      const elapsed = Date.now() - lastSubmittedAt;
+      if (elapsed < REPORT_SUBMISSION_COOLDOWN_MS) {
+        const remainingMs = REPORT_SUBMISSION_COOLDOWN_MS - elapsed;
+        const remainingSeconds = Math.ceil(remainingMs / 1000);
+        return res.status(429).json({
+          error: `You can only submit one report every 5 minutes. Please wait ${remainingSeconds} second(s) before submitting again.`,
+          remainingSeconds,
+        });
+      }
+    }
+
     const title = String(req.body?.title || '').trim();
     const description = String(req.body?.description || '').trim();
     const category = String(req.body?.category || 'general').trim().toLowerCase();
@@ -1081,6 +1099,13 @@ async function createReport(req, res, next) {
       });
     }
 
+    // Update lastReportSubmittedAt before processing so concurrent submissions are blocked
+    await db.collection('users').doc(requesterUid).update({
+      lastReportSubmittedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }).catch(() => {
+      // Non-fatal: if the update fails, we still proceed (don't block the user)
+    });
+
     const attachments = await Promise.all(
       files.map(async (file) => {
         const upload = await uploadBufferToCloudinary(file.buffer);
@@ -1098,7 +1123,6 @@ async function createReport(req, res, next) {
       })
     );
 
-    const db = admin.firestore();
     const reportRef = db.collection('reports').doc();
 
     const payload = {
@@ -1282,7 +1306,8 @@ async function listReportsForOperators(req, res, next) {
       const requesterUid = String(req.user?.uid || '').trim();
       hydratedReports = hydratedReports.filter((report) => {
         const assignedResponderUid = String(report?.assignedResponder?.uid || '').trim();
-        return Boolean(assignedResponderUid && requesterUid && assignedResponderUid === requesterUid);
+        const reportStatus = String(report?.status || '').toLowerCase();
+        return Boolean(assignedResponderUid && requesterUid && assignedResponderUid === requesterUid) && reportStatus !== 'archived';
       });
     }
 
@@ -1912,6 +1937,14 @@ async function deleteReport(req, res, next) {
     }
 
     const report = snap.data() || {};
+
+    // Only archived reports can be permanently deleted
+    if (String(report.status || '').toLowerCase() !== 'archived') {
+      return res.status(400).json({
+        error: 'Only archived reports can be deleted. Please archive the report first.',
+      });
+    }
+
     if (role === 'staff' && !canStaffAccessReport(report, req.user)) {
       return res.status(403).json({
         error: 'You can only delete reports inside your assigned branch/barangay coverage.',

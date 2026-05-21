@@ -41,6 +41,7 @@ const REPORT_CLASSIFICATION_OPTIONS = [
 const NAV_ITEMS = [
   { id: 'overview', label: 'Overview', icon: 'dashboard' },
   { id: 'reports', label: 'Reports', icon: 'assignment' },
+  { id: 'archive', label: 'Archive', icon: 'badge' },
   { id: 'team', label: 'Branch Staff', icon: 'groups' },
 ];
 
@@ -586,10 +587,11 @@ export default function StaffPanel() {
   const visibleNavItems = useMemo(
     () => NAV_ITEMS.filter((item) => {
       if (item.id === 'reports') return canViewReports;
+      if (item.id === 'archive') return canManageReportLifecycle;
       if (item.id === 'team') return canManageStaff;
       return true;
     }),
-    [canManageStaff, canViewReports]
+    [canManageStaff, canViewReports, canManageReportLifecycle]
   );
 
   useEffect(() => {
@@ -1178,6 +1180,10 @@ export default function StaffPanel() {
     const q = searchQuery.trim().toLowerCase();
 
     return reports.filter((report) => {
+      const isArchived = String(report?.status || '').toLowerCase() === 'archived';
+      if (activeSection === 'archive' && !isArchived) return false;
+      if (activeSection !== 'archive' && isArchived) return false;
+
       const statusMatches = reportStatusFilter === 'all' ? true : String(report?.status || '').toLowerCase() === reportStatusFilter;
       if (!statusMatches) return false;
 
@@ -1199,7 +1205,7 @@ export default function StaffPanel() {
 
       return haystack.includes(q);
     });
-  }, [reports, reportStatusFilter, reportClassificationFilter, searchQuery]);
+  }, [reports, reportStatusFilter, reportClassificationFilter, searchQuery, activeSection]);
 
   const reportMarkers = useMemo(() => {
     return visibleReports
@@ -1660,12 +1666,16 @@ export default function StaffPanel() {
             </section>
           )}
 
-          {activeSection === 'reports' && (
+          {(activeSection === 'reports' || activeSection === 'archive') && (
             <section className="ap-section">
               <div className="ap-section-heading">
                 <div>
-                  <h2 className="ap-section-title">Reports Workspace</h2>
-                  <p className="ap-section-sub">Map and inbox are restricted to your assigned jurisdiction.</p>
+                  <h2 className="ap-section-title">{activeSection === 'archive' ? 'Archived Reports' : 'Reports Workspace'}</h2>
+                  <p className="ap-section-sub">
+                    {activeSection === 'archive' 
+                      ? 'View and manage archived reports.' 
+                      : 'Map and inbox are restricted to your assigned jurisdiction.'}
+                  </p>
                 </div>
                 <div className="ap-section-actions">
                   <button type="button" className="ap-btn-outline ap-btn-sm" onClick={loadReports} disabled={reportsLoading || !canViewReports}>
@@ -1678,27 +1688,29 @@ export default function StaffPanel() {
                 <div className="ap-card"><p className="ap-empty">Your account does not have report access.</p></div>
               ) : (
                 <>
-                  <div className="ap-card">
-                    <div className="ap-card-header">
-                      <h3 className="ap-card-title">{location}</h3>
+                  {activeSection === 'reports' && (
+                    <div className="ap-card">
+                      <div className="ap-card-header">
+                        <h3 className="ap-card-title">{location}</h3>
+                      </div>
+                      {reportsError ? <div className="auth-error" role="alert">{reportsError}</div> : null}
+                      <ReportLocationMap
+                        markers={reportMarkers}
+                        preferredBarangay={location}
+                        helpText="Showing reports returned for your assigned branch/barangay coverage."
+                        preserveViewOnRefresh
+                        enableFullscreenBarangayFilter={false}
+                        enableCategoryFilter
+                        enableHeatmapToggle
+                        statusOptions={STAFF_STATUS_UPDATE_OPTIONS}
+                        canUpdateStatus={canUpdateReports}
+                        updatingStatusForId={updatingReportId}
+                        onStatusChange={handleRequestStatusUpdate}
+                        focusMarkerId={mapFocusReportId}
+                        autoRouteRequestKey={mapAutoRouteRequestKey}
+                      />
                     </div>
-                    {reportsError ? <div className="auth-error" role="alert">{reportsError}</div> : null}
-                    <ReportLocationMap
-                      markers={reportMarkers}
-                      preferredBarangay={location}
-                      helpText="Showing reports returned for your assigned branch/barangay coverage."
-                      preserveViewOnRefresh
-                      enableFullscreenBarangayFilter={false}
-                      enableCategoryFilter
-                      enableHeatmapToggle
-                      statusOptions={STAFF_STATUS_UPDATE_OPTIONS}
-                      canUpdateStatus={canUpdateReports}
-                      updatingStatusForId={updatingReportId}
-                      onStatusChange={handleRequestStatusUpdate}
-                      focusMarkerId={mapFocusReportId}
-                      autoRouteRequestKey={mapAutoRouteRequestKey}
-                    />
-                  </div>
+                  )}
 
                   <div className="ap-card">
                     <div className="ap-card-header">
@@ -1785,31 +1797,25 @@ export default function StaffPanel() {
                             {canManageReportLifecycle ? (
                               <div className="ss-report-actions" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
                                 <div className="ss-report-action-buttons">
-                                  {canManageReportLifecycle ? (
+                                  {activeSection !== 'archive' ? (
                                     <button
                                       type="button"
                                       className="ap-report-action-btn"
                                       onClick={() => handleArchiveReport(report)}
-                                      disabled={archivingReportId === report.id || deletingReportId === report.id || String(report?.status || '').toLowerCase() === 'archived'}
+                                      disabled={archivingReportId === report.id || deletingReportId === report.id}
                                     >
-                                      {archivingReportId === report.id
-                                        ? 'Archiving…'
-                                        : String(report?.status || '').toLowerCase() === 'archived'
-                                          ? 'Archived'
-                                          : 'Archive'}
+                                      {archivingReportId === report.id ? 'Archiving…' : 'Archive'}
                                     </button>
-                                  ) : null}
-
-                                  {canManageReportLifecycle ? (
+                                  ) : (
                                     <button
                                       type="button"
                                       className="ap-report-action-btn ap-report-action-btn-danger"
                                       onClick={() => handleDeleteReport(report)}
-                                      disabled={deletingReportId === report.id || archivingReportId === report.id}
+                                      disabled={deletingReportId === report.id}
                                     >
                                       {deletingReportId === report.id ? 'Deleting…' : 'Delete'}
                                     </button>
-                                  ) : null}
+                                  )}
                                 </div>
                               </div>
                             ) : null}

@@ -2550,14 +2550,6 @@ export default function AdminPanel() {
                                       ? 'Archived'
                                       : 'Archive'}
                                 </button>
-                                <button
-                                  type="button"
-                                  className="ap-report-action-btn ap-report-action-btn-danger"
-                                  onClick={() => handleDeleteReport(report)}
-                                  disabled={deletingReportId === report.id || archivingReportId === report.id}
-                                >
-                                  {deletingReportId === report.id ? 'Deleting…' : 'Delete'}
-                                </button>
                               </div>
                             </td>
                           </tr>
