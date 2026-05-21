@@ -64,17 +64,26 @@ function getStatusClass(status) {
 }
 
 function formatAuditEntry(entry) {
+  const actorName = String(
+    entry?.changedBy?.displayName ||
+    entry?.changedBy?.fullName ||
+    entry?.changedBy?.username ||
+    entry?.changedBy?.email ||
+    ''
+  ).trim();
+  const actorSuffix = actorName ? ` by ${actorName}` : '';
+
   if (entry?.type === 'archived') {
-    return `Archived from ${normalizeStatus(entry.fromStatus)} on ${formatDate(entry.changedAt)}`;
+    return `Archived from ${normalizeStatus(entry.fromStatus)} on ${formatDate(entry.changedAt)}${actorSuffix}`;
   }
 
   if (entry?.type === 'forwarded') {
-    return `Forwarded on ${formatDate(entry.changedAt)}`;
+    return `Forwarded on ${formatDate(entry.changedAt)}${actorSuffix}`;
   }
 
   const fromStatus = normalizeStatus(entry?.fromStatus);
   const toStatus = normalizeStatus(entry?.toStatus);
-  return `${fromStatus} -> ${toStatus} on ${formatDate(entry?.changedAt)}`;
+  return `${fromStatus} -> ${toStatus} on ${formatDate(entry?.changedAt)}${actorSuffix}`;
 }
 
 function getReportPreviewImage(report) {

@@ -61,6 +61,16 @@ function toIsoFromMs(ms) {
   return new Date(value).toISOString();
 }
 
+function getUserDisplayName(user = {}) {
+  return String(
+    user.fullName ||
+    user.displayName ||
+    user.username ||
+    user.email ||
+    ''
+  ).trim();
+}
+
 function resolveReportTier({ category, title, description }) {
   const normalizedCategory = String(category || '').trim().toLowerCase();
   const text = `${String(title || '').toLowerCase()} ${String(description || '').toLowerCase()}`;
@@ -1338,6 +1348,7 @@ async function updateReportStatus(req, res, next) {
   try {
     const requesterUid = getRequesterUid(req);
     const role = req.user?.roleKey;
+    const actorDisplayName = getUserDisplayName(req.user);
     if (role !== 'staff' && role !== 'admin' && role !== 'responder') {
       return res.status(403).json({ error: 'Only staff, responders, and admins can update report status.' });
     }
@@ -1525,6 +1536,7 @@ async function updateReportStatus(req, res, next) {
         uid: requesterUid,
         role,
         email: req.user.email || '',
+        displayName: actorDisplayName || null,
         location: req.user.location || '',
       },
       progressNote: progressNote || null,
@@ -1561,6 +1573,7 @@ async function updateReportStatus(req, res, next) {
         uid: requesterUid,
         role,
         email: req.user.email || '',
+        displayName: actorDisplayName || null,
         location: req.user.location || '',
       },
       auditTrail: admin.firestore.FieldValue.arrayUnion(auditEntry),
@@ -1575,12 +1588,25 @@ async function updateReportStatus(req, res, next) {
           uid: requesterUid,
           role,
           email: req.user.email || '',
+          displayName: actorDisplayName || null,
           location: req.user.location || '',
         },
       };
     }
 
     await ref.update(updates);
+
+    try {
+      const socketInstance = require('../realtime/socketInstance');
+      const io = socketInstance.get && socketInstance.get();
+      if (io && typeof io.emit === 'function') {
+        // Ask connected clients to refresh their reports list. Clients will
+        // re-fetch via the API and the backend enforces access control.
+        io.emit('reports:refresh');
+      }
+    } catch {
+      // no-op
+    }
 
     const updatedSnap = await ref.get();
     const data = updatedSnap.data();

@@ -125,14 +125,29 @@ function getReportResolutionDetails(report) {
     report?.location?.barangay ||
     '';
 
+  const resolvedByName =
+    report?.resolution?.resolvedBy?.displayName ||
+    report?.resolution?.resolvedBy?.fullName ||
+    latestResolvedEntry?.changedBy?.displayName ||
+    latestResolvedEntry?.changedBy?.fullName ||
+    '';
+
   return {
     resolvedAt,
     note,
     resolvedByLocation,
+    resolvedByName,
   };
 }
 
 function getTicketActorLabel(entry) {
+  const displayName = String(
+    entry?.changedBy?.displayName ||
+    entry?.changedBy?.fullName ||
+    ''
+  ).trim();
+  if (displayName) return displayName;
+
   const location = String(entry?.changedBy?.location || '').trim();
   if (location) return `${location} Branch`;
   const role = String(entry?.changedBy?.role || '').trim();
@@ -1427,12 +1442,12 @@ export default function ResidentHub({ viewMode = 'resident' }) {
                 <div className="resident-approval-modal-content">
                   <div className="resident-approval-modal-meta">
                     <div className="resident-approval-modal-row">
-                      <span>Resolved on</span>
+                      <span>Resolved on: </span>
                       <strong>{details.resolvedAt ? formatReportDate(details.resolvedAt) : 'Not available'}</strong>
                     </div>
                     <div className="resident-approval-modal-row">
-                      <span>Resolved by</span>
-                      <strong>{details.resolvedByLocation || 'Assigned branch'} Branch</strong>
+                      <span>Resolved by: </span>
+                      <strong>{details.resolvedByName || details.resolvedByLocation || 'Assigned branch'}</strong>
                     </div>
                     <div className="resident-approval-modal-row resident-approval-modal-note-row">
                       <span>Resolution note</span>
