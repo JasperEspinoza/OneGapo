@@ -18,6 +18,7 @@ const PERMISSION_OPTIONS = [
   { value: 'add_branches',         label: 'Add branches' },
   { value: 'add_roles',            label: 'Add roles' },
   { value: 'add_staffs',           label: 'Add staffs' },
+  { value: 'assign_responders',    label: 'Assign responders' },
 ];
 
 const ICONS = {

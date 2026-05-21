@@ -1,11 +1,11 @@
 const { Router } = require('express');
-const { verifyToken, requirePermission } = require('../middleware/authMiddleware');
+const { verifyToken, requirePermission, requireAnyPermission } = require('../middleware/authMiddleware');
 const { createStaff, createBranchStaff, listBranchStaff, listUsers, updateStaff, deleteUser, resendVerification, migrateResponderRoles } = require('../controllers/adminController');
 
 const router = Router();
 
 router.post('/branch-staff', verifyToken, requirePermission('add_staffs'), createBranchStaff);
-router.get('/branch-staff', verifyToken, requirePermission('add_staffs'), listBranchStaff);
+router.get('/branch-staff', verifyToken, requireAnyPermission(['add_staffs', 'assign_responders']), listBranchStaff);
 
 router.use(verifyToken, requirePermission('add_staffs'));
 

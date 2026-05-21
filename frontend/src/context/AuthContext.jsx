@@ -15,7 +15,11 @@ function mergeSessionProfile(tokenClaims = {}, sessionProfile = null) {
 
   const roleKey = normalizeRoleKey(tokenClaims.role || profile.role);
   const customRoleKey = normalizeRoleKey(tokenClaims.customRoleName || profile.customRoleName);
-  const effectiveRole = roleKey || customRoleKey || '';
+  let effectiveRole = roleKey || customRoleKey || '';
+  
+  if (roleKey === 'responder' || customRoleKey === 'responder') {
+    effectiveRole = 'responder';
+  }
 
   return {
     ...tokenClaims,

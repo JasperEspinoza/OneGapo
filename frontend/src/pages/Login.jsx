@@ -85,11 +85,7 @@ export default function Login() {
       const permissions = Array.isArray(tokenResult.claims.permissions) ? tokenResult.claims.permissions : [];
       const canAccessAdminWorkspace = hasAdminWorkspaceAccess(role, permissions, credential.user.email);
 
-      if (canAccessAdminWorkspace) {
-        navigate('/admin', { replace: true });
-      } else if (role === 'staff') {
-        navigate('/staff', { replace: true });
-      } else {
+      if (role === 'resident') {
         // For residents, check verification status before redirecting
         try {
           const idToken = await credential.user.getIdToken();
@@ -98,14 +94,16 @@ export default function Login() {
           });
           const verifyData = await verifyRes.json().catch(() => ({}));
           if (verifyData.verified === true) {
-            navigate('/resident', { replace: true });
+            navigate('/home', { replace: true });
           } else {
             navigate('/verify-email', { replace: true });
           }
         } catch {
           // If status check fails, let AuthContext handle it on next page
-          navigate('/resident', { replace: true });
+          navigate('/home', { replace: true });
         }
+      } else {
+        navigate('/home', { replace: true });
       }
     } catch (err) {
       setError(getErrorMessage(err.code));

@@ -282,6 +282,7 @@ export default function StaffPanel() {
   const [dismissedEmergencyBannerId, setDismissedEmergencyBannerId] = useState('');
   const [updatingReportId, setUpdatingReportId] = useState('');
   const [reportActionError, setReportActionError] = useState('');
+  const [reportActionSuccess, setReportActionSuccess] = useState('');
   const [selectedReport, setSelectedReport] = useState(null);
   const [expandedReportImage, setExpandedReportImage] = useState(null);
   const [resolveTargetReportId, setResolveTargetReportId] = useState('');
@@ -417,6 +418,7 @@ export default function StaffPanel() {
 
     setAssigningResponderReportId(reportId);
     setReportActionError('');
+    setReportActionSuccess('');
     try {
       const res = await api(`/api/reports/${reportId}/assignment`, {
         method: 'PATCH',
@@ -427,6 +429,11 @@ export default function StaffPanel() {
 
       setReports((prev) => prev.map((item) => (item.id === reportId ? { ...item, ...data.report } : item)));
       setSelectedReport((prev) => (prev?.id === reportId ? { ...prev, ...data.report } : prev));
+      
+      setReportActionSuccess('Responder assigned successfully!');
+      
+      // Auto clear success message after 3 seconds
+      setTimeout(() => setReportActionSuccess(''), 3000);
     } catch (err) {
       setReportActionError(err.message || 'Failed to update responder assignment.');
     } finally {
@@ -1342,8 +1349,9 @@ export default function StaffPanel() {
     String(selectedReport?.status || '').toLowerCase() !== 'archived'
   );
   const customRole = String(userClaims?.customRoleName || '').trim().toLowerCase();
-  // Only the branch main admin (has add_staffs permission or Branch Admin/Main Admin custom role name, not primary admin, assigned to a branch) can assign responders
+  // Only the branch main admin (has assign_responders permission or Branch Admin/Main Admin custom role name, not primary admin, assigned to a branch) can assign responders
   const isBranchMainAdmin = !isPrimaryAdmin && Boolean(userClaims?.branchId) && (
+    permissions.includes('assign_responders') ||
     permissions.includes('add_staffs') ||
     customRole === 'branch admin' ||
     customRole === 'main admin'
@@ -1745,6 +1753,7 @@ export default function StaffPanel() {
                     </div>
 
                     {reportActionError ? <div className="auth-error" role="alert">{reportActionError}</div> : null}
+                    {reportActionSuccess ? <div role="alert" style={{ padding: '0.75rem', marginBottom: '1rem', borderRadius: '4px', backgroundColor: 'var(--color-success-bg, #e6ffe6)', color: 'var(--color-success, #166534)', border: '1px solid var(--color-success-border, #bbf7d0)' }}>{reportActionSuccess}</div> : null}
 
                     {reportsLoading ? (
                       <p className="ap-loading">Loading reports…</p>
@@ -1832,6 +1841,8 @@ export default function StaffPanel() {
                       size="wide"
                       onClose={() => setSelectedReport(null)}
                     >
+                      {reportActionError ? <div className="auth-error" role="alert" style={{ marginBottom: '1rem' }}>{reportActionError}</div> : null}
+                      {reportActionSuccess ? <div role="alert" style={{ padding: '0.75rem', marginBottom: '1rem', borderRadius: '4px', backgroundColor: 'var(--color-success-bg, #e6ffe6)', color: 'var(--color-success, #166534)', border: '1px solid var(--color-success-border, #bbf7d0)' }}>{reportActionSuccess}</div> : null}
                       <div className="ap-report-details-grid">
                         <div className="ap-report-details-row"><span>Status</span><strong>{selectedReport.status || '—'}</strong></div>
                         {selectedReport?.isDuplicateChild && selectedReport?.duplicateOfReport ? (

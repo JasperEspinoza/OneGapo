@@ -1254,7 +1254,7 @@ async function listOwnReports(req, res, next) {
 
 async function listReportsForOperators(req, res, next) {
   try {
-    const role = req.user?.role;
+    const role = req.user?.roleKey;
     if (role !== 'staff' && role !== 'admin' && role !== 'responder') {
       return res.status(403).json({ error: 'Only staff, responders, and admins can access this endpoint.' });
     }
@@ -1326,7 +1326,7 @@ const RESPONDER_ALLOWED_STATUSES = new Set(['in_progress', 'resolved']);
 async function updateReportStatus(req, res, next) {
   try {
     const requesterUid = getRequesterUid(req);
-    const role = req.user?.role;
+    const role = req.user?.roleKey;
     if (role !== 'staff' && role !== 'admin' && role !== 'responder') {
       return res.status(403).json({ error: 'Only staff, responders, and admins can update report status.' });
     }
@@ -1590,7 +1590,7 @@ async function updateReportStatus(req, res, next) {
 async function updateReportAssignment(req, res, next) {
   try {
     const requesterUid = getRequesterUid(req);
-    const role = req.user?.role;
+    const role = req.user?.roleKey;
 
     // Primary admin cannot assign responders (they have no branch context)
     if (req.user?.isPrimaryAdmin) {
@@ -1601,11 +1601,11 @@ async function updateReportAssignment(req, res, next) {
       return res.status(403).json({ error: 'Only staff and admins can assign report responders.' });
     }
 
-    // Only the branch main admin (staff with add_staffs permission or Branch Admin/Main Admin custom role) can assign responders
+    // Only the branch main admin (staff with assign_responders permission or Branch Admin/Main Admin custom role) can assign responders
     if (role === 'staff') {
       const permissions = Array.isArray(req.user?.permissions) ? req.user.permissions : [];
       const customRole = String(req.user?.customRoleName || '').trim().toLowerCase();
-      const isBranchAdmin = permissions.includes('add_staffs') || customRole === 'branch admin' || customRole === 'main admin';
+      const isBranchAdmin = permissions.includes('assign_responders') || permissions.includes('add_staffs') || customRole === 'branch admin' || customRole === 'main admin';
       if (!isBranchAdmin) {
         return res.status(403).json({
           error: 'Only the branch admin can assign report responders.',

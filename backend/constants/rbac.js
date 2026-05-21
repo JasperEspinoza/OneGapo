@@ -8,6 +8,7 @@ const ALLOWED_PERMISSIONS = [
   'add_branches',
   'add_roles',
   'add_staffs',
+  'assign_responders',
 ];
 
 function sanitizePermissions(permissions = []) {

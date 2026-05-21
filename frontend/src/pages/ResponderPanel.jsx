@@ -73,7 +73,7 @@ export default function ResponderPanel() {
       
       // The backend should only return reports assigned to the responder and not archived
       // as per our previous updates to reportController.js
-      setReports(data.reports || []);
+      setReports(Array.isArray(data) ? data : data.reports || []);
     } catch (err) {
       setError(err.message || 'Error loading reports.');
     } finally {
