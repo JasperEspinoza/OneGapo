@@ -140,6 +140,26 @@ function getReportResolutionDetails(report) {
   };
 }
 
+function getReportStatusNote(report) {
+  const resolutionNote = String(report?.resolution?.note || '').trim();
+  if (resolutionNote) return resolutionNote;
+
+  const auditTrail = Array.isArray(report?.auditTrail) ? report.auditTrail : [];
+  const latestNotedEntry = auditTrail
+    .slice()
+    .sort((a, b) => new Date(b?.changedAt || 0) - new Date(a?.changedAt || 0))
+    .find((entry) => String(entry?.progressNote || '').trim());
+
+  return String(latestNotedEntry?.progressNote || '').trim();
+}
+
+function getReportStatusNoteLabel(report) {
+  const status = getReportStatusKey(report?.status);
+  if (status === 'rejected') return 'Rejection reason';
+  if (status === 'resolved') return 'Resolution note';
+  return 'Status note';
+}
+
 function getTicketActorLabel(entry) {
   const displayName = String(
     entry?.changedBy?.displayName ||
@@ -310,6 +330,7 @@ export default function ResidentHub({ viewMode = 'resident' }) {
   const cameraStreamRef = useRef(null);
   const [focusIndicator, setFocusIndicator] = useState({ visible: false, left: 0, top: 0 });
   const dismissedAlertIdsRef = useRef(new Set());
+  const residentSocketRef = useRef(null);
 
   // Attempt to focus the camera at a normalized point (nx, ny) where 0..1 range
   const attemptFocusAtPoint = async (nx, ny) => {
@@ -592,6 +613,7 @@ export default function ResidentHub({ viewMode = 'resident' }) {
           transports: ['websocket', 'polling'],
           auth: { token: idToken },
         });
+        residentSocketRef.current = socket;
 
         socket.on('connect', () => {
           if (!active) return;
@@ -624,6 +646,8 @@ export default function ResidentHub({ viewMode = 'resident' }) {
           // eslint-disable-next-line no-console
           console.debug('[client][resident] reports:modified', { id: report.id });
           setMyReports((prev) => prev.map((r) => (r.id === report.id ? { ...r, ...report } : r)));
+          setActiveTicketReport((prev) => (prev?.id === report.id ? { ...prev, ...report } : prev));
+          setActiveApprovalReport((prev) => (prev?.id === report.id ? { ...prev, ...report } : prev));
         });
 
         socket.on('reports:deleted', ({ id } = {}) => {
@@ -632,6 +656,13 @@ export default function ResidentHub({ viewMode = 'resident' }) {
           // eslint-disable-next-line no-console
           console.debug('[client][resident] reports:deleted', { id });
           setMyReports((prev) => prev.filter((r) => r.id !== id));
+        });
+
+        socket.on('reports:refresh', () => {
+          if (!active) return;
+          // eslint-disable-next-line no-console
+          console.debug('[client][resident] reports:refresh');
+          loadMyReports({ silent: true });
         });
 
         socket.on('connect_error', (err) => {
@@ -660,8 +691,55 @@ export default function ResidentHub({ viewMode = 'resident' }) {
       if (socket) {
         socket.disconnect();
       }
+      if (residentSocketRef.current === socket) {
+        residentSocketRef.current = null;
+      }
     };
   }, [applyReportsSnapshot, currentUser, loadMyReports, isResponder]);
+
+  useEffect(() => {
+    if (isResponder || !currentUser) return undefined;
+
+    let refreshTimer = null;
+
+    const refreshReportsOnResume = () => {
+      const socket = residentSocketRef.current;
+      if (socket && socket.disconnected) {
+        socket.connect();
+      }
+
+      loadMyReports({ silent: true });
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (refreshTimer) {
+        window.clearTimeout(refreshTimer);
+      }
+      refreshTimer = window.setTimeout(refreshReportsOnResume, 150);
+    };
+
+    const handlePageShow = () => {
+      refreshReportsOnResume();
+    };
+
+    const handleOnline = () => {
+      refreshReportsOnResume();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pageshow', handlePageShow);
+    window.addEventListener('online', handleOnline);
+
+    return () => {
+      if (refreshTimer) {
+        window.clearTimeout(refreshTimer);
+      }
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pageshow', handlePageShow);
+      window.removeEventListener('online', handleOnline);
+    };
+  }, [currentUser, isResponder, loadMyReports]);
 
   useEffect(() => {
     const handleInstallPrompt = (event) => {
@@ -880,6 +958,10 @@ export default function ResidentHub({ viewMode = 'resident' }) {
       // Close modal and cleanup
       handleCloseCameraModal();
     }, 'image/jpeg', 0.9);
+  };
+
+  const handleRemoveAttachment = (index) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleCloseCameraModal = () => {
@@ -1305,8 +1387,18 @@ export default function ResidentHub({ viewMode = 'resident' }) {
                 <p className="resident-attachment-note">You can attach up to 3 files total.</p>
                 {attachments.length > 0 ? (
                   <ul className="report-files-list">
-                    {attachments.map((file) => (
-                      <li key={`${file.name}-${file.size}`}>{file.name}</li>
+                    {attachments.map((file, idx) => (
+                      <li key={`${file.name}-${file.size}`} className="report-file-item">
+                        <span className="report-file-name">{file.name}</span>
+                        <button
+                          type="button"
+                          className="report-file-remove"
+                          onClick={() => handleRemoveAttachment(idx)}
+                          aria-label={`Remove ${file.name}`}
+                        >
+                          ✕
+                        </button>
+                      </li>
                     ))}
                   </ul>
                 ) : null}
@@ -1503,6 +1595,8 @@ export default function ResidentHub({ viewMode = 'resident' }) {
               const updates = buildResidentTicketUpdates(activeTicketReport);
               const approvalImage = getReportApprovalImage(activeTicketReport);
               const isResolved = String(activeTicketReport?.status || '').toLowerCase() === 'resolved';
+              const statusNote = getReportStatusNote(activeTicketReport);
+              const statusNoteLabel = getReportStatusNoteLabel(activeTicketReport);
 
               return (
                 <div className="resident-ticket-modal-content">
@@ -1514,6 +1608,13 @@ export default function ResidentHub({ viewMode = 'resident' }) {
                       Last updated {formatReportDate(activeTicketReport.updatedAt || activeTicketReport.createdAt)}
                     </p>
                   </div>
+
+                  {statusNote ? (
+                    <section className="resident-ticket-status-note" aria-label={statusNoteLabel}>
+                      <p className="resident-ticket-status-note-label">{statusNoteLabel}</p>
+                      <p className="resident-ticket-status-note-value">{statusNote}</p>
+                    </section>
+                  ) : null}
 
                   {isResolved && approvalImage ? (
                     <div className="resident-report-actions">

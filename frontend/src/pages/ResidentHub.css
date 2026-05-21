@@ -637,6 +637,45 @@
   color: var(--res-text-muted);
 }
 
+/* attachment file list */
+.report-files-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0 0 0;
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.report-file-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.6rem;
+  background: var(--res-surface-muted);
+  border: 1px solid var(--res-border);
+  border-radius: 0.45rem;
+  font-size: 0.85rem;
+}
+.report-file-name {
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.report-file-remove {
+  border: none;
+  background: transparent;
+  color: var(--res-text-muted);
+  cursor: pointer;
+  font-weight: 700;
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.35rem;
+}
+.report-file-remove:hover {
+  color: var(--res-danger);
+  background: color-mix(in srgb, var(--res-danger-bg) 10%, transparent);
+}
+
 .resident-compose textarea.form-input {
   min-height: 112px;
   resize: vertical;
@@ -1120,6 +1159,32 @@
   color: var(--res-text-muted);
   margin: 0;
   font-weight: 500;
+}
+
+.resident-ticket-status-note {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.95rem 1rem;
+  border: 1px solid var(--res-border);
+  border-radius: var(--res-radius-lg);
+  background: var(--res-surface-muted);
+}
+
+.resident-ticket-status-note-label {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--res-text-muted);
+  letter-spacing: 0.01em;
+}
+
+.resident-ticket-status-note-value {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--res-text);
+  overflow-wrap: anywhere;
 }
 
 /* Image Viewer */

@@ -1727,6 +1727,7 @@ async function updateReportAssignment(req, res, next) {
         uid: requesterUid,
         role,
         email: req.user.email || '',
+        displayName: getUserDisplayName(req.user) || null,
         location: req.user.location || '',
       },
       assignedResponder,
@@ -1819,6 +1820,7 @@ async function archiveReport(req, res, next) {
         uid: requesterUid,
         role,
         email: req.user.email || '',
+        displayName: getUserDisplayName(req.user) || null,
       },
       progressNote: reason || null,
     };
@@ -1914,6 +1916,7 @@ async function unarchiveReport(req, res, next) {
         uid: requesterUid,
         role,
         email: req.user.email || '',
+        displayName: getUserDisplayName(req.user) || null,
       },
       progressNote: null,
     };
@@ -2117,6 +2120,7 @@ async function forwardReport(req, res, next) {
         uid: requesterUid,
         role,
         email: req.user.email || '',
+        displayName: getUserDisplayName(req.user) || null,
       },
       forwarding,
       progressNote: note || null,
@@ -2252,6 +2256,7 @@ async function markReportDuplicate(req, res, next) {
         uid: requesterUid,
         role,
         email: req.user?.email || '',
+        displayName: getUserDisplayName(req.user) || null,
       },
       duplicateOfReportId,
     };
@@ -2319,6 +2324,7 @@ async function revokeReportDuplicate(req, res, next) {
         uid: requesterUid,
         role,
         email: req.user?.email || '',
+        displayName: getUserDisplayName(req.user) || null,
       },
       duplicateOfReportId: currentMotherReportId,
     };
