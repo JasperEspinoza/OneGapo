@@ -10,21 +10,30 @@ function normalizeRoleKey(value) {
   return String(value || '').trim().toLowerCase();
 }
 
+function getEffectiveRoleKey(claims = {}) {
+  const roleKey = normalizeRoleKey(claims.roleKey || claims.role);
+  const customRoleKey = normalizeRoleKey(claims.customRoleName);
+
+  if (roleKey === 'responder' || customRoleKey === 'responder') {
+    return 'responder';
+  }
+
+  return roleKey || customRoleKey || '';
+}
+
 function mergeSessionProfile(tokenClaims = {}, sessionProfile = null) {
   const profile = sessionProfile?.profile || {};
 
-  const roleKey = normalizeRoleKey(tokenClaims.role || profile.role);
-  const customRoleKey = normalizeRoleKey(tokenClaims.customRoleName || profile.customRoleName);
-  let effectiveRole = roleKey || customRoleKey || '';
-  
-  if (roleKey === 'responder' || customRoleKey === 'responder') {
-    effectiveRole = 'responder';
-  }
-
-  return {
+  const merged = {
     ...tokenClaims,
     ...(profile || {}),
+  };
+  const effectiveRole = getEffectiveRoleKey(merged);
+
+  return {
+    ...merged,
     role: effectiveRole || tokenClaims.role || profile.role || '',
+    roleKey: effectiveRole,
     customRoleName: tokenClaims.customRoleName || profile.customRoleName || null,
     branchId: tokenClaims.branchId || profile.branchId || null,
     location: tokenClaims.location || profile.location || profile.branchName || null,

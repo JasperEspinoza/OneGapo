@@ -112,7 +112,7 @@ async function getResidentVerificationStatus(req, res, next) {
       profile: {
         uid: req.user?.uid || uid,
         email: req.user?.email || '',
-        role: req.user?.role || null,
+        role: req.user?.roleKey || req.user?.role || null,
         branchId: req.user?.branchId || null,
         branchName: req.user?.branchName || req.user?.location || null,
         location: req.user?.location || null,

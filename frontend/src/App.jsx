@@ -33,9 +33,24 @@ const Unauthorized = () => (
 const ADMIN_WORKSPACE_PERMISSIONS = ['add_branches', 'add_roles', 'add_staffs'];
 const REPORT_WORKSPACE_PERMISSIONS = ['view_reports', 'update_reports', 'close_reports', 'archive_reports'];
 
+function normalizeRole(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function getEffectiveRoleKey(userClaims = {}) {
+  const roleKey = normalizeRole(userClaims?.roleKey || userClaims?.role);
+  const customRoleKey = normalizeRole(userClaims?.customRoleName);
+
+  if (roleKey === 'responder' || customRoleKey === 'responder') {
+    return 'responder';
+  }
+
+  return roleKey || customRoleKey || '';
+}
+
 const HomeRoute = () => {
   const { userClaims } = useAuth();
-  const role = userClaims?.role;
+  const role = getEffectiveRoleKey(userClaims);
   const permissions = Array.isArray(userClaims?.permissions) ? userClaims.permissions : [];
   const canAccessAdminWorkspace =
     role === 'admin' ||
@@ -66,7 +81,7 @@ const HomeRoute = () => {
 
 const RootRoute = () => {
   const { currentUser, userClaims, accountVerified, loading } = useAuth();
-  const role = userClaims?.role;
+  const role = getEffectiveRoleKey(userClaims);
   const permissions = Array.isArray(userClaims?.permissions) ? userClaims.permissions : [];
   const canAccessAdminWorkspace =
     role === 'admin' || permissions.some((permission) => ADMIN_WORKSPACE_PERMISSIONS.includes(permission));

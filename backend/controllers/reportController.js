@@ -683,8 +683,19 @@ function hasPermission(reqUser, permission) {
   return permissions.includes(permission);
 }
 
+function getRequesterRoleKey(reqUser = {}) {
+  const roleKey = String(reqUser?.roleKey || reqUser?.role || '').trim().toLowerCase();
+  const customRoleKey = String(reqUser?.customRoleName || '').trim().toLowerCase();
+
+  if (roleKey === 'responder' || customRoleKey === 'responder') {
+    return 'responder';
+  }
+
+  return roleKey || customRoleKey || '';
+}
+
 function canManageReportLifecycle(reqUser) {
-  const role = reqUser?.role;
+  const role = getRequesterRoleKey(reqUser);
   if (role === 'admin') {
     return true;
   }
@@ -831,7 +842,7 @@ function buildPerformanceRows(locations, reports, getLocationName, getReportCove
 
 async function getPerformanceMetrics(req, res, next) {
   try {
-    const role = req.user?.role;
+    const role = getRequesterRoleKey(req.user);
     if (role !== 'staff' && role !== 'admin') {
       return res.status(403).json({ error: 'Only staff and admins can access performance metrics.' });
     }
@@ -1254,7 +1265,7 @@ async function listOwnReports(req, res, next) {
 
 async function listReportsForOperators(req, res, next) {
   try {
-    const role = req.user?.roleKey;
+    const role = getRequesterRoleKey(req.user);
     if (role !== 'staff' && role !== 'admin' && role !== 'responder') {
       return res.status(403).json({ error: 'Only staff, responders, and admins can access this endpoint.' });
     }
@@ -1726,7 +1737,7 @@ async function updateReportAssignment(req, res, next) {
 async function archiveReport(req, res, next) {
   try {
     const requesterUid = getRequesterUid(req);
-    const role = req.user?.role;
+    const role = getRequesterRoleKey(req.user);
     if (role !== 'staff' && role !== 'admin') {
       return res.status(403).json({ error: 'Only staff and admins can archive reports.' });
     }
@@ -1823,7 +1834,7 @@ async function archiveReport(req, res, next) {
 async function unarchiveReport(req, res, next) {
   try {
     const requesterUid = getRequesterUid(req);
-    const role = req.user?.role;
+    const role = getRequesterRoleKey(req.user);
     if (role !== 'staff' && role !== 'admin') {
       return res.status(403).json({ error: 'Only staff and admins can unarchive reports.' });
     }
@@ -1913,7 +1924,7 @@ async function unarchiveReport(req, res, next) {
 
 async function deleteReport(req, res, next) {
   try {
-    const role = req.user?.role;
+    const role = getRequesterRoleKey(req.user);
     if (role !== 'staff' && role !== 'admin') {
       return res.status(403).json({ error: 'Only staff and admins can delete reports.' });
     }
@@ -1988,7 +1999,7 @@ async function deleteReport(req, res, next) {
 
 async function listForwardTargets(req, res, next) {
   try {
-    const role = req.user?.role;
+    const role = getRequesterRoleKey(req.user);
     if (role !== 'staff' && role !== 'admin') {
       return res.status(403).json({ error: 'Only staff and admins can access forwarding targets.' });
     }
@@ -2013,7 +2024,7 @@ async function listForwardTargets(req, res, next) {
 async function forwardReport(req, res, next) {
   try {
     const requesterUid = getRequesterUid(req);
-    const role = req.user?.role;
+    const role = getRequesterRoleKey(req.user);
     if (role !== 'staff' && role !== 'admin') {
       return res.status(403).json({ error: 'Only staff and admins can forward reports.' });
     }
@@ -2143,7 +2154,7 @@ async function forwardReport(req, res, next) {
 async function markReportDuplicate(req, res, next) {
   try {
     const requesterUid = getRequesterUid(req);
-    const role = req.user?.role;
+    const role = getRequesterRoleKey(req.user);
     if (role !== 'staff' && role !== 'admin') {
       return res.status(403).json({ error: 'Only staff and admins can mark duplicate reports.' });
     }
@@ -2246,7 +2257,7 @@ async function markReportDuplicate(req, res, next) {
 async function revokeReportDuplicate(req, res, next) {
   try {
     const requesterUid = getRequesterUid(req);
-    const role = req.user?.role;
+    const role = getRequesterRoleKey(req.user);
     if (role !== 'staff' && role !== 'admin') {
       return res.status(403).json({ error: 'Only staff and admins can revoke duplicate reports.' });
     }
@@ -2312,7 +2323,7 @@ async function revokeReportDuplicate(req, res, next) {
 async function listNotifications(req, res, next) {
   try {
     const requesterUid = getRequesterUid(req);
-    const role = req.user?.role;
+    const role = getRequesterRoleKey(req.user);
     if (role !== 'staff' && role !== 'admin') {
       return res.status(403).json({ error: 'Only staff and admins can access notifications.' });
     }
@@ -2376,7 +2387,7 @@ async function listNotifications(req, res, next) {
 async function markNotificationRead(req, res, next) {
   try {
     const requesterUid = getRequesterUid(req);
-    const role = req.user?.role;
+    const role = getRequesterRoleKey(req.user);
     if (role !== 'staff' && role !== 'admin') {
       return res.status(403).json({ error: 'Only staff and admins can update notifications.' });
     }

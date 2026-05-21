@@ -4,6 +4,21 @@ import Navbar from './Navbar';
 
 const PRIMARY_ADMIN_EMAIL = 'onegapo2026@gmail.com';
 
+function normalizeRole(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function getEffectiveRoleKey(userClaims = {}) {
+  const roleKey = normalizeRole(userClaims?.roleKey || userClaims?.role);
+  const customRoleKey = normalizeRole(userClaims?.customRoleName);
+
+  if (roleKey === 'responder' || customRoleKey === 'responder') {
+    return 'responder';
+  }
+
+  return roleKey || customRoleKey || '';
+}
+
 function ProtectedRoute({
   allowedRoles,
   allowedPermissionsAny,
@@ -14,6 +29,7 @@ function ProtectedRoute({
   const { currentUser, userClaims, accountVerified, loading } = useAuth();
   const isPrimaryAdmin = currentUser?.email?.toLowerCase() === PRIMARY_ADMIN_EMAIL;
   const userPermissions = Array.isArray(userClaims?.permissions) ? userClaims.permissions : [];
+  const effectiveRole = getEffectiveRoleKey(userClaims);
 
   if (loading) {
     return (
@@ -28,7 +44,7 @@ function ProtectedRoute({
   }
 
   if (requireVerified) {
-    const isPrivileged = userClaims?.role === 'staff' || userClaims?.role === 'admin' || isPrimaryAdmin;
+    const isPrivileged = effectiveRole === 'staff' || effectiveRole === 'admin' || effectiveRole === 'responder' || isPrimaryAdmin;
     if (!isPrivileged && !accountVerified) {
       return <Navigate to="/verify-email" replace />;
     }
@@ -40,7 +56,7 @@ function ProtectedRoute({
     isPrimaryAdmin
   );
 
-  if (allowedRoles && !allowedRoles.includes(userClaims?.role) && !allowPrimaryAdminAsAdmin) {
+  if (allowedRoles && !allowedRoles.includes(effectiveRole) && !allowPrimaryAdminAsAdmin) {
     return <Navigate to="/unauthorized" replace />;
   }
 
