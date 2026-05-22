@@ -1372,7 +1372,6 @@ export default function AdminPanel() {
       { fontSize: 9 }
     );
 
-    addSectionGap();
     drawTable({
       title: 'Summary',
       columns: ['Metric', 'Value'],
