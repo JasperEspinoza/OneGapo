@@ -22,7 +22,7 @@ const STATUS_OPTIONS = [
   { value: 'in_progress', label: 'In Progress' },
   { value: 'in_review', label: 'In Review' },
   { value: 'resolved', label: 'Resolved' },
-  { value: 'rejected', label: 'Rejected' },
+  { value: 'rejected', label: 'Declined' },
 ];
 
 const STAFF_STATUS_OPTIONS = STATUS_OPTIONS.filter((option) => option.value !== 'submitted');
@@ -303,8 +303,8 @@ export default function StaffPanel() {
   const [resolveTargetReportId, setResolveTargetReportId] = useState('');
   const [resolveProgressNote, setResolveProgressNote] = useState('');
   const [resolvePhotos, setResolvePhotos] = useState([]);
-  const [rejectTargetReportId, setRejectTargetReportId] = useState('');
-  const [rejectReason, setRejectReason] = useState('');
+  const [declineTargetReportId, setDeclineTargetReportId] = useState('');
+  const [declineReason, setDeclineReason] = useState('');
   const [selectedReportResponderUid, setSelectedReportResponderUid] = useState('');
   const [assigningResponderReportId, setAssigningResponderReportId] = useState('');
   const [forwardTargets, setForwardTargets] = useState([]);
@@ -754,8 +754,8 @@ export default function StaffPanel() {
       setResolveTargetReportId('');
       setResolveProgressNote('');
       setResolvePhotos([]);
-      setRejectTargetReportId('');
-      setRejectReason('');
+      setDeclineTargetReportId('');
+      setDeclineReason('');
       return true;
     } catch (err) {
       setReportActionError(err.message || 'Failed to update report status.');
@@ -776,8 +776,8 @@ export default function StaffPanel() {
 
     if (nextStatus === 'rejected') {
       setReportActionError('');
-      setRejectTargetReportId(reportId);
-      setRejectReason('');
+      setDeclineTargetReportId(reportId);
+      setDeclineReason('');
       return;
     }
 
@@ -801,18 +801,18 @@ export default function StaffPanel() {
     });
   };
 
-  const handleSubmitRejection = async (event) => {
+  const handleSubmitDecline = async (event) => {
     event.preventDefault();
 
-    const note = rejectReason.trim();
-    if (!rejectTargetReportId) return;
+    const note = declineReason.trim();
+    if (!declineTargetReportId) return;
 
     if (!note) {
-      setReportActionError('A justification is required when rejecting a report.');
+      setReportActionError('A justification is required when declining a report.');
       return;
     }
 
-    await handleUpdateReportStatus(rejectTargetReportId, 'rejected', {
+    await handleUpdateReportStatus(declineTargetReportId, 'rejected', {
       progressNote: note,
     });
   };
@@ -1342,9 +1342,9 @@ export default function StaffPanel() {
     [reports, resolveTargetReportId]
   );
 
-  const rejectTargetReport = useMemo(
-    () => reports.find((report) => report.id === rejectTargetReportId) || null,
-    [reports, rejectTargetReportId]
+  const declineTargetReport = useMemo(
+    () => reports.find((report) => report.id === declineTargetReportId) || null,
+    [reports, declineTargetReportId]
   );
 
   const selectedReportPreviewImage = selectedReport ? getReportPreviewImage(selectedReport) : null;
@@ -2346,28 +2346,28 @@ export default function StaffPanel() {
                     </AppModal>
                   )}
 
-                  {rejectTargetReport && (
+                  {declineTargetReport && (
                     <AppModal
-                      title={`Reject report: ${rejectTargetReport.title || rejectTargetReport.id}`}
-                      titleId="staff-reject-report-title"
+                      title={`Decline report: ${declineTargetReport.title || declineTargetReport.id}`}
+                      titleId="staff-decline-report-title"
                       size="wide"
                       onClose={() => {
-                        if (updatingReportId === rejectTargetReport.id) return;
-                        setRejectTargetReportId('');
-                        setRejectReason('');
+                        if (updatingReportId === declineTargetReport.id) return;
+                        setDeclineTargetReportId('');
+                        setDeclineReason('');
                       }}
                     >
-                      <form className="ap-form" onSubmit={handleSubmitRejection}>
+                      <form className="ap-form" onSubmit={handleSubmitDecline}>
                         <div>
-                          <label htmlFor="reject-reason-note" className="form-label">Rejection Reason</label>
+                          <label htmlFor="decline-reason-note" className="form-label">Decline reason</label>
                           <textarea
-                            id="reject-reason-note"
+                            id="decline-reason-note"
                             className="form-input"
                             rows={4}
-                            placeholder="Provide a required justification for rejecting this report."
-                            value={rejectReason}
-                            onChange={(event) => setRejectReason(event.target.value)}
-                            disabled={updatingReportId === rejectTargetReport.id}
+                            placeholder="Provide a required justification for declining this report."
+                            value={declineReason}
+                            onChange={(event) => setDeclineReason(event.target.value)}
+                            disabled={updatingReportId === declineTargetReport.id}
                             required
                           />
                         </div>
@@ -2376,18 +2376,18 @@ export default function StaffPanel() {
                           <button
                             type="submit"
                             className="ap-btn-danger"
-                            disabled={updatingReportId === rejectTargetReport.id}
+                            disabled={updatingReportId === declineTargetReport.id}
                           >
-                            {updatingReportId === rejectTargetReport.id ? 'Rejecting...' : 'Reject report'}
+                            {updatingReportId === declineTargetReport.id ? 'Declining...' : 'Decline report'}
                           </button>
                           <button
                             type="button"
                             className="ap-btn-outline"
                             onClick={() => {
-                              setRejectTargetReportId('');
-                              setRejectReason('');
+                              setDeclineTargetReportId('');
+                              setDeclineReason('');
                             }}
-                            disabled={updatingReportId === rejectTargetReport.id}
+                            disabled={updatingReportId === declineTargetReport.id}
                           >
                             Cancel
                           </button>

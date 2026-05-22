@@ -112,7 +112,7 @@ const REPORT_STATUS_FILTER_OPTIONS = [
   { value: 'submitted', label: 'Submitted' },
   { value: 'in_review', label: 'In Review' },
   { value: 'resolved', label: 'Resolved' },
-  { value: 'rejected', label: 'Rejected' },
+  { value: 'rejected', label: 'Declined' },
 ];
 
 const OPERATIONAL_ROLES = new Set(['staff', 'admin']);

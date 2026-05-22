@@ -617,8 +617,64 @@ async function hydrateDuplicateReport(db, report, cache = new Map(), chain = new
     },
     isDuplicateChild: true,
     status: hydratedMother.status || report.status,
-    resolution: hydratedMother.resolution || report.resolution,
+    resolution: hydratedMother.resolution ?? report.resolution ?? null,
+    auditTrail: Array.isArray(hydratedMother.auditTrail) ? hydratedMother.auditTrail : (Array.isArray(report.auditTrail) ? report.auditTrail : []),
+    lifecycle: hydratedMother.lifecycle && typeof hydratedMother.lifecycle === 'object'
+      ? hydratedMother.lifecycle
+      : (report.lifecycle && typeof report.lifecycle === 'object' ? report.lifecycle : null),
+    sla: hydratedMother.sla && typeof hydratedMother.sla === 'object'
+      ? hydratedMother.sla
+      : (report.sla && typeof report.sla === 'object' ? report.sla : null),
+    lastUpdatedBy: hydratedMother.lastUpdatedBy || report.lastUpdatedBy || null,
   };
+}
+
+function buildDuplicateMirrorPayload(report) {
+  return {
+    status: report?.status || 'submitted',
+    resolution: report?.resolution ?? null,
+    auditTrail: Array.isArray(report?.auditTrail) ? report.auditTrail : [],
+    lifecycle: report?.lifecycle && typeof report.lifecycle === 'object' ? report.lifecycle : null,
+    sla: report?.sla && typeof report.sla === 'object' ? report.sla : null,
+    lastUpdatedBy: report?.lastUpdatedBy || null,
+  };
+}
+
+async function syncDuplicateChildrenFromSource(db, sourceReport, { excludeIds = [] } = {}) {
+  const sourceReportId = String(sourceReport?.id || '').trim();
+  if (!sourceReportId) {
+    return;
+  }
+
+  const childSnap = await db
+    .collection('reports')
+    .where('duplicateOfReportId', '==', sourceReportId)
+    .get();
+
+  if (childSnap.empty) {
+    return;
+  }
+
+  const mirrorPayload = buildDuplicateMirrorPayload(sourceReport);
+  const excluded = new Set(excludeIds.map((value) => String(value || '').trim()).filter(Boolean));
+  const batch = db.batch();
+  let hasUpdates = false;
+
+  childSnap.docs.forEach((doc) => {
+    if (excluded.has(doc.id)) {
+      return;
+    }
+
+    hasUpdates = true;
+    batch.update(doc.ref, {
+      ...mirrorPayload,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  });
+
+  if (hasUpdates) {
+    await batch.commit();
+  }
 }
 
 async function hydrateReportsWithDuplicates(db, reports) {
@@ -1413,8 +1469,21 @@ async function updateReportStatus(req, res, next) {
       }
     }
 
-    const currentReport = snap.data();
-    const previousStatus = String(currentReport?.status || 'submitted').trim().toLowerCase();
+    const currentReport = normalizeReportRecord(safeDocData(snap), snap.id);
+    const linkedMotherReportId = String(currentReport?.duplicateOfReportId || '').trim();
+    let updateRef = ref;
+    let updateTargetReport = currentReport;
+
+    if (linkedMotherReportId) {
+      const motherRef = db.collection('reports').doc(linkedMotherReportId);
+      const motherSnap = await motherRef.get();
+      if (motherSnap.exists) {
+        updateRef = motherRef;
+        updateTargetReport = normalizeReportRecord(safeDocData(motherSnap), motherSnap.id);
+      }
+    }
+
+    const previousStatus = String(updateTargetReport?.status || 'submitted').trim().toLowerCase();
 
     const resolutionFiles = Array.isArray(req.files) ? req.files : [];
 
@@ -1451,14 +1520,14 @@ async function updateReportStatus(req, res, next) {
     }
 
     const nowIso = new Date().toISOString();
-    const tier = Number(currentReport?.tier || currentReport?.sla?.tier || resolveReportTier({
-      category: currentReport?.category,
-      title: currentReport?.title,
-      description: currentReport?.description,
+    const tier = Number(updateTargetReport?.tier || updateTargetReport?.sla?.tier || resolveReportTier({
+      category: updateTargetReport?.category,
+      title: updateTargetReport?.title,
+      description: updateTargetReport?.description,
     }));
-    const createdAtMs = toMillis(currentReport?.createdAt) || Date.now();
+    const createdAtMs = toMillis(updateTargetReport?.createdAt) || Date.now();
     const fallbackSla = createInitialSla(tier, createdAtMs);
-    const existingSla = currentReport?.sla && typeof currentReport.sla === 'object' ? currentReport.sla : fallbackSla;
+    const existingSla = updateTargetReport?.sla && typeof updateTargetReport.sla === 'object' ? updateTargetReport.sla : fallbackSla;
     const stageState = {
       ...buildInitialStageState(tier),
       ...(existingSla.stageState || {}),
@@ -1471,7 +1540,7 @@ async function updateReportStatus(req, res, next) {
       inspectedAt: null,
       scheduledActionAt: null,
       resolvedAt: null,
-      ...(currentReport?.lifecycle && typeof currentReport.lifecycle === 'object' ? currentReport.lifecycle : {}),
+      ...(updateTargetReport?.lifecycle && typeof updateTargetReport.lifecycle === 'object' ? updateTargetReport.lifecycle : {}),
     };
 
     if (status !== 'submitted' && stageState.acknowledgment === 'pending') {
@@ -1512,7 +1581,7 @@ async function updateReportStatus(req, res, next) {
     }
 
     const previewReport = {
-      ...currentReport,
+      ...updateTargetReport,
       status,
       tier,
       lifecycle,
@@ -1596,11 +1665,19 @@ async function updateReportStatus(req, res, next) {
       };
     }
 
-    await ref.update(updates);
+    await updateRef.update(updates);
 
-    emitReportsRefresh(reportId);
+    const refreshedTargetSnap = await updateRef.get();
+    const refreshedTarget = normalizeReportRecord(safeDocData(refreshedTargetSnap), refreshedTargetSnap.id);
 
-    const updatedSnap = await ref.get();
+    await syncDuplicateChildrenFromSource(db, refreshedTarget, {
+      excludeIds: [refreshedTarget.id],
+    });
+
+    emitReportsRefresh(updateRef.id);
+
+    const responseRef = linkedMotherReportId ? ref : updateRef;
+    const updatedSnap = await responseRef.get();
     const data = updatedSnap.data();
 
     return res.json({
@@ -2273,6 +2350,8 @@ async function markReportDuplicate(req, res, next) {
       },
       auditTrail: admin.firestore.FieldValue.arrayUnion(auditEntry),
     });
+
+    await syncDuplicateChildrenFromSource(db, motherReport);
 
     emitReportsRefresh(reportId);
 

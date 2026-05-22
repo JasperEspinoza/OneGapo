@@ -159,7 +159,7 @@ function getReportStatusNote(report) {
 
 function getReportStatusNoteLabel(report) {
   const status = getReportStatusKey(report?.status);
-  if (status === 'rejected') return 'Rejection reason';
+  if (status === 'rejected') return 'Decline reason';
   if (status === 'resolved') return 'Resolution note';
   return 'Status note';
 }
