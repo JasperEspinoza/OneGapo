@@ -1412,7 +1412,9 @@ async function updateReportStatus(req, res, next) {
     }
 
     const reportId = String(req.params?.reportId || '').trim();
-    const status = String(req.body?.status || '').trim().toLowerCase();
+    let status = String(req.body?.status || '').trim().toLowerCase();
+    // Accept legacy 'rejected' input as 'declined' for backward compatibility
+    if (status === 'rejected') status = 'declined';
     const progressNote = String(req.body?.progressNote || '').trim();
 
     if (!REPORT_STATUSES.includes(status)) {
