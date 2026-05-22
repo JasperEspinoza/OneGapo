@@ -59,7 +59,11 @@ function formatReportDate(value) {
 }
 
 function normalizeStatus(status) {
-  return String(status || 'submitted').replace('_', ' ');
+  return getReportStatusKey(status).replace(/_/g, ' ');
+}
+
+function getReportStatusKey(status) {
+  return String(status || 'submitted').trim().toLowerCase().replace(/\s+/g, '_');
 }
 
 
@@ -331,6 +335,7 @@ export default function ResidentHub({ viewMode = 'resident' }) {
   const [focusIndicator, setFocusIndicator] = useState({ visible: false, left: 0, top: 0 });
   const dismissedAlertIdsRef = useRef(new Set());
   const residentSocketRef = useRef(null);
+  const residentRefreshInFlightRef = useRef(null);
 
   // Attempt to focus the camera at a normalized point (nx, ny) where 0..1 range
   const attemptFocusAtPoint = async (nx, ny) => {
@@ -547,6 +552,21 @@ export default function ResidentHub({ viewMode = 'resident' }) {
     }
   }, [api, applyReportsSnapshot, isResponder, currentUser?.uid]);
 
+  const refreshResidentReports = useCallback(() => {
+    if (residentRefreshInFlightRef.current) {
+      return residentRefreshInFlightRef.current;
+    }
+
+    const refreshPromise = loadMyReports({ silent: true }).finally(() => {
+      if (residentRefreshInFlightRef.current === refreshPromise) {
+        residentRefreshInFlightRef.current = null;
+      }
+    });
+
+    residentRefreshInFlightRef.current = refreshPromise;
+    return refreshPromise;
+  }, [loadMyReports]);
+
   useEffect(() => {
     loadMyReports();
   }, [loadMyReports]);
@@ -604,7 +624,7 @@ export default function ResidentHub({ viewMode = 'resident' }) {
 
         const socketUrl = getSocketServerUrl();
         if (!socketUrl) {
-          loadMyReports({ silent: true });
+          refreshResidentReports();
           return;
         }
 
@@ -620,6 +640,7 @@ export default function ResidentHub({ viewMode = 'resident' }) {
           // eslint-disable-next-line no-console
           console.debug('[client][resident] socket connected', { socketId: socket.id });
           setReportsLoading(false);
+          refreshResidentReports();
         });
 
         socket.on('reports:data', (payload) => {
@@ -633,21 +654,16 @@ export default function ResidentHub({ viewMode = 'resident' }) {
 
         socket.on('reports:created', (report) => {
           if (!active) return;
-          // only process if this belongs to the current user
-          if (!report || String(report?.reporter?.uid || '') !== String(currentUser.uid)) return;
           // eslint-disable-next-line no-console
           console.debug('[client][resident] reports:created', { id: report.id });
-          applyReportsSnapshot([...(Array.isArray(myReports) ? myReports : []), report]);
+          refreshResidentReports();
         });
 
         socket.on('reports:modified', (report) => {
           if (!active) return;
-          if (!report || String(report?.reporter?.uid || '') !== String(currentUser.uid)) return;
           // eslint-disable-next-line no-console
           console.debug('[client][resident] reports:modified', { id: report.id });
-          setMyReports((prev) => prev.map((r) => (r.id === report.id ? { ...r, ...report } : r)));
-          setActiveTicketReport((prev) => (prev?.id === report.id ? { ...prev, ...report } : prev));
-          setActiveApprovalReport((prev) => (prev?.id === report.id ? { ...prev, ...report } : prev));
+          refreshResidentReports();
         });
 
         socket.on('reports:deleted', ({ id } = {}) => {
@@ -655,14 +671,14 @@ export default function ResidentHub({ viewMode = 'resident' }) {
           if (!id) return;
           // eslint-disable-next-line no-console
           console.debug('[client][resident] reports:deleted', { id });
-          setMyReports((prev) => prev.filter((r) => r.id !== id));
+          refreshResidentReports();
         });
 
         socket.on('reports:refresh', () => {
           if (!active) return;
           // eslint-disable-next-line no-console
           console.debug('[client][resident] reports:refresh');
-          loadMyReports({ silent: true });
+          refreshResidentReports();
         });
 
         socket.on('connect_error', (err) => {
@@ -670,7 +686,7 @@ export default function ResidentHub({ viewMode = 'resident' }) {
           // eslint-disable-next-line no-console
           console.warn('[client][resident] socket connect_error', err && err.message ? err.message : err);
           // Fall back to HTTP fetch when socket connection is unavailable.
-          loadMyReports({ silent: true });
+          refreshResidentReports();
         });
 
         socket.on('disconnect', (reason) => {
@@ -680,7 +696,7 @@ export default function ResidentHub({ viewMode = 'resident' }) {
         });
       } catch {
         if (!active) return;
-        loadMyReports({ silent: true });
+        refreshResidentReports();
       }
     };
 
@@ -695,7 +711,7 @@ export default function ResidentHub({ viewMode = 'resident' }) {
         residentSocketRef.current = null;
       }
     };
-  }, [applyReportsSnapshot, currentUser, loadMyReports, isResponder]);
+  }, [applyReportsSnapshot, currentUser, isResponder, loadMyReports, refreshResidentReports]);
 
   useEffect(() => {
     if (isResponder || !currentUser) return undefined;
@@ -708,7 +724,7 @@ export default function ResidentHub({ viewMode = 'resident' }) {
         socket.connect();
       }
 
-      loadMyReports({ silent: true });
+      refreshResidentReports();
     };
 
     const handleVisibilityChange = () => {
@@ -739,7 +755,7 @@ export default function ResidentHub({ viewMode = 'resident' }) {
       window.removeEventListener('pageshow', handlePageShow);
       window.removeEventListener('online', handleOnline);
     };
-  }, [currentUser, isResponder, loadMyReports]);
+  }, [currentUser, isResponder, refreshResidentReports]);
 
   useEffect(() => {
     const handleInstallPrompt = (event) => {

@@ -727,6 +727,18 @@ function toNotificationDto(doc) {
   };
 }
 
+function emitReportsRefresh(reportId) {
+  try {
+    const socketInstance = require('../realtime/socketInstance');
+    const io = socketInstance.get && socketInstance.get();
+    if (io && typeof io.emit === 'function') {
+      io.emit('reports:refresh', reportId ? { reportId } : {});
+    }
+  } catch {
+    // no-op
+  }
+}
+
 function getReportResolvedAtMs(report) {
   if (String(report?.status || '').toLowerCase() !== 'resolved') {
     return 0;
@@ -1181,17 +1193,7 @@ async function createReport(req, res, next) {
 
     await reportRef.set(payload);
 
-    // Emit a lightweight refresh event so connected operator clients can reload
-    try {
-      const socketInstance = require('../realtime/socketInstance');
-      const io = socketInstance.get();
-      if (io) {
-        // broadcast a hint that reports changed; clients may react by reloading
-        io.emit('reports:refresh', { reportId: reportRef.id });
-      }
-    } catch {
-      // ignore failures to emit realtime event
-    }
+    emitReportsRefresh(reportRef.id);
 
     try {
       await notifyUsersForEmergencySubmission({
@@ -1596,17 +1598,7 @@ async function updateReportStatus(req, res, next) {
 
     await ref.update(updates);
 
-    try {
-      const socketInstance = require('../realtime/socketInstance');
-      const io = socketInstance.get && socketInstance.get();
-      if (io && typeof io.emit === 'function') {
-        // Ask connected clients to refresh their reports list. Clients will
-        // re-fetch via the API and the backend enforces access control.
-        io.emit('reports:refresh');
-      }
-    } catch {
-      // no-op
-    }
+    emitReportsRefresh(reportId);
 
     const updatedSnap = await ref.get();
     const data = updatedSnap.data();
@@ -1745,6 +1737,8 @@ async function updateReportAssignment(req, res, next) {
       auditTrail: admin.firestore.FieldValue.arrayUnion(auditEntry),
     });
 
+    emitReportsRefresh(reportId);
+
     const updatedSnap = await ref.get();
     const data = updatedSnap.data() || {};
     return res.json({
@@ -1842,6 +1836,8 @@ async function archiveReport(req, res, next) {
       auditTrail: admin.firestore.FieldValue.arrayUnion(auditEntry),
     });
 
+    emitReportsRefresh(reportId);
+
     const updatedSnap = await ref.get();
     const data = updatedSnap.data() || {};
 
@@ -1934,6 +1930,8 @@ async function unarchiveReport(req, res, next) {
       auditTrail: admin.firestore.FieldValue.arrayUnion(auditEntry),
     });
 
+    emitReportsRefresh(reportId);
+
     const updatedSnap = await ref.get();
     const data = updatedSnap.data() || {};
 
@@ -2016,6 +2014,8 @@ async function deleteReport(req, res, next) {
     }
 
     await ref.delete();
+
+    emitReportsRefresh(reportId);
 
     return res.json({
       message: 'Report deleted successfully.',
@@ -2136,6 +2136,8 @@ async function forwardReport(req, res, next) {
       },
       auditTrail: admin.firestore.FieldValue.arrayUnion(auditEntry),
     });
+
+    emitReportsRefresh(reportId);
 
     const staffSnap = await db.collection('users').where('branchId', '==', targetBranch.id).get();
     const staffRecipients = staffSnap.docs
@@ -2272,6 +2274,8 @@ async function markReportDuplicate(req, res, next) {
       auditTrail: admin.firestore.FieldValue.arrayUnion(auditEntry),
     });
 
+    emitReportsRefresh(reportId);
+
     const updatedSnap = await reportRef.get();
     const updated = normalizeReportRecord(safeDocData(updatedSnap), updatedSnap.id);
     const hydrated = await hydrateDuplicateReport(db, updated);
@@ -2339,6 +2343,8 @@ async function revokeReportDuplicate(req, res, next) {
       },
       auditTrail: admin.firestore.FieldValue.arrayUnion(auditEntry),
     });
+
+    emitReportsRefresh(reportId);
 
     const updatedSnap = await reportRef.get();
     const updated = normalizeReportRecord(safeDocData(updatedSnap), updatedSnap.id);
