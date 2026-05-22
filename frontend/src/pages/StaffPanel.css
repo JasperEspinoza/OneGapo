@@ -260,10 +260,10 @@
   border-color: var(--status-resolved-border);
 }
 
-.ss-status-rejected {
-  color: var(--status-rejected-text);
-  background: var(--status-rejected-bg);
-  border-color: var(--status-rejected-border);
+.ss-status-declined {
+  color: var(--status-declined-text);
+  background: var(--status-declined-bg);
+  border-color: var(--status-declined-border);
 }
 
 .ss-status-archived {

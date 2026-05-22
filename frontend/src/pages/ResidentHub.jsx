@@ -63,7 +63,8 @@ function normalizeStatus(status) {
 }
 
 function getReportStatusKey(status) {
-  return String(status || 'submitted').trim().toLowerCase().replace(/\s+/g, '_');
+  const key = String(status || 'submitted').trim().toLowerCase().replace(/\s+/g, '_');
+  return key === 'rejected' ? 'declined' : key;
 }
 
 
@@ -159,7 +160,7 @@ function getReportStatusNote(report) {
 
 function getReportStatusNoteLabel(report) {
   const status = getReportStatusKey(report?.status);
-  if (status === 'rejected') return 'Decline reason';
+  if (status === 'declined') return 'Decline reason';
   if (status === 'resolved') return 'Resolution note';
   return 'Status note';
 }
@@ -1645,7 +1646,7 @@ export default function ResidentHub({ viewMode = 'resident' }) {
                   ) : null}
 
                   {/* Responder action buttons */}
-                  {isResponder && !isResolved && String(activeTicketReport?.status || '').toLowerCase() !== 'rejected' ? (
+                  {isResponder && !isResolved && String(activeTicketReport?.status || '').toLowerCase() !== 'declined' ? (
                     <div className="resident-report-actions">
                       {String(activeTicketReport?.status || '').toLowerCase() !== 'in_progress' ? (
                         <button
