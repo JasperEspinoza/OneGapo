@@ -112,7 +112,7 @@ const REPORT_STATUS_FILTER_OPTIONS = [
   { value: 'submitted', label: 'Submitted' },
   { value: 'in_review', label: 'In Review' },
   { value: 'resolved', label: 'Resolved' },
-  { value: 'declined', label: 'Declined' },
+  { value: 'rejected', label: 'Declined' },
 ];
 
 const OPERATIONAL_ROLES = new Set(['staff', 'admin']);
@@ -250,8 +250,7 @@ function getReportCategoryLabel(category) {
 }
 
 function getReportStatusKey(status) {
-  const key = String(status || 'submitted').trim().toLowerCase().replace(/\s+/g, '_');
-  return key === 'rejected' ? 'declined' : key;
+  return String(status || 'submitted').trim().toLowerCase().replace(/\s+/g, '_');
 }
 
 function getReportStatusLabel(status) {
@@ -1574,13 +1573,12 @@ export default function AdminPanel() {
       submitted: 0,
       in_review: 0,
       resolved: 0,
-      declined: 0,
+      rejected: 0,
       archived: 0,
     };
 
     reportPreStatusRows.forEach((report) => {
-      let key = getReportStatusKey(report?.status);
-      if (key === 'rejected') key = 'declined';
+      const key = getReportStatusKey(report?.status);
       if (Object.prototype.hasOwnProperty.call(counts, key)) {
         counts[key] += 1;
       }

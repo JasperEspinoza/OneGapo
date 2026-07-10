@@ -22,7 +22,7 @@ const STATUS_OPTIONS = [
   { value: 'in_progress', label: 'In Progress' },
   { value: 'in_review', label: 'In Review' },
   { value: 'resolved', label: 'Resolved' },
-  { value: 'declined', label: 'Declined' },
+  { value: 'rejected', label: 'Declined' },
 ];
 
 const STAFF_STATUS_OPTIONS = STATUS_OPTIONS.filter((option) => option.value !== 'submitted');
@@ -59,8 +59,7 @@ function normalizeStatus(status) {
 }
 
 function getStatusClass(status) {
-  let key = String(status || 'submitted').toLowerCase();
-  if (key === 'rejected') key = 'declined';
+  const key = String(status || 'submitted').toLowerCase();
   return `ss-status ss-status-${key}`;
 }
 
@@ -775,7 +774,7 @@ export default function StaffPanel() {
       return;
     }
 
-    if (nextStatus === 'declined') {
+    if (nextStatus === 'rejected') {
       setReportActionError('');
       setDeclineTargetReportId(reportId);
       setDeclineReason('');
@@ -813,7 +812,7 @@ export default function StaffPanel() {
       return;
     }
 
-    await handleUpdateReportStatus(declineTargetReportId, 'declined', {
+    await handleUpdateReportStatus(declineTargetReportId, 'rejected', {
       progressNote: note,
     });
   };
@@ -1334,7 +1333,7 @@ export default function StaffPanel() {
     const submitted = reports.filter((r) => r.status === 'submitted').length;
     const inReview = reports.filter((r) => r.status === 'in_review').length;
     const resolved = reports.filter((r) => r.status === 'resolved').length;
-    const rejected = reports.filter((r) => r.status === 'declined').length;
+    const rejected = reports.filter((r) => r.status === 'rejected').length;
     return { submitted, inReview, resolved, rejected };
   }, [reports]);
 

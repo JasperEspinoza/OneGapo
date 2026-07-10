@@ -1,7 +1,7 @@
 const admin = require('../config/firebaseAdmin');
 const { isCloudinaryConfigured, uploadBufferToCloudinary } = require('../services/cloudinaryService');
 
-const REPORT_STATUSES = ['submitted', 'in_progress', 'in_review', 'resolved', 'declined'];
+const REPORT_STATUSES = ['submitted', 'in_progress', 'in_review', 'resolved', 'rejected'];
 const BAJAC_BAJAC_BRANCHES = new Set(['east bajac bajac', 'west bajac bajac']);
 const HIGH_PRIORITY_REPORT_CATEGORIES = new Set(['disaster', 'safety']);
 const PENDING_SLA_STATUSES = new Set(['submitted', 'in_progress', 'in_review']);
@@ -1412,13 +1412,7 @@ async function updateReportStatus(req, res, next) {
     }
 
     const reportId = String(req.params?.reportId || '').trim();
-    function normalizeIncomingStatus(value) {
-      const key = String(value || '').trim().toLowerCase().replace(/\s+/g, '_');
-      if (['rejected', 'reject', 'declined', 'decline'].includes(key)) return 'declined';
-      return key;
-    }
-
-    let status = normalizeIncomingStatus(req.body?.status);
+    const status = String(req.body?.status || '').trim().toLowerCase();
     const progressNote = String(req.body?.progressNote || '').trim();
 
     if (!REPORT_STATUSES.includes(status)) {
@@ -1434,9 +1428,9 @@ async function updateReportStatus(req, res, next) {
       });
     }
 
-    if (status === 'declined' && (!progressNote || progressNote.trim() === '')) {
+    if (status === 'rejected' && (!progressNote || progressNote.trim() === '')) {
       return res.status(400).json({
-        error: 'A justification (progress note) is required when declining a report.',
+        error: 'A justification (progress note) is required when rejecting a report.',
       });
     }
 
@@ -1579,7 +1573,7 @@ async function updateReportStatus(req, res, next) {
       }
     }
 
-    if ((status === 'resolved' || status === 'declined') && stageState.resolution === 'pending') {
+    if ((status === 'resolved' || status === 'rejected') && stageState.resolution === 'pending') {
       stageState.resolution = 'met';
       if (!lifecycle.resolvedAt) {
         lifecycle.resolvedAt = nowIso;

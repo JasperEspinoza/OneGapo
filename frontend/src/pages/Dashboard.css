@@ -262,10 +262,10 @@
   color: var(--status-resolved-text);
 }
 
-.report-status-declined {
-  background: var(--status-declined-bg);
-  border-color: var(--status-declined-border);
-  color: var(--status-declined-text);
+.report-status-rejected {
+  background: var(--status-rejected-bg);
+  border-color: var(--status-rejected-border);
+  color: var(--status-rejected-text);
 }
 
 .report-item-meta {
