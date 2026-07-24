@@ -11,6 +11,30 @@ function normalizeText(value) {
   return String(value || '').trim();
 }
 
+function isValidDateOfBirth(value) {
+  const text = normalizeText(value);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return false;
+
+  const [yearText, monthText, dayText] = text.split('-');
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const date = new Date(`${text}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return false;
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return false;
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return date <= today;
+}
+
 /**
  * POST /api/auth/complete-registration
  *
@@ -22,8 +46,17 @@ function normalizeText(value) {
 async function completeResidentRegistration(req, res, next) {
   try {
     const { uid, role } = req.user;
+    const dateOfBirth = normalizeText(req.body?.dateOfBirth);
     const contactNumber = normalizeText(req.body?.contactNumber);
     const address = normalizeText(req.body?.address);
+
+    if (!dateOfBirth) {
+      return res.status(400).json({ error: 'Date of birth is required.' });
+    }
+
+    if (!isValidDateOfBirth(dateOfBirth)) {
+      return res.status(400).json({ error: 'Date of birth is invalid.' });
+    }
 
     if (!contactNumber) {
       return res.status(400).json({ error: 'Contact number is required.' });
@@ -56,6 +89,7 @@ async function completeResidentRegistration(req, res, next) {
       uid,
       fullName:  userRecord.displayName || '',
       email:     userRecord.email || '',
+      dateOfBirth,
       phone:     contactNumber,
       address,
       role:      'resident',

@@ -1,4 +1,4 @@
-import { CircleMarker, MapContainer, Polyline, TileLayer, useMap, useMapEvents } from 'react-leaflet';
+import { CircleMarker, MapContainer, Marker, Polyline, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -35,6 +35,7 @@ const REPORT_CATEGORY_COLOR_BY_KEY = REPORT_CATEGORY_LEGEND.reduce((acc, item) =
 
 const MAXIMIZE_ICON_LIGHT = '/assets/maximize-svgrepo-com.svg';
 const MAXIMIZE_ICON_DARK = '/assets/maximize-svgrepo-com%20(1).svg';
+const NEARBY_REPORT_DISTANCE_METERS = 50;
 
 function LocationMarker({ position, onPick }) {
   if (!onPick) {
@@ -130,6 +131,131 @@ function formatRouteDuration(durationSeconds) {
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
   return `${hours}h ${minutes}m`;
+}
+
+function toTimestampMs(value) {
+  if (!value) return Number.MAX_SAFE_INTEGER;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? Number.MAX_SAFE_INTEGER : value.getTime();
+  }
+  if (typeof value?.toDate === 'function') {
+    const dateValue = value.toDate();
+    return Number.isNaN(dateValue.getTime()) ? Number.MAX_SAFE_INTEGER : dateValue.getTime();
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? Number.MAX_SAFE_INTEGER : parsed.getTime();
+}
+
+function getDistanceMeters([latA, lngA], [latB, lngB]) {
+  const toRadians = (degrees) => degrees * (Math.PI / 180);
+  const radius = 6371000;
+  const deltaLat = toRadians(latB - latA);
+  const deltaLng = toRadians(lngB - lngA);
+  const sinLat = Math.sin(deltaLat / 2);
+  const sinLng = Math.sin(deltaLng / 2);
+
+  const a = sinLat * sinLat
+    + Math.cos(toRadians(latA)) * Math.cos(toRadians(latB)) * sinLng * sinLng;
+  return 2 * radius * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function buildNearbyMarkerGroups(markers) {
+  const normalizedMarkers = markers.map((marker, index) => ({
+    ...marker,
+    createdAtMs: toTimestampMs(marker?.createdAt),
+    sourceIndex: index,
+  }));
+
+  const parents = normalizedMarkers.map((_, index) => index);
+
+  const findParent = (index) => {
+    if (parents[index] === index) return index;
+    parents[index] = findParent(parents[index]);
+    return parents[index];
+  };
+
+  const union = (leftIndex, rightIndex) => {
+    const leftParent = findParent(leftIndex);
+    const rightParent = findParent(rightIndex);
+    if (leftParent !== rightParent) {
+      parents[rightParent] = leftParent;
+    }
+  };
+
+  for (let leftIndex = 0; leftIndex < normalizedMarkers.length; leftIndex += 1) {
+    const leftMarker = normalizedMarkers[leftIndex];
+
+    for (let rightIndex = leftIndex + 1; rightIndex < normalizedMarkers.length; rightIndex += 1) {
+      const rightMarker = normalizedMarkers[rightIndex];
+      if (leftMarker.category !== rightMarker.category) continue;
+
+      const distanceMeters = getDistanceMeters(leftMarker.position, rightMarker.position);
+      if (distanceMeters <= NEARBY_REPORT_DISTANCE_METERS) {
+        union(leftIndex, rightIndex);
+      }
+    }
+  }
+
+  const groupedIndexes = new Map();
+
+  normalizedMarkers.forEach((marker, index) => {
+    const parent = findParent(index);
+    if (!groupedIndexes.has(parent)) {
+      groupedIndexes.set(parent, []);
+    }
+    groupedIndexes.get(parent).push(index);
+  });
+
+  const groupedMarkers = new Map();
+
+  groupedIndexes.forEach((indexes) => {
+    if (indexes.length <= 1) return;
+
+    const orderedIndexes = indexes.slice().sort((leftIndex, rightIndex) => {
+      const leftMarker = normalizedMarkers[leftIndex];
+      const rightMarker = normalizedMarkers[rightIndex];
+      return leftMarker.createdAtMs - rightMarker.createdAtMs || leftMarker.sourceIndex - rightMarker.sourceIndex;
+    });
+
+    orderedIndexes.forEach((markerIndex, clusterRank) => {
+      groupedMarkers.set(markerIndex, {
+        clusterId: orderedIndexes.join('-'),
+        clusterRank,
+        clusterSize: orderedIndexes.length,
+        isClusterLeader: clusterRank === 0,
+        isClustered: true,
+      });
+    });
+  });
+
+  return normalizedMarkers.map((marker, index) => ({
+    ...marker,
+    proximityGroup: groupedMarkers.get(index) || null,
+  }));
+}
+
+function buildProximityMarkerIcon(marker) {
+  const clusterRank = Number(marker?.proximityGroup?.clusterRank || 0);
+  const clusterSize = Number(marker?.proximityGroup?.clusterSize || 1);
+  const rankLabel = clusterSize > 1 ? String(clusterRank + 1) : '';
+
+  return L.divIcon({
+    className: 'report-map-pin-icon',
+    html: `
+      <span
+        class="report-map-pin${clusterRank === 0 ? ' report-map-pin-primary' : ' report-map-pin-secondary'}"
+        style="--report-map-pin-color: ${marker?.color || '#14b8a6'};"
+      >
+        <span class="report-map-pin-ring" aria-hidden="true"></span>
+        <span class="report-map-pin-core" aria-hidden="true"></span>
+        <span class="report-map-pin-label" aria-hidden="true">${rankLabel || '•'}</span>
+      </span>
+    `,
+    iconSize: [34, 34],
+    iconAnchor: [17, 17],
+  });
 }
 
 const OLONGAPO_BARANGAYS = [
@@ -315,6 +441,7 @@ function HeatmapLayer({ markers, enabled }) {
 
 function MapCanvas({ selectedPosition, safeMarkers, autoFitMarkers, tileSource, handleTileError, onPick, expandKey, activeMarkerId, onMarkerClick, routePath, userPosition, freezeMarkerAutoFit, showHeatmap }) {
   const initialMarkers = autoFitMarkers.length > 0 ? autoFitMarkers : safeMarkers;
+  const renderedMarkers = useMemo(() => buildNearbyMarkerGroups(safeMarkers), [safeMarkers]);
 
   return (
     <MapContainer
@@ -334,19 +461,40 @@ function MapCanvas({ selectedPosition, safeMarkers, autoFitMarkers, tileSource, 
       <RecenterOnMarkers markers={initialMarkers} disabled={Boolean(selectedPosition)} freezeAfterFirstFit={freezeMarkerAutoFit} />
       <InvalidateMapSize expandKey={expandKey} />
       <HeatmapLayer markers={safeMarkers} enabled={showHeatmap} />
-      {!showHeatmap && safeMarkers.map((marker) => (
-        <CircleMarker
-          key={marker.id}
-          center={marker.position}
-          radius={marker.id === activeMarkerId ? 9 : 7}
-          pathOptions={{ color: marker.color, fillColor: marker.color, fillOpacity: 0.9, weight: marker.id === activeMarkerId ? 3 : 2 }}
-          eventHandlers={{
-            click: () => {
-              if (onMarkerClick) onMarkerClick(marker);
-            },
-          }}
-        />
-      ))}
+      {!showHeatmap && renderedMarkers.map((marker) => {
+        const isClustered = Boolean(marker?.proximityGroup?.isClustered);
+        const isActive = marker.id === activeMarkerId;
+
+        if (isClustered) {
+          return (
+            <Marker
+              key={marker.id}
+              position={marker.position}
+              icon={buildProximityMarkerIcon(marker)}
+              title={marker.title || 'Report location'}
+              eventHandlers={{
+                click: () => {
+                  if (onMarkerClick) onMarkerClick(marker);
+                },
+              }}
+            />
+          );
+        }
+
+        return (
+          <CircleMarker
+            key={marker.id}
+            center={marker.position}
+            radius={isActive ? 9 : 7}
+            pathOptions={{ color: marker.color, fillColor: marker.color, fillOpacity: 0.9, weight: isActive ? 3 : 2 }}
+            eventHandlers={{
+              click: () => {
+                if (onMarkerClick) onMarkerClick(marker);
+              },
+            }}
+          />
+        );
+      })}
       {userPosition ? (
         <CircleMarker
           center={userPosition}
@@ -711,6 +859,11 @@ export default function ReportLocationMap({
     if (!enableFullscreenBarangayFilter || fullscreenBarangayFilter === 'all') return categoryFilteredMarkers;
     return categoryFilteredMarkers.filter((marker) => extractBarangayFromMarker(marker) === fullscreenBarangayFilter);
   }, [categoryFilteredMarkers, enableFullscreenBarangayFilter, fullscreenBarangayFilter]);
+
+  const hasProximityGroups = useMemo(() => {
+    return buildNearbyMarkerGroups(fullscreenFilteredMarkers)
+      .some((marker) => Boolean(marker?.proximityGroup?.isClustered));
+  }, [fullscreenFilteredMarkers]);
 
   const preferredBarangayToken = useMemo(
     () => normalizeBarangayToken(preferredBarangay),
@@ -1157,6 +1310,9 @@ export default function ReportLocationMap({
                   {markerLegendItems.length > 0 ? (
                     <div className="report-map-fullscreen-legend" aria-label="Map report color legend">
                       <p className="report-map-fullscreen-legend-title">Report colors</p>
+                      {hasProximityGroups ? (
+                        <p className="report-map-fullscreen-legend-note">Nearby same-category reports are numbered in submit order. Marker 1 is the first submitted.</p>
+                      ) : null}
                       <ul className="report-map-fullscreen-legend-list">
                         {markerLegendItems.map((item) => (
                           <li key={item.key} className="report-map-fullscreen-legend-item">

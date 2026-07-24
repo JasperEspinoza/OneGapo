@@ -34,11 +34,36 @@ function isValidPhilippineMobileNumber(value) {
   return /^09\d{9}$/.test(normalized) || /^\+639\d{9}$/.test(normalized);
 }
 
+function isValidDateOfBirth(value) {
+  const text = String(value || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return false;
+
+  const [yearText, monthText, dayText] = text.split('-');
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const date = new Date(`${text}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return false;
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return false;
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return date <= today;
+}
+
 export default function Register() {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
 
   const [fullName, setFullName]   = useState('');
+  const [dateOfBirth, setDateOfBirth] = useState('');
   const [contactNumber, setContactNumber] = useState('');
   const [address, setAddress] = useState('');
   const [email,    setEmail]      = useState('');
@@ -62,7 +87,12 @@ export default function Register() {
 
     const trimmedContactNumber = contactNumber.trim();
     const trimmedAddress = address.trim();
+    const trimmedDateOfBirth = dateOfBirth.trim();
 
+    if (!trimmedDateOfBirth) return setError('Date of birth is required.');
+    if (!isValidDateOfBirth(trimmedDateOfBirth)) {
+      return setError('Enter a valid date of birth that is not in the future.');
+    }
     if (!trimmedContactNumber) return setError('Contact number is required.');
     if (!isValidPhilippineMobileNumber(trimmedContactNumber)) {
       return setError('Enter a valid Philippine mobile number (e.g. 09171234567 or +639171234567).');
@@ -97,6 +127,7 @@ export default function Register() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          dateOfBirth: trimmedDateOfBirth,
           contactNumber: trimmedContactNumber,
           address: trimmedAddress,
         }),
@@ -165,6 +196,21 @@ export default function Register() {
               onChange={(e) => setEmail(e.target.value)}
               className="form-input"
               placeholder="you@example.com"
+              disabled={loading}
+            />
+          </div>
+
+          <div>
+            <label htmlFor="dateOfBirth" className="form-label">Date of birth</label>
+            <input
+              id="dateOfBirth"
+              type="date"
+              required
+              value={dateOfBirth}
+              onChange={(e) => setDateOfBirth(e.target.value)}
+              className="form-input"
+              max={new Date().toISOString().split('T')[0]}
+              min="1900-01-01"
               disabled={loading}
             />
           </div>
@@ -259,6 +305,7 @@ export default function Register() {
               loading ||
               !fullName ||
               !email ||
+              !dateOfBirth ||
               !contactNumber.trim() ||
               !address.trim() ||
               !password ||
