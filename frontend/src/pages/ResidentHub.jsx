@@ -18,6 +18,37 @@ const REPORT_CATEGORIES = [
   { value: 'general', label: 'General Concern' },
 ];
 
+const REPORT_TEMPLATES = [
+  {
+    id: 'streetlight',
+    label: 'Streetlight issue',
+    category: 'safety',
+    title: 'Broken streetlight near the area',
+    description: 'The streetlight in this area is not working and the road is very dark at night. Please inspect it and restore the lighting as soon as possible.',
+  },
+  {
+    id: 'drainage',
+    label: 'Drainage clog',
+    category: 'sanitation',
+    title: 'Blocked drainage causing flooding',
+    description: 'Water is pooling and overflowing because the drainage channel is clogged. This is affecting the road and nearby homes and needs immediate attention.',
+  },
+  {
+    id: 'road',
+    label: 'Road damage',
+    category: 'infrastructure',
+    title: 'Damaged road surface needs repair',
+    description: 'The road surface is damaged with potholes and cracks that make travel unsafe. The issue needs repair and proper maintenance.',
+  },
+  {
+    id: 'emergency',
+    label: 'Urgent safety concern',
+    category: 'disaster',
+    title: 'Immediate safety hazard reported',
+    description: 'There is an urgent safety hazard in this location that may endanger residents or pedestrians. Please inspect and respond quickly.',
+  },
+];
+
 function normalizeCategoryKey(value) {
   return String(value || 'general').toLowerCase().trim() || 'general';
 }
@@ -869,12 +900,44 @@ export default function ResidentHub({ viewMode = 'resident' }) {
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
+  const handleApplyTemplate = (template) => {
+    setForm((prev) => ({
+      ...prev,
+      title: template.title,
+      description: template.description,
+      category: template.category,
+    }));
+    setSubmitError('');
+    setSubmitSuccess(`Loaded "${template.label}" template.`);
+    requestAnimationFrame(() => {
+      composeSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
+
   const handleAttachmentChange = (event, { append = false } = {}) => {
     const files = Array.from(event.target.files || []);
     if (!files.length) return;
+
+    const MAX_ATTACHMENTS = 3;
+    const MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024;
+    const validFiles = [];
+    const rejectedFiles = [];
+
+    files.forEach((file) => {
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        rejectedFiles.push(`${file.name} exceeds 25 MB.`);
+        return;
+      }
+      validFiles.push(file);
+    });
+
+    if (rejectedFiles.length) {
+      showSubmitFeedback('error', `Each image must be 25 MB or less. ${rejectedFiles.join(' ')}`);
+    }
+
     setAttachments((prev) => {
       const base = append ? prev : [];
-      const merged = [...base, ...files];
+      const merged = [...base, ...validFiles];
       const unique = [];
       const seen = new Set();
 
@@ -886,9 +949,9 @@ export default function ResidentHub({ viewMode = 'resident' }) {
         }
       });
 
-      const limited = unique.slice(0, 3);
-      if (unique.length > 3) {
-        showSubmitFeedback('error', 'You can attach up to 3 files per report. Extra files were ignored.');
+      const limited = unique.slice(0, MAX_ATTACHMENTS);
+      if (unique.length > MAX_ATTACHMENTS) {
+        showSubmitFeedback('error', `You can attach up to ${MAX_ATTACHMENTS} images per report. Extra images were ignored.`);
       }
       return limited;
     });
@@ -957,7 +1020,7 @@ export default function ResidentHub({ viewMode = 'resident' }) {
       const timestamp = new Date().getTime();
       const file = new File([blob], `camera-${timestamp}.jpg`, { type: 'image/jpeg' });
 
-      // Add to attachments (max 3)
+      // Add to attachments (max 3 images)
       setAttachments((prev) => {
         const unique = new Map(prev.map((f) => [`${f.name}-${f.size}`, f]));
         unique.set(`${file.name}-${file.size}`, file);
@@ -966,7 +1029,7 @@ export default function ResidentHub({ viewMode = 'resident' }) {
           // already full; keep as-is
         }
         if (unique.size > 3) {
-          showSubmitFeedback('error', 'You can attach up to 3 files per report. Extra photos were ignored.');
+          showSubmitFeedback('error', 'You can attach up to 3 images per report. Extra photos were ignored.');
         }
         return arr;
       });
@@ -1266,6 +1329,23 @@ export default function ResidentHub({ viewMode = 'resident' }) {
             {submitSuccess && <div className="dashboard-alert dashboard-alert-success">{submitSuccess}</div>}
 
             <form className="report-form" onSubmit={handleSubmitReport} noValidate>
+              <div className="resident-template-section">
+                <p className="resident-template-label">Quick templates</p>
+                <div className="resident-template-list">
+                  {REPORT_TEMPLATES.map((template) => (
+                    <button
+                      key={template.id}
+                      type="button"
+                      className="resident-template-btn"
+                      onClick={() => handleApplyTemplate(template)}
+                      disabled={submitting}
+                    >
+                      {template.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div>
                 <label className="form-label" htmlFor="resident-report-title">Title</label>
                 <input
@@ -1400,7 +1480,7 @@ export default function ResidentHub({ viewMode = 'resident' }) {
                   onChange={(event) => handleAttachmentChange(event, { append: true })}
                   disabled={submitting}
                 />
-                <p className="resident-attachment-note">You can attach up to 3 files total.</p>
+                <p className="resident-attachment-note">You can attach up to 3 images total. Each image must be 25 MB or less.</p>
                 {attachments.length > 0 ? (
                   <ul className="report-files-list">
                     {attachments.map((file, idx) => (

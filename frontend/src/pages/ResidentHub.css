@@ -600,6 +600,48 @@
   display: block;
 }
 
+.resident-template-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.resident-template-label {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--res-text-muted);
+}
+
+.resident-template-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.resident-template-btn {
+  border: 1px solid var(--res-border);
+  background: var(--res-surface-muted);
+  color: var(--res-text);
+  border-radius: 999px;
+  padding: 0.45rem 0.72rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.resident-template-btn:hover {
+  border-color: var(--res-primary);
+  color: var(--res-primary);
+  background: var(--res-primary-soft);
+}
+
+.resident-template-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
 .resident-compose .form-input,
 .resident-compose .form-select {
   width: 100%;
