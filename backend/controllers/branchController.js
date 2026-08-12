@@ -58,6 +58,26 @@ function branchKey(value) {
   return normalizeBranchToken(canonicalBranchName(value));
 }
 
+const APPROVED_BRANCH_LOOKUP = new Map(
+  DEFAULT_BRANCH_CATALOG.map((branch) => [branchKey(branch.name), { ...branch, name: canonicalBranchName(branch.name) }])
+);
+
+function getApprovedBranchRecord(name, type) {
+  const trimmedName = String(name || '').trim();
+  const targetType = String(type || '').trim().toLowerCase();
+  if (!trimmedName) return null;
+
+  const record = APPROVED_BRANCH_LOOKUP.get(branchKey(trimmedName));
+  if (!record) return null;
+
+  const normalizedType = String(record.type || '').trim().toLowerCase();
+  if (targetType && targetType !== normalizedType) {
+    return null;
+  }
+
+  return record;
+}
+
 /**
  * POST /api/admin/branches
  * Creates a new branch/barangay entity in Firestore.
@@ -67,8 +87,9 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 async function createBranch(req, res, next) {
   try {
     const { name, type, staffEmail } = req.body;
+    const trimmedName = String(name || '').trim();
 
-    if (!name || !type) {
+    if (!trimmedName || !type) {
       return res.status(400).json({ error: 'name and type are required.' });
     }
 
@@ -78,19 +99,20 @@ async function createBranch(req, res, next) {
       });
     }
 
-    const trimmedName = String(name).trim();
-    if (!trimmedName) {
-      return res.status(400).json({ error: 'name cannot be blank.' });
+    const approvedRecord = getApprovedBranchRecord(trimmedName, type);
+    if (!approvedRecord) {
+      return res.status(403).json({
+        error: 'Custom branch creation is disabled. Only the approved city barangay catalog is allowed.',
+      });
     }
-    const canonicalName = canonicalBranchName(trimmedName);
 
     if (staffEmail && !EMAIL_REGEX.test(staffEmail)) {
       return res.status(400).json({ error: 'Invalid staff email address format.' });
     }
 
     const db = admin.firestore();
+    const canonicalName = canonicalBranchName(trimmedName);
 
-    // Prevent duplicate names
     const existing = await db.collection('branches').get();
     const hasDuplicate = existing.docs.some((doc) => branchKey(doc.data()?.name) === branchKey(canonicalName));
     if (hasDuplicate) {
@@ -99,7 +121,7 @@ async function createBranch(req, res, next) {
 
     const ref = await db.collection('branches').add({
       name:      canonicalName,
-      type,
+      type:      approvedRecord.type,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       createdBy: req.user.uid,
     });
@@ -186,16 +208,20 @@ async function createBranch(req, res, next) {
 async function listBranches(req, res, next) {
   try {
     const snap = await admin.firestore().collection('branches').orderBy('name').get();
-    const branches = snap.docs.map((doc) => {
-      const data = doc.data() || {};
-      const canonicalName = canonicalBranchName(data.name || '');
-      return {
-        id: doc.id,
-        ...data,
-        name: canonicalName || String(data.name || ''),
-        createdAt: undefined,
-      };
-    });
+    const approvedNames = new Set(DEFAULT_BRANCH_CATALOG.map((branch) => branchKey(branch.name)));
+    const branches = snap.docs
+      .map((doc) => {
+        const data = doc.data() || {};
+        const canonicalName = canonicalBranchName(data.name || '');
+        return {
+          id: doc.id,
+          ...data,
+          name: canonicalName || String(data.name || ''),
+          createdAt: undefined,
+        };
+      })
+      .filter((branch) => approvedNames.has(branchKey(branch.name)));
+
     return res.json(branches);
   } catch (err) {
     return next(err);
@@ -279,6 +305,14 @@ async function updateBranch(req, res, next) {
       if (!trimmedName) {
         return res.status(400).json({ error: 'name cannot be blank.' });
       }
+
+      const approvedRecord = getApprovedBranchRecord(trimmedName, type ?? undefined);
+      if (!approvedRecord) {
+        return res.status(403).json({
+          error: 'Only the approved city barangay catalog can be used. Custom branch names are disabled.',
+        });
+      }
+
       const canonicalName = canonicalBranchName(trimmedName);
       const existing = await db.collection('branches').get();
       const duplicate = existing.docs.find((doc) => doc.id !== id && branchKey(doc.data()?.name) === branchKey(canonicalName));
@@ -292,6 +326,13 @@ async function updateBranch(req, res, next) {
       if (!ALLOWED_TYPES.includes(type)) {
         return res.status(400).json({
           error: `type must be one of: ${ALLOWED_TYPES.join(', ')}.`,
+        });
+      }
+      const currentBranch = await db.collection('branches').doc(id).get();
+      const currentName = String(currentBranch.data()?.name || '');
+      if (!getApprovedBranchRecord(currentName || (name && String(name).trim()) || '', type)) {
+        return res.status(403).json({
+          error: 'Only the approved city barangay catalog is allowed for branch type changes.',
         });
       }
       updates.type = type;

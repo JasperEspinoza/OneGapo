@@ -55,9 +55,9 @@ function checkEnv() {
     smtpOk ? ok('SMTP_HOST / SMTP_USER / SMTP_PASS') : (fail('SMTP_HOST / SMTP_USER / SMTP_PASS — one or more missing'), hasErrors = true);
 
     if (process.env.BREVO_API_KEY) {
-      ok('BREVO_API_KEY (fallback transport)');
+      ok('BREVO_API_KEY (optional fallback transport)');
     } else {
-      warn('BREVO_API_KEY not set — no fallback if SMTP fails');
+      info('BREVO_API_KEY not set — optional fallback only; SMTP remains active without it');
     }
   } else if (provider === 'gmail') {
     const gmailOk = process.env.GMAIL_EMAIL && process.env.GMAIL_APP_PASSWORD;

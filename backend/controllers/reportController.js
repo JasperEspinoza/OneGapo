@@ -2537,6 +2537,67 @@ async function markNotificationRead(req, res, next) {
   }
 }
 
+async function submitReportRating(req, res, next) {
+  try {
+    const requesterUid = getRequesterUid(req);
+    const reportId = String(req.params?.reportId || '').trim();
+    const score = Number(req.body?.score ?? req.body?.rating);
+    const comment = String(req.body?.comment || '').trim();
+
+    if (!reportId) {
+      return res.status(400).json({ error: 'reportId is required.' });
+    }
+
+    if (!Number.isInteger(score) || score < 1 || score > 5) {
+      return res.status(400).json({ error: 'Rating must be an integer from 1 to 5.' });
+    }
+
+    if (comment.length > 400) {
+      return res.status(400).json({ error: 'Rating comment must be 400 characters or fewer.' });
+    }
+
+    const db = admin.firestore();
+    const ref = db.collection('reports').doc(reportId);
+    const snap = await ref.get();
+    if (!snap.exists) {
+      return res.status(404).json({ error: 'Report not found.' });
+    }
+
+    const report = normalizeReportRecord(safeDocData(snap), snap.id);
+    if (String(report?.reporter?.uid || '').trim() !== requesterUid) {
+      return res.status(403).json({ error: 'You can only rate your own resolved reports.' });
+    }
+
+    if (String(report?.status || '').trim().toLowerCase() !== 'resolved') {
+      return res.status(400).json({ error: 'Only resolved reports can be rated.' });
+    }
+
+    const rating = {
+      score,
+      comment: comment || '',
+      ratedAt: new Date().toISOString(),
+      ratedBy: {
+        uid: requesterUid,
+        email: req.user?.email || '',
+        role: req.user?.roleKey || req.user?.role || 'resident',
+      },
+    };
+
+    await ref.update({
+      rating,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    const updatedSnap = await ref.get();
+    return res.json({
+      message: 'Report rating submitted successfully.',
+      report: normalizeReportRecord(safeDocData(updatedSnap), updatedSnap.id),
+    });
+  } catch (err) {
+    return next(err);
+  }
+}
+
 module.exports = {
   createReport,
   listOwnReports,
@@ -2553,4 +2614,5 @@ module.exports = {
   revokeReportDuplicate,
   listNotifications,
   markNotificationRead,
+  submitReportRating,
 };

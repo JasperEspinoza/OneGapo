@@ -8,6 +8,7 @@ import ReportLocationMap from '../components/ReportLocationMap';
 import AppModal from '../components/AppModal';
 import OneGapoLogo from '../components/OneGapoLogo';
 import SettingsContent from '../components/SettingsContent';
+import InfoTooltip from '../components/InfoTooltip';
 import { getSocketServerUrl } from '../config/runtime';
 
 const REPORT_CATEGORIES = [
@@ -551,6 +552,20 @@ export default function ResidentHub({ viewMode = 'resident' }) {
 
   useEffect(() => {
     setTicketImageIndex(0);
+  }, [activeTicketReport]);
+
+  useEffect(() => {
+    if (!activeTicketReport || String(activeTicketReport?.status || '').toLowerCase() !== 'resolved') {
+      setRatingDraft({ score: 0, comment: '' });
+      setRatingError('');
+      return;
+    }
+
+    setRatingDraft({
+      score: Number(activeTicketReport?.rating?.score || 0),
+      comment: String(activeTicketReport?.rating?.comment || ''),
+    });
+    setRatingError('');
   }, [activeTicketReport]);
 
   const loadMyReports = useCallback(async ({ silent = false } = {}) => {
@@ -1721,6 +1736,92 @@ export default function ResidentHub({ viewMode = 'resident' }) {
                       >
                         See Resolved Image
                       </button>
+                    </div>
+                  ) : null}
+
+                  {isResolved ? (
+                    <div style={{ marginTop: '1rem', padding: '1rem', border: '1px solid #e2e8f0', borderRadius: '0.75rem', background: '#f8fafc' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                        <strong>Rate this resolution</strong>
+                        <InfoTooltip text="Tell us whether the resolution met your expectations." />
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '0.35rem', marginBottom: '0.75rem' }}>
+                        {[1, 2, 3, 4, 5].map((value) => (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() => setRatingDraft((prev) => ({ ...prev, score: value }))}
+                            style={{
+                              border: '1px solid #cbd5e1',
+                              background: value <= ratingDraft.score ? '#f59e0b' : '#fff',
+                              color: value <= ratingDraft.score ? '#fff' : '#475569',
+                              width: '2rem',
+                              height: '2rem',
+                              borderRadius: '999px',
+                              cursor: 'pointer',
+                              fontWeight: 700,
+                            }}
+                            aria-label={`Rate ${value} out of 5`}
+                          >
+                            {value}
+                          </button>
+                        ))}
+                      </div>
+
+                      <textarea
+                        value={ratingDraft.comment}
+                        onChange={(event) => setRatingDraft((prev) => ({ ...prev, comment: event.target.value }))}
+                        placeholder="Optional feedback for the resolution team"
+                        rows={3}
+                        style={{ width: '100%', resize: 'vertical', borderRadius: '0.5rem', border: '1px solid #cbd5e1', padding: '0.75rem' }}
+                      />
+
+                      {ratingError ? <p style={{ marginTop: '0.75rem', color: '#dc2626' }}>{ratingError}</p> : null}
+
+                      {!activeTicketReport?.rating || Number(activeTicketReport.rating.score) < 1 ? (
+                        <div style={{ marginTop: '0.75rem', display: 'flex', justifyContent: 'flex-end' }}>
+                          <button
+                            type="button"
+                            className="btn-primary"
+                            disabled={ratingSubmitting}
+                            onClick={async () => {
+                              if (!ratingDraft.score) {
+                                setRatingError('Please select a rating from 1 to 5.');
+                                return;
+                              }
+
+                              setRatingSubmitting(true);
+                              setRatingError('');
+
+                              try {
+                                const response = await api(`/api/reports/${activeTicketReport.id}/rating`, {
+                                  method: 'POST',
+                                  body: JSON.stringify({ score: ratingDraft.score, comment: ratingDraft.comment }),
+                                  headers: { 'Content-Type': 'application/json' },
+                                });
+
+                                const data = await response.json().catch(() => ({}));
+                                if (!response.ok) throw new Error(data.error || 'Unable to submit rating.');
+
+                                const nextReport = { ...activeTicketReport, ...(data.report || {}), status: activeTicketReport.status };
+                                setActiveTicketReport(nextReport);
+                                setMyReports((prev) => prev.map((item) => (item.id === nextReport.id ? nextReport : item)));
+                              } catch (error) {
+                                setRatingError(error.message || 'Unable to submit rating.');
+                              } finally {
+                                setRatingSubmitting(false);
+                              }
+                            }}
+                          >
+                            {ratingSubmitting ? 'Submitting...' : 'Submit rating'}
+                          </button>
+                        </div>
+                      ) : (
+                        <p style={{ marginTop: '0.75rem', color: '#166534' }}>
+                          You rated this resolution {activeTicketReport.rating.score}/5.
+                        </p>
+                      )}
                     </div>
                   ) : null}
 

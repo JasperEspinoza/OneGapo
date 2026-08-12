@@ -12,12 +12,8 @@ const { initSocketServer } = require('./realtime/socketServer');
     warnings.push('  ❌ FIREBASE_SERVICE_ACCOUNT_JSON or FIREBASE_SERVICE_ACCOUNT_PATH is required');
   }
 
-  if (!process.env.SMTP_HOST && !process.env.BREVO_API_KEY) {
-    warnings.push('  ⚠️  No email transport configured. Set SMTP_HOST+SMTP_USER+SMTP_PASS or BREVO_API_KEY');
-  }
-
-  if (process.env.SMTP_HOST && !process.env.BREVO_API_KEY) {
-    warnings.push('  ⚠️  BREVO_API_KEY is not set — SMTP fallback will not work if port 587 is blocked');
+  if (!process.env.SMTP_HOST && !process.env.GMAIL_EMAIL && !process.env.BREVO_API_KEY) {
+    warnings.push('  ⚠️  No email transport configured. Set SMTP_HOST+SMTP_USER+SMTP_PASS, GMAIL_EMAIL+GMAIL_APP_PASSWORD, or BREVO_API_KEY');
   }
 
   if (!process.env.FRONTEND_URL) {

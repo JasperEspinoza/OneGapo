@@ -6,6 +6,7 @@ import { io } from 'socket.io-client';
 import AppModal from '../components/AppModal';
 import OneGapoLogo from '../components/OneGapoLogo';
 import ReportLocationMap from '../components/ReportLocationMap';
+import InfoTooltip from '../components/InfoTooltip';
 import { useAuth } from '../context/AuthContext';
 import { useSettingsModal } from '../context/SettingsModalContext';
 import { getSocketServerUrl } from '../config/runtime';
@@ -2809,64 +2810,20 @@ export default function AdminPanel() {
               <div className="ap-section-heading">
                 <div>
                   <h2 className="ap-section-title">Branches</h2>
-                  <p className="ap-section-sub">Manage public and private branch locations</p>
+                  <p className="ap-section-sub">
+                    Approved city barangays only
+                    <InfoTooltip text="Custom branch creation is disabled. Only the city barangay catalog is accepted for branch locations." />
+                  </p>
                 </div>
               </div>
 
               <div className="ap-card">
-                <h3 className="ap-card-title">Add New Branch</h3>
-                {branchError   && <div role="alert"  className="auth-error">{branchError}</div>}
-                {branchSuccess && <div role="status" className="auth-success">{branchSuccess}</div>}
-                <form onSubmit={handleCreateBranch} className="ap-form" noValidate>
-                  <div className="ap-form-row">
-                    <div style={{ flex: '1' }}>
-                      <label htmlFor="branch-name" className="form-label">Name</label>
-                      <input
-                        id="branch-name"
-                        type="text"
-                        required
-                        value={newBranchName}
-                        onChange={(e) => setNewBranchName(e.target.value)}
-                        className="form-input"
-                        placeholder="e.g. Barangay Poblacion"
-                        disabled={creatingBranch}
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor="branch-type" className="form-label">Type</label>
-                      <select
-                        id="branch-type"
-                        value={newBranchType}
-                        onChange={(e) => setNewBranchType(e.target.value)}
-                        className="form-select"
-                        disabled={creatingBranch}
-                      >
-                        <option value="public">Public</option>
-                        <option value="private">Private</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div>
-                    <label htmlFor="branch-staff-email" className="form-label">Staff email (optional)</label>
-                    <input
-                      id="branch-staff-email"
-                      type="email"
-                      value={branchStaffEmail}
-                      onChange={(e) => setBranchStaffEmail(e.target.value)}
-                      className="form-input"
-                      placeholder="staff@onegapo.gov.ph"
-                      disabled={creatingBranch}
-                    />
-                    <p className="ap-field-hint">If provided, a staff account will be created and a password-reset email generated.</p>
-                  </div>
-                  <button
-                    type="submit"
-                    disabled={creatingBranch || !newBranchName.trim()}
-                    className="ap-btn-primary"
-                  >
-                    {creatingBranch ? 'Creating…' : 'Create Location'}
-                  </button>
-                </form>
+                <div className="ap-card-header">
+                  <h3 className="ap-card-title">Approved city catalog</h3>
+                </div>
+                <p className="ap-field-hint">
+                  New location entries are restricted to the official Olongapo barangay list and SBMA records.
+                </p>
               </div>
 
               <div className="ap-card">
@@ -3593,7 +3550,10 @@ export default function AdminPanel() {
 
                 <div className="ap-analytics-filters-inline">
                   <div className="ap-inline-filter ap-inline-filter-search">
-                    <label htmlFor="analytics-search" className="form-label">Search area</label>
+                    <label htmlFor="analytics-search" className="form-label">
+                      Search area
+                      <InfoTooltip text="Filter the location table by barangay or branch name to focus on a service area." />
+                    </label>
                     <input
                       id="analytics-search"
                       type="text"
@@ -3604,7 +3564,10 @@ export default function AdminPanel() {
                     />
                   </div>
                   <div className="ap-inline-filter">
-                    <label htmlFor="analytics-status-filter" className="form-label">Report filter</label>
+                    <label htmlFor="analytics-status-filter" className="form-label">
+                      Report filter
+                      <InfoTooltip text="View only locations with resolved work, pending items, or all report rows." />
+                    </label>
                     <select
                       id="analytics-status-filter"
                       className="form-select"
@@ -3618,7 +3581,10 @@ export default function AdminPanel() {
                     </select>
                   </div>
                   <div className="ap-inline-filter">
-                    <label htmlFor="analytics-branch-type-filter" className="form-label">Branch type</label>
+                    <label htmlFor="analytics-branch-type-filter" className="form-label">
+                      Branch type
+                      <InfoTooltip text="Compare public barangay coverage against the SBMA/private branch records." />
+                    </label>
                     <select
                       id="analytics-branch-type-filter"
                       className="form-select"
