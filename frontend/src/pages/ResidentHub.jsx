@@ -356,8 +356,11 @@ export default function ResidentHub({ viewMode = 'resident' }) {
   const [resolveNote, setResolveNote] = useState('');
   const [resolvePhotos, setResolvePhotos] = useState([]);
   const [resolveError, setResolveError] = useState('');
+  const [resolveSuccess, setResolveSuccess] = useState('');
   const [updatingResponderStatus, setUpdatingResponderStatus] = useState(false);
   const [responderStatusError, setResponderStatusError] = useState('');
+  const [ratingDraft, setRatingDraft] = useState({ score: 0, comment: '' });
+  const [ratingError, setRatingError] = useState('');
 
   const composeSectionRef = useRef(null);
   const cameraCaptureInputRef = useRef(null);
@@ -1568,22 +1571,6 @@ export default function ResidentHub({ viewMode = 'resident' }) {
           </section>
         )}
 
-        {activeTab === 'map' && (
-          <section className="resident-card resident-map-card">
-            <div className="resident-card-header">
-                      <p className="resident-card-title">Map</p>
-            </div>
-
-            {reportsError ? <div className="dashboard-alert dashboard-alert-error">{reportsError}</div> : null}
-
-            <ReportLocationMap
-              markers={markers}
-              helpText="Locations of reports submitted by residents."
-              enableRouteControls={false}
-            />
-          </section>
-        )}
-
         {activeTab === 'settings' && (
           <section className="resident-card resident-settings-card">
             <div className="resident-card-header">
@@ -2181,15 +2168,6 @@ export default function ResidentHub({ viewMode = 'resident' }) {
             <span>Reports</span>
           </button>
         )}
-        <button
-          type="button"
-          className={`resident-tab ${activeTab === 'map' ? 'resident-tab-active' : ''}`}
-          onClick={() => setActiveTab('map')}
-          aria-label="Map"
-        >
-          <span className="material-symbols-outlined resident-tab-icon" aria-hidden="true">map</span>
-          <span>Map</span>
-        </button>
         <button
           type="button"
           className={`resident-tab ${activeTab === 'settings' ? 'resident-tab-active' : ''}`}
