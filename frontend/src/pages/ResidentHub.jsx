@@ -91,7 +91,9 @@ function formatReportDate(value) {
 }
 
 function normalizeStatus(status) {
-  return getReportStatusKey(status).replace(/_/g, ' ');
+  const key = getReportStatusKey(status);
+  if (key === 'rejected') return 'Declined';
+  return key.replace(/_/g, ' ');
 }
 
 function getReportStatusKey(status) {
