@@ -1,7 +1,7 @@
 const admin = require('../config/firebaseAdmin');
 const { isCloudinaryConfigured, uploadBufferToCloudinary } = require('../services/cloudinaryService');
 
-const REPORT_STATUSES = ['submitted', 'in_progress', 'in_review', 'resolved', 'rejected'];
+const REPORT_STATUSES = ['submitted', 'in_progress', 'in_review', 'resolved', 'declined'];
 const BAJAC_BAJAC_BRANCHES = new Set(['east bajac bajac', 'west bajac bajac']);
 const HIGH_PRIORITY_REPORT_CATEGORIES = new Set(['disaster', 'safety']);
 const PENDING_SLA_STATUSES = new Set(['submitted', 'in_progress', 'in_review']);
@@ -1428,7 +1428,7 @@ async function updateReportStatus(req, res, next) {
       });
     }
 
-    if (status === 'rejected' && (!progressNote || progressNote.trim() === '')) {
+    if (status === 'declined' && (!progressNote || progressNote.trim() === '')) {
       return res.status(400).json({
         error: 'A justification (progress note) is required when rejecting a report.',
       });
@@ -1573,7 +1573,7 @@ async function updateReportStatus(req, res, next) {
       }
     }
 
-    if ((status === 'resolved' || status === 'rejected') && stageState.resolution === 'pending') {
+    if ((status === 'resolved' || status === 'declined') && stageState.resolution === 'pending') {
       stageState.resolution = 'met';
       if (!lifecycle.resolvedAt) {
         lifecycle.resolvedAt = nowIso;

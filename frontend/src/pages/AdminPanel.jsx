@@ -113,7 +113,7 @@ const REPORT_STATUS_FILTER_OPTIONS = [
   { value: 'submitted', label: 'Submitted' },
   { value: 'in_review', label: 'In Review' },
   { value: 'resolved', label: 'Resolved' },
-  { value: 'rejected', label: 'Declined' },
+  { value: 'declined', label: 'Declined' },
 ];
 
 const OPERATIONAL_ROLES = new Set(['staff', 'admin']);
@@ -618,14 +618,12 @@ export default function AdminPanel() {
   const [branchError,    setBranchError]    = useState('');
   const [branchSuccess,  setBranchSuccess]  = useState('');
   const [newBranchName,  setNewBranchName]  = useState('');
-  const [newBranchType,  setNewBranchType]  = useState('public');
   const [creatingBranch, setCreatingBranch] = useState(false);
   const [branchStaffEmail, setBranchStaffEmail] = useState('');
 
   // ── Branch edit state ───────────────────────────────────
   const [editingBranch,    setEditingBranch]    = useState(null);
   const [editBranchName,   setEditBranchName]   = useState('');
-  const [editBranchType,   setEditBranchType]   = useState('public');
   const [editBranchStaffEmail, setEditBranchStaffEmail] = useState('');
   const [editBranchLoading, setEditBranchLoading] = useState(false);
   const [editBranchError,  setEditBranchError]  = useState('');
@@ -733,7 +731,6 @@ export default function AdminPanel() {
   const [reportSearchQuery, setReportSearchQuery] = useState('');
   const [analyticsSearchQuery, setAnalyticsSearchQuery] = useState('');
   const [analyticsStatusFilter, setAnalyticsStatusFilter] = useState('all');
-  const [analyticsBranchTypeFilter, setAnalyticsBranchTypeFilter] = useState('all');
 
   useEffect(() => {
     setSelectedReportResponderUid(String(selectedReport?.assignedResponder?.uid || '').trim());
@@ -1099,8 +1096,6 @@ export default function AdminPanel() {
 
   const stats = useMemo(() => ({
     totalBranches:      branches.length,
-    totalPublic:        branches.filter((b) => b.type === 'public').length,
-    totalPrivate:       branches.filter((b) => b.type === 'private').length,
     totalUsers:         users.length,
     totalStaff:         users.filter((u) => isOperationalUser(u)).length,
     totalAdmins:        users.filter((u) => u.role === 'admin').length,
@@ -1160,12 +1155,7 @@ export default function AdminPanel() {
 
     return branchPerformanceRows.filter((row) => {
       const name = String(row?.name || '').toLowerCase();
-      const rowType = String(row?.type || 'public').toLowerCase();
       if (search && !name.includes(search)) {
-        return false;
-      }
-
-      if (analyticsBranchTypeFilter !== 'all' && rowType !== analyticsBranchTypeFilter) {
         return false;
       }
 
@@ -1181,7 +1171,7 @@ export default function AdminPanel() {
 
       return true;
     });
-  }, [branchPerformanceRows, analyticsSearchQuery, analyticsStatusFilter, analyticsBranchTypeFilter]);
+  }, [branchPerformanceRows, analyticsSearchQuery, analyticsStatusFilter]);
 
   const analyticsChartRows = useMemo(() => {
     const rows = filteredBarangayPerformanceRows
@@ -1204,7 +1194,6 @@ export default function AdminPanel() {
   const combinedPerformanceRows = useMemo(() => {
     const branchRows = filteredBranchPerformanceRows.map((row) => ({
       name: row.name,
-      type: row.type || 'public',
       totalReports: row.totalReports,
       resolvedReports: row.resolvedReports,
       pendingReports: row.pendingReports,
@@ -1220,14 +1209,13 @@ export default function AdminPanel() {
   const exportCombinedPerformanceCsv = useCallback(() => {
     const rows = combinedPerformanceRows.map((row) => [
       row.name,
-      row.type,
       row.totalReports,
       row.resolvedReports,
       row.pendingReports,
       formatDurationMinutes(row.averageMttrMinutes),
       `${Number(row.resolutionRate || 0).toFixed(1)}%`,
     ]);
-    downloadCsvFile('mttr-location.csv', ['Location', 'Type', 'Reports', 'Resolved', 'Pending', 'MTTR', 'Resolution Rate'], rows);
+    downloadCsvFile('mttr-location.csv', ['Location', 'Reports', 'Resolved', 'Pending', 'MTTR', 'Resolution Rate'], rows);
   }, [combinedPerformanceRows]);
 
   const exportBarangayCsv = useCallback(() => {
@@ -1245,14 +1233,13 @@ export default function AdminPanel() {
   const exportBranchCsv = useCallback(() => {
     const rows = filteredBranchPerformanceRows.map((row) => [
       row.name,
-      row.type || 'public',
       row.totalReports,
       row.resolvedReports,
       row.pendingReports,
       formatDurationMinutes(row.averageMttrMinutes),
       `${Number(row.resolutionRate || 0).toFixed(1)}%`,
     ]);
-    downloadCsvFile('mttr-branch.csv', ['Branch', 'Type', 'Reports', 'Resolved', 'Pending', 'MTTR', 'Resolution Rate'], rows);
+    downloadCsvFile('mttr-branch.csv', ['Branch', 'Reports', 'Resolved', 'Pending', 'MTTR', 'Resolution Rate'], rows);
   }, [filteredBranchPerformanceRows]);
 
   const exportAnalyticsPdf = useCallback(() => {
@@ -1369,7 +1356,7 @@ export default function AdminPanel() {
     writeLine('OneGapo Analytics Export', { bold: true, fontSize: 15, lineHeight: 22 });
     writeLine(`Generated: ${new Date().toLocaleString()}`);
     writeLine(
-      `Active filters - Search: ${analyticsSearchQuery || 'none'} | Report filter: ${analyticsStatusFilter} | Branch type: ${analyticsBranchTypeFilter}`,
+      `Active filters - Search: ${analyticsSearchQuery || 'none'} | Report filter: ${analyticsStatusFilter}`,
       { fontSize: 9 }
     );
 
@@ -1417,7 +1404,6 @@ export default function AdminPanel() {
 
     doc.save('analytics-statistics.pdf');
   }, [
-    analyticsBranchTypeFilter,
     analyticsSearchQuery,
     analyticsStatusFilter,
     filteredBarangayPerformanceRows,
@@ -1574,7 +1560,7 @@ export default function AdminPanel() {
       submitted: 0,
       in_review: 0,
       resolved: 0,
-      rejected: 0,
+      declined: 0,
       archived: 0,
     };
 
@@ -1602,7 +1588,7 @@ export default function AdminPanel() {
     try {
       const res  = await api('/api/admin/branches', {
         method: 'POST',
-        body: JSON.stringify({ name: newBranchName.trim(), type: newBranchType, staffEmail: branchStaffEmail.trim() || undefined }),
+        body: JSON.stringify({ name: newBranchName.trim(), staffEmail: branchStaffEmail.trim() || undefined }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to create branch.');
@@ -1612,7 +1598,6 @@ export default function AdminPanel() {
       }
       setBranchSuccess(msg);
       setNewBranchName('');
-      setNewBranchType('public');
       setBranchStaffEmail('');
       setBranches((prev) => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)));
       // Reload users to reflect branch assignments
@@ -1654,7 +1639,6 @@ export default function AdminPanel() {
   const handleBranchEditStart = (branch, branchAdminEmail = '') => {
     setEditingBranch(branch);
     setEditBranchName(branch.name);
-    setEditBranchType(branch.type);
     setEditBranchStaffEmail(branchAdminEmail);
     setEditBranchError('');
   };
@@ -1673,7 +1657,6 @@ export default function AdminPanel() {
         method: 'PATCH',
         body: JSON.stringify({
           name: editBranchName.trim(),
-          type: editBranchType,
           staffEmail: editBranchStaffEmail.trim() || undefined,
         }),
       });
@@ -1681,7 +1664,7 @@ export default function AdminPanel() {
       if (!res.ok) throw new Error(data.error || 'Failed to update branch.');
       setBranches((prev) =>
         prev.map((b) =>
-          b.id === editingBranch.id ? { ...b, name: editBranchName.trim(), type: editBranchType } : b
+          b.id === editingBranch.id ? { ...b, name: editBranchName.trim(), type: 'public' } : b
         ).sort((a, b) => a.name.localeCompare(b.name))
       );
       if (data?.staffReassignment?.email) {
@@ -2262,7 +2245,7 @@ export default function AdminPanel() {
                   </div>
                   <p className="ap-stat-label">Total Branches</p>
                   <h3 className="ap-stat-value">{branchLoading ? '…' : stats.totalBranches}</h3>
-                  <p className="ap-stat-meta">{stats.totalPublic} public · {stats.totalPrivate} private</p>
+                  <p className="ap-stat-meta">Barangay coverage only</p>
                 </div>
 
                 <div className="ap-stat-card">
@@ -2292,10 +2275,11 @@ export default function AdminPanel() {
               {canAccessReports ? (
                 <div className="ap-card">
                 <div className="ap-card-header">
-                  <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
                     <h3 className="ap-card-title">Incident Map</h3>
-                    <p className="ap-card-sub">Resident-submitted report locations in Olongapo City</p>
+                    <InfoTooltip text="Map pins show the exact report location, while each color matches the issue category." />
                   </div>
+                  <p className="ap-card-sub">Resident-submitted report locations in Olongapo City</p>
                 </div>
                 <div className="report-map-wrap">
                   <ReportLocationMap
@@ -2370,7 +2354,6 @@ export default function AdminPanel() {
                             <th>User</th>
                             <th>Location / Branch</th>
                             <th>Role</th>
-                            <th>Entity Type</th>
                             <th>Email</th>
                           </tr>
                         </thead>
@@ -2387,11 +2370,6 @@ export default function AdminPanel() {
                               </td>
                               <td>{u.branchName || <span className="ap-muted">—</span>}</td>
                               <td><span className={`badge badge-${u.role}`}>{u.role}</span></td>
-                              <td>
-                                {u.entityType
-                                  ? <span className={`badge badge-entity-${u.entityType}`}>{u.entityType}</span>
-                                  : <span className="ap-muted">—</span>}
-                              </td>
                               <td className="ap-muted">{u.email}</td>
                             </tr>
                           ))}
@@ -2424,10 +2402,11 @@ export default function AdminPanel() {
 
               <div className="ap-card">
                 <div className="ap-card-header">
-                  <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
                     <h3 className="ap-card-title">Incident Map</h3>
-                    <p className="ap-card-sub">Resident-submitted report locations in Olongapo City</p>
+                    <InfoTooltip text="Map pins show the exact report location, while each color matches the issue category." />
                   </div>
+                  <p className="ap-card-sub">Resident-submitted report locations in Olongapo City</p>
                 </div>
                 <div className="report-map-wrap">
                   <ReportLocationMap
@@ -2485,7 +2464,10 @@ export default function AdminPanel() {
                     </select>
                   </div>
                   <div>
-                    <label htmlFor="report-status-filter" className="form-label">Status</label>
+                    <label htmlFor="report-status-filter" className="form-label">
+                      Status
+                      <InfoTooltip text="Status badges show where each report sits in the workflow: submitted, in review, resolved, or declined." />
+                    </label>
                     <select
                       id="report-status-filter"
                       className="form-select"
@@ -2843,7 +2825,6 @@ export default function AdminPanel() {
                       <thead>
                         <tr>
                           <th>Name</th>
-                          <th>Type</th>
                           <th>Head Staff</th>
                           <th></th>
                         </tr>
@@ -2855,7 +2836,6 @@ export default function AdminPanel() {
                           return (
                             <tr key={b.id}>
                               <td>{b.name}</td>
-                              <td><span className={`badge badge-entity-${b.type}`}>{b.type}</span></td>
                               <td>{headStaff ? (headStaff.fullName || headStaff.email) : <span className="ap-muted">None</span>}</td>
                               <td className="ap-table-actions">
                                 <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -2876,32 +2856,17 @@ export default function AdminPanel() {
                 <AppModal title={`Edit Branch - ${editingBranch.name}`} titleId="edit-branch-title" onClose={handleBranchEditCancel}>
                   {editBranchError && <div role="alert" className="auth-error">{editBranchError}</div>}
                   <form onSubmit={handleUpdateBranch} className="ap-form" noValidate>
-                    <div className="ap-form-row">
-                      <div style={{ flex: '1' }}>
-                        <label htmlFor="edit-branch-name" className="form-label">Name</label>
-                        <input
-                          id="edit-branch-name"
-                          type="text"
-                          required
-                          value={editBranchName}
-                          onChange={(e) => setEditBranchName(e.target.value)}
-                          className="form-input"
-                          disabled={editBranchLoading}
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="edit-branch-type" className="form-label">Type</label>
-                        <select
-                          id="edit-branch-type"
-                          value={editBranchType}
-                          onChange={(e) => setEditBranchType(e.target.value)}
-                          className="form-select"
-                          disabled={editBranchLoading}
-                        >
-                          <option value="public">Public</option>
-                          <option value="private">Private</option>
-                        </select>
-                      </div>
+                    <div>
+                      <label htmlFor="edit-branch-name" className="form-label">Name</label>
+                      <input
+                        id="edit-branch-name"
+                        type="text"
+                        required
+                        value={editBranchName}
+                        onChange={(e) => setEditBranchName(e.target.value)}
+                        className="form-input"
+                        disabled={editBranchLoading}
+                      />
                     </div>
                     <div>
                       <label htmlFor="edit-branch-staff-email" className="form-label">Branch admin email (optional)</label>
@@ -3580,23 +3545,7 @@ export default function AdminPanel() {
                       <option value="pending_only">With pending</option>
                     </select>
                   </div>
-                  <div className="ap-inline-filter">
-                    <label htmlFor="analytics-branch-type-filter" className="form-label">
-                      Branch type
-                      <InfoTooltip text="Compare public barangay coverage against the SBMA/private branch records." />
-                    </label>
-                    <select
-                      id="analytics-branch-type-filter"
-                      className="form-select"
-                      value={analyticsBranchTypeFilter}
-                      onChange={(event) => setAnalyticsBranchTypeFilter(event.target.value)}
-                    >
-                      <option value="all">All types</option>
-                      <option value="public">Public</option>
-                      <option value="private">Private</option>
-                    </select>
-                  </div>
-                  {(analyticsSearchQuery || analyticsStatusFilter !== 'all' || analyticsBranchTypeFilter !== 'all') ? (
+                  {(analyticsSearchQuery || analyticsStatusFilter !== 'all') ? (
                     <button
                       type="button"
                       className="ap-btn-outline ap-btn-sm"
@@ -3604,7 +3553,6 @@ export default function AdminPanel() {
                       onClick={() => {
                         setAnalyticsSearchQuery('');
                         setAnalyticsStatusFilter('all');
-                        setAnalyticsBranchTypeFilter('all');
                       }}
                     >
                       Clear filters
@@ -3621,7 +3569,6 @@ export default function AdminPanel() {
                       <thead>
                         <tr>
                           <th>Location</th>
-                          <th>Type</th>
                           <th className="ap-cell-num">Reports</th>
                           <th className="ap-cell-num">Resolved</th>
                           <th className="ap-cell-num">Pending</th>
@@ -3631,11 +3578,8 @@ export default function AdminPanel() {
                       </thead>
                       <tbody>
                         {combinedPerformanceRows.map((row) => (
-                          <tr key={`${row.name}-${row.type || 'public'}`}>
+                          <tr key={row.name}>
                             <td><strong>{row.name}</strong></td>
-                            <td>
-                              <span className={`badge badge-entity-${row.type || 'public'}`}>{row.type || 'public'}</span>
-                            </td>
                             <td className="ap-cell-num">{row.totalReports}</td>
                             <td className="ap-cell-num">{row.resolvedReports}</td>
                             <td className="ap-cell-num">{row.pendingReports}</td>

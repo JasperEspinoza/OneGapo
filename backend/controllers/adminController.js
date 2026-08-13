@@ -717,7 +717,7 @@ async function migrateResponderRoles(req, res, next) {
     );
 
     const migrated = results.filter((r) => r.status === 'fulfilled').map((r) => r.value);
-    const failed   = results.filter((r) => r.status === 'rejected').map((r) => r.reason?.message || 'Unknown error');
+    const failed   = results.filter((r) => r.status === 'declined').map((r) => r.reason?.message || 'Unknown error');
 
     return res.json({
       message: `Migration complete. ${migrated.length} account(s) updated.`,

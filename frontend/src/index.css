@@ -63,9 +63,9 @@
   --status-resolved-border: #86EFAC;
   --status-resolved-text: #15803D;
 
-  --status-rejected-bg: #FEEEEE;
-  --status-rejected-border: #FCA5A5;
-  --status-rejected-text: #B91C1C;
+  --status-declined-bg: #FEEEEE;
+  --status-declined-border: #FCA5A5;
+  --status-declined-text: #B91C1C;
   --scrollbar-track: transparent;
   --scrollbar-thumb: #b8c2d1;
   --scrollbar-thumb-hover: #8ea0b8;
@@ -122,9 +122,9 @@
   --status-resolved-border: #4ADE80;
   --status-resolved-text: #ECFDF3;
 
-  --status-rejected-bg: #3D2327;
-  --status-rejected-border: #F87171;
-  --status-rejected-text: #FEEEEE;
+  --status-declined-bg: #3D2327;
+  --status-declined-border: #F87171;
+  --status-declined-text: #FEEEEE;
   --scrollbar-track: transparent;
   --scrollbar-thumb: #4b647d;
   --scrollbar-thumb-hover: #6284a6;

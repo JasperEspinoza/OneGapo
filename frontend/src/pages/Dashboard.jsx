@@ -44,6 +44,12 @@ function formatReportDate(value) {
   return date.toLocaleString();
 }
 
+function formatResidentStatusLabel(status) {
+  const key = String(status || 'submitted').trim().toLowerCase().replace(/\s+/g, '_');
+  if (key === 'declined') return 'Declined';
+  return key.replace(/_/g, ' ');
+}
+
 export default function Dashboard() {
   const { currentUser, userClaims } = useAuth();
   const role        = userClaims?.role;
@@ -514,7 +520,7 @@ export default function Dashboard() {
                     <div className="report-item-header">
                       <h3>{report.title}</h3>
                       <span className={`report-status report-status-${report.status || 'submitted'}`}>
-                        {String(report.status || 'submitted').replace('_', ' ')}
+                        {formatResidentStatusLabel(report.status)}
                       </span>
                     </div>
                     <p className="report-item-meta">{formatReportDate(report.createdAt)} • {report.category}</p>

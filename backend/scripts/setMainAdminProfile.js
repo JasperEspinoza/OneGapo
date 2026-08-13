@@ -13,7 +13,7 @@ const { ALLOWED_PERMISSIONS } = require('../constants/rbac');
 
 const ADMIN_EMAIL = 'onegapo2026@gmail.com';
 const MAIN_ADMIN_BRANCH_NAME = 'Main Admin';
-const MAIN_ADMIN_BRANCH_TYPE = 'private';
+const MAIN_ADMIN_BRANCH_TYPE = 'public';
 const MAIN_ADMIN_ROLE_NAME = 'Main Admin';
 const ADMIN_PERMISSIONS = ALLOWED_PERMISSIONS;
 

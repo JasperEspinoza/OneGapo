@@ -92,7 +92,7 @@ function formatReportDate(value) {
 
 function normalizeStatus(status) {
   const key = getReportStatusKey(status);
-  if (key === 'rejected') return 'Declined';
+  if (key === 'declined') return 'Declined';
   return key.replace(/_/g, ' ');
 }
 
@@ -193,7 +193,7 @@ function getReportStatusNote(report) {
 
 function getReportStatusNoteLabel(report) {
   const status = getReportStatusKey(report?.status);
-  if (status === 'rejected') return 'Decline reason';
+  if (status === 'declined') return 'Decline reason';
   if (status === 'resolved') return 'Resolution note';
   return 'Status note';
 }
@@ -941,18 +941,18 @@ export default function ResidentHub({ viewMode = 'resident' }) {
     const MAX_ATTACHMENTS = 3;
     const MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024;
     const validFiles = [];
-    const rejectedFiles = [];
+    const declinedFiles = [];
 
     files.forEach((file) => {
       if (file.size > MAX_FILE_SIZE_BYTES) {
-        rejectedFiles.push(`${file.name} exceeds 25 MB.`);
+        declinedFiles.push(`${file.name} exceeds 25 MB.`);
         return;
       }
       validFiles.push(file);
     });
 
-    if (rejectedFiles.length) {
-      showSubmitFeedback('error', `Each image must be 25 MB or less. ${rejectedFiles.join(' ')}`);
+    if (declinedFiles.length) {
+      showSubmitFeedback('error', `Each image must be 25 MB or less. ${declinedFiles.join(' ')}`);
     }
 
     setAttachments((prev) => {
@@ -1382,7 +1382,10 @@ export default function ResidentHub({ viewMode = 'resident' }) {
               </div>
 
               <div>
-                <label className="form-label" htmlFor="resident-report-category">Category</label>
+                <label className="form-label" htmlFor="resident-report-category">
+                  Category
+                  <InfoTooltip text="Choose the closest issue type so it is routed to the right city team." />
+                </label>
                 <select
                   id="resident-report-category"
                   name="category"
@@ -1410,6 +1413,11 @@ export default function ResidentHub({ viewMode = 'resident' }) {
                   minLength={20}
                   disabled={submitting}
                 />
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.5rem' }}>
+                <span className="form-label" style={{ marginBottom: 0 }}>Map pin</span>
+                <InfoTooltip text="Tap the map to mark the exact problem site or use your current location for faster placement." />
               </div>
 
               <ReportLocationMap
@@ -1815,7 +1823,7 @@ export default function ResidentHub({ viewMode = 'resident' }) {
                   ) : null}
 
                   {/* Responder action buttons */}
-                  {isResponder && !isResolved && String(activeTicketReport?.status || '').toLowerCase() !== 'rejected' ? (
+                  {isResponder && !isResolved && String(activeTicketReport?.status || '').toLowerCase() !== 'declined' ? (
                     <div className="resident-report-actions">
                       {String(activeTicketReport?.status || '').toLowerCase() !== 'in_progress' ? (
                         <button

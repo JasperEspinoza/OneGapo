@@ -131,10 +131,10 @@ async function markUserVerified(uid) {
     ]);
 
     const nonFatalFailures = [];
-    if (claimResult.status === 'rejected') {
+    if (claimResult.status === 'declined') {
       nonFatalFailures.push(`Firebase Auth claim: ${claimResult.reason?.message || String(claimResult.reason)}`);
     }
-    if (authResult.status === 'rejected') {
+    if (authResult.status === 'declined') {
       nonFatalFailures.push(`Firebase Auth user: ${authResult.reason?.message || String(authResult.reason)}`);
     }
 

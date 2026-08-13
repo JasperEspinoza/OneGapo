@@ -5,30 +5,27 @@ const {
 } = require('../services/emailService');
 const { sendAccountVerificationEmail } = require('../services/verificationService');
 
-const ALLOWED_TYPES = ['public', 'private'];
-
 const DEFAULT_BRANCH_CATALOG = [
-  { name: 'Asinan', type: 'public' },
-  { name: 'Banicain', type: 'public' },
-  { name: 'Barretto', type: 'public' },
-  { name: 'East Bajac-Bajac', type: 'public' },
-  { name: 'East Tapinac', type: 'public' },
-  { name: 'Gordon Heights', type: 'public' },
-  { name: 'Kababae', type: 'public' },
-  { name: 'Kalaklan', type: 'public' },
-  { name: 'Kalalake', type: 'public' },
-  { name: 'Mabayuan', type: 'public' },
-  { name: 'New Asinan', type: 'public' },
-  { name: 'New Cabalan', type: 'public' },
-  { name: 'New Ilalim', type: 'public' },
-  { name: 'New Kababae', type: 'public' },
-  { name: 'New Kalalake', type: 'public' },
-  { name: 'Old Cabalan', type: 'public' },
-  { name: 'Pag-asa', type: 'public' },
-  { name: 'Sta. Rita', type: 'public' },
-  { name: 'West Bajac-Bajac', type: 'public' },
-  { name: 'West Tapinac', type: 'public' },
-  { name: 'SBMA Freeport Zone', type: 'private' },
+  { name: 'Asinan' },
+  { name: 'Banicain' },
+  { name: 'Barretto' },
+  { name: 'East Bajac-Bajac' },
+  { name: 'East Tapinac' },
+  { name: 'Gordon Heights' },
+  { name: 'Kababae' },
+  { name: 'Kalaklan' },
+  { name: 'Kalalake' },
+  { name: 'Mabayuan' },
+  { name: 'New Asinan' },
+  { name: 'New Cabalan' },
+  { name: 'New Ilalim' },
+  { name: 'New Kababae' },
+  { name: 'New Kalalake' },
+  { name: 'Old Cabalan' },
+  { name: 'Pag-asa' },
+  { name: 'Sta. Rita' },
+  { name: 'West Bajac-Bajac' },
+  { name: 'West Tapinac' },
 ];
 
 const BRANCH_NAME_ALIASES = new Map([
@@ -62,20 +59,14 @@ const APPROVED_BRANCH_LOOKUP = new Map(
   DEFAULT_BRANCH_CATALOG.map((branch) => [branchKey(branch.name), { ...branch, name: canonicalBranchName(branch.name) }])
 );
 
-function getApprovedBranchRecord(name, type) {
+function getApprovedBranchRecord(name) {
   const trimmedName = String(name || '').trim();
-  const targetType = String(type || '').trim().toLowerCase();
   if (!trimmedName) return null;
 
   const record = APPROVED_BRANCH_LOOKUP.get(branchKey(trimmedName));
   if (!record) return null;
 
-  const normalizedType = String(record.type || '').trim().toLowerCase();
-  if (targetType && targetType !== normalizedType) {
-    return null;
-  }
-
-  return record;
+  return { ...record, type: 'public' };
 }
 
 /**
@@ -86,20 +77,14 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 async function createBranch(req, res, next) {
   try {
-    const { name, type, staffEmail } = req.body;
+    const { name, staffEmail } = req.body;
     const trimmedName = String(name || '').trim();
 
-    if (!trimmedName || !type) {
-      return res.status(400).json({ error: 'name and type are required.' });
+    if (!trimmedName) {
+      return res.status(400).json({ error: 'name is required.' });
     }
 
-    if (!ALLOWED_TYPES.includes(type)) {
-      return res.status(400).json({
-        error: `type must be one of: ${ALLOWED_TYPES.join(', ')}.`,
-      });
-    }
-
-    const approvedRecord = getApprovedBranchRecord(trimmedName, type);
+    const approvedRecord = getApprovedBranchRecord(trimmedName);
     if (!approvedRecord) {
       return res.status(403).json({
         error: 'Custom branch creation is disabled. Only the approved city barangay catalog is allowed.',
@@ -119,9 +104,10 @@ async function createBranch(req, res, next) {
       return res.status(409).json({ error: 'A branch with this name already exists.' });
     }
 
+    const branchType = 'public';
     const ref = await db.collection('branches').add({
       name:      canonicalName,
-      type:      approvedRecord.type,
+      type:      branchType,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       createdBy: req.user.uid,
     });
@@ -142,7 +128,7 @@ async function createBranch(req, res, next) {
         role:       'staff',
         branchId:   ref.id,
         location:   canonicalName,
-        entityType: type,
+        entityType: 'public',
         permissions: [],
         verified:   false,
       });
@@ -155,7 +141,7 @@ async function createBranch(req, res, next) {
         role:           'staff',
         branchId:       ref.id,
         branchName:     canonicalName,
-        entityType:     type,
+        entityType:     'public',
         customRoleId:   null,
         customRoleName: null,
         permissions:    [],
@@ -190,7 +176,7 @@ async function createBranch(req, res, next) {
     return res.status(201).json({
       id: ref.id,
       name: canonicalName,
-      type,
+      type: 'public',
       staffCreated,
     });
   } catch (err) {
@@ -220,7 +206,8 @@ async function listBranches(req, res, next) {
           createdAt: undefined,
         };
       })
-      .filter((branch) => approvedNames.has(branchKey(branch.name)));
+      .filter((branch) => approvedNames.has(branchKey(branch.name)))
+      .map((branch) => ({ ...branch, type: 'public' }));
 
     return res.json(branches);
   } catch (err) {
@@ -257,14 +244,14 @@ async function provisionDefaultBranches(req, res, next) {
 
       const ref = await db.collection('branches').add({
         name: canonicalName,
-        type: branch.type,
+        type: 'public',
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         createdBy: req.user.uid,
         seeded: true,
       });
 
-      created.push({ id: ref.id, name: canonicalName, type: branch.type });
-      existingByNormalizedName.set(normalized, { id: ref.id, name: canonicalName, type: branch.type });
+      created.push({ id: ref.id, name: canonicalName, type: 'public' });
+      existingByNormalizedName.set(normalized, { id: ref.id, name: canonicalName, type: 'public' });
     }
 
     return res.json({
@@ -289,7 +276,7 @@ async function updateBranch(req, res, next) {
     const { id } = req.params;
     if (!id) return res.status(400).json({ error: 'Branch id is required.' });
 
-    const { name, type, staffEmail } = req.body;
+    const { name, staffEmail } = req.body;
     const updates = {};
     const db = admin.firestore();
 
@@ -306,7 +293,7 @@ async function updateBranch(req, res, next) {
         return res.status(400).json({ error: 'name cannot be blank.' });
       }
 
-      const approvedRecord = getApprovedBranchRecord(trimmedName, type ?? undefined);
+      const approvedRecord = getApprovedBranchRecord(trimmedName);
       if (!approvedRecord) {
         return res.status(403).json({
           error: 'Only the approved city barangay catalog can be used. Custom branch names are disabled.',
@@ -322,21 +309,7 @@ async function updateBranch(req, res, next) {
       updates.name = canonicalName;
     }
 
-    if (type !== undefined) {
-      if (!ALLOWED_TYPES.includes(type)) {
-        return res.status(400).json({
-          error: `type must be one of: ${ALLOWED_TYPES.join(', ')}.`,
-        });
-      }
-      const currentBranch = await db.collection('branches').doc(id).get();
-      const currentName = String(currentBranch.data()?.name || '');
-      if (!getApprovedBranchRecord(currentName || (name && String(name).trim()) || '', type)) {
-        return res.status(403).json({
-          error: 'Only the approved city barangay catalog is allowed for branch type changes.',
-        });
-      }
-      updates.type = type;
-    }
+    updates.type = 'public';
 
     if (Object.keys(updates).length === 0) {
       return res.status(400).json({ error: 'No updatable fields provided.' });
@@ -353,7 +326,7 @@ async function updateBranch(req, res, next) {
     await docRef.update(updates);
 
     const finalBranchName = updates.name || String(snap.data()?.name || '');
-    const finalBranchType = updates.type || String(snap.data()?.type || 'public');
+    const finalBranchType = 'public';
 
     let staffReassignment = null;
     const normalizedStaffEmail = String(staffEmail || '').trim().toLowerCase();
@@ -452,6 +425,7 @@ async function updateBranch(req, res, next) {
       id,
       ...snap.data(),
       ...updates,
+      type: 'public',
       updatedAt: undefined,
       staffReassignment,
     };

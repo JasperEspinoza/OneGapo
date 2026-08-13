@@ -22,7 +22,7 @@ const STATUS_OPTIONS = [
   { value: 'in_progress', label: 'In Progress' },
   { value: 'in_review', label: 'In Review' },
   { value: 'resolved', label: 'Resolved' },
-  { value: 'rejected', label: 'Declined' },
+  { value: 'declined', label: 'Declined' },
 ];
 
 const STAFF_STATUS_OPTIONS = STATUS_OPTIONS.filter((option) => option.value !== 'submitted');
@@ -774,7 +774,7 @@ export default function StaffPanel() {
       return;
     }
 
-    if (nextStatus === 'rejected') {
+    if (nextStatus === 'declined') {
       setReportActionError('');
       setDeclineTargetReportId(reportId);
       setDeclineReason('');
@@ -812,7 +812,7 @@ export default function StaffPanel() {
       return;
     }
 
-    await handleUpdateReportStatus(declineTargetReportId, 'rejected', {
+    await handleUpdateReportStatus(declineTargetReportId, 'declined', {
       progressNote: note,
     });
   };
@@ -1333,8 +1333,8 @@ export default function StaffPanel() {
     const submitted = reports.filter((r) => r.status === 'submitted').length;
     const inReview = reports.filter((r) => r.status === 'in_review').length;
     const resolved = reports.filter((r) => r.status === 'resolved').length;
-    const rejected = reports.filter((r) => r.status === 'rejected').length;
-    return { submitted, inReview, resolved, rejected };
+    const declined = reports.filter((r) => r.status === 'declined').length;
+    return { submitted, inReview, resolved, declined };
   }, [reports]);
 
   const resolveTargetReport = useMemo(
