@@ -3,6 +3,8 @@ import { useState } from 'react';
 export default function InfoTooltip({ text, label = 'More details' }) {
   const [open, setOpen] = useState(false);
 
+  const closeTooltip = () => setOpen(false);
+
   return (
     <span
       style={{
@@ -17,10 +19,16 @@ export default function InfoTooltip({ text, label = 'More details' }) {
         type="button"
         aria-label={label}
         title={label}
+        onClick={() => setOpen((prev) => !prev)}
         onMouseEnter={() => setOpen(true)}
-        onMouseLeave={() => setOpen(false)}
+        onMouseLeave={closeTooltip}
         onFocus={() => setOpen(true)}
-        onBlur={() => setOpen(false)}
+        onBlur={closeTooltip}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') {
+            closeTooltip();
+          }
+        }}
         style={{
           width: '1.15rem',
           height: '1.15rem',
@@ -35,6 +43,7 @@ export default function InfoTooltip({ text, label = 'More details' }) {
           alignItems: 'center',
           justifyContent: 'center',
           padding: 0,
+          flexShrink: 0,
         }}
       >
         i
@@ -45,20 +54,22 @@ export default function InfoTooltip({ text, label = 'More details' }) {
           role="tooltip"
           style={{
             position: 'absolute',
-            left: 'calc(100% + 0.5rem)',
-            top: '50%',
-            transform: 'translateY(-50%)',
+            left: '50%',
+            top: 'calc(100% + 0.5rem)',
+            transform: 'translateX(-50%)',
             background: '#0f172a',
             color: '#f8fafc',
             fontSize: '0.72rem',
-            lineHeight: 1.4,
-            padding: '0.45rem 0.6rem',
+            lineHeight: 1.5,
+            padding: '0.55rem 0.7rem',
             borderRadius: '0.5rem',
-            boxShadow: '0 10px 24px rgba(15, 23, 42, 0.16)',
-            zIndex: 20,
+            boxShadow: '0 12px 28px rgba(15, 23, 42, 0.22)',
+            zIndex: 40,
             pointerEvents: 'none',
-            maxWidth: '16rem',
+            width: 'max-content',
+            maxWidth: 'min(18rem, 72vw)',
             whiteSpace: 'normal',
+            wordBreak: 'break-word',
           }}
         >
           {text}

@@ -363,6 +363,7 @@ export default function ResidentHub({ viewMode = 'resident' }) {
   const [responderStatusError, setResponderStatusError] = useState('');
   const [ratingDraft, setRatingDraft] = useState({ score: 0, comment: '' });
   const [ratingError, setRatingError] = useState('');
+  const [ratingSubmitting, setRatingSubmitting] = useState(false);
 
   const composeSectionRef = useRef(null);
   const cameraCaptureInputRef = useRef(null);
@@ -563,6 +564,7 @@ export default function ResidentHub({ viewMode = 'resident' }) {
     if (!activeTicketReport || String(activeTicketReport?.status || '').toLowerCase() !== 'resolved') {
       setRatingDraft({ score: 0, comment: '' });
       setRatingError('');
+      setRatingSubmitting(false);
       return;
     }
 
@@ -571,6 +573,7 @@ export default function ResidentHub({ viewMode = 'resident' }) {
       comment: String(activeTicketReport?.rating?.comment || ''),
     });
     setRatingError('');
+    setRatingSubmitting(false);
   }, [activeTicketReport]);
 
   const loadMyReports = useCallback(async ({ silent = false } = {}) => {

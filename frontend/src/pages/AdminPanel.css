@@ -364,7 +364,7 @@
 }
 
 .ap-shell-sidebar-collapsed .ap-sidebar-rail-toggle .ap-hamburger-icon {
-  transform: rotate(180deg);
+  transform: rotate(360deg);
 }
 
 .ap-sidebar-rail-toggle:hover {

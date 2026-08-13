@@ -1712,6 +1712,7 @@ export default function StaffPanel() {
                         preserveViewOnRefresh
                         enableFullscreenBarangayFilter={false}
                         enableCategoryFilter
+                        enableStatusFilter
                         enableHeatmapToggle
                         statusOptions={STAFF_STATUS_UPDATE_OPTIONS}
                         canUpdateStatus={canUpdateReports}
@@ -1784,6 +1785,15 @@ export default function StaffPanel() {
                               <h3 className="ss-report-title">{report.title}</h3>
                               <div className="ss-report-badges">
                                 <span className={getStatusClass(report.status)}>{normalizeStatus(report.status)}</span>
+                                {report?.rating?.score ? (
+                                  <span
+                                    className="badge badge-success"
+                                    title={`Resident rating: ${report.rating.score}/5`}
+                                    style={{ fontWeight: 700 }}
+                                  >
+                                    {report.rating.score}/5 rating
+                                  </span>
+                                ) : null}
                                 {report?.isDuplicateChild && report?.duplicateOfReport ? (
                                   <span
                                     className="badge badge-duplicate"
@@ -1803,6 +1813,13 @@ export default function StaffPanel() {
                               {formatDate(report.createdAt)}
                               {report?.location?.barangay ? ` • ${report.location.barangay}` : ''}
                             </p>
+                            {report?.rating?.score ? (
+                              <p className="ss-report-meta" style={{ fontWeight: 600, color: 'var(--color-text)' }}>
+                                Rating: {'★'.repeat(Number(report.rating.score))}{'☆'.repeat(5 - Number(report.rating.score))} {report.rating.score}/5
+                              </p>
+                            ) : (
+                              <p className="ss-report-meta">Rating: No rating</p>
+                            )}
                             <p className="ss-report-description">{report.description}</p>
                             {report?.location?.address ? <p className="ss-report-address">{report.location.address}</p> : null}
 
@@ -1860,6 +1877,25 @@ export default function StaffPanel() {
                         <div className="ap-report-details-row"><span>Created</span><strong>{selectedReport.createdAt ? new Date(selectedReport.createdAt).toLocaleString() : '—'}</strong></div>
                         <div className="ap-report-details-row"><span>Updated</span><strong>{selectedReport.updatedAt ? new Date(selectedReport.updatedAt).toLocaleString() : '—'}</strong></div>
                       </div>
+
+                      {selectedReport?.rating?.score ? (
+                        <div className="ap-report-details-description">
+                          <p className="form-label">Resident rating</p>
+                          <div style={{ border: '1px solid var(--color-border)', borderRadius: '0.75rem', padding: '0.85rem 1rem', background: 'var(--color-surface-muted)' }}>
+                            <div style={{ fontWeight: 700, marginBottom: '0.35rem' }}>
+                              {'★'.repeat(Number(selectedReport.rating.score))}{'☆'.repeat(5 - Number(selectedReport.rating.score))} {selectedReport.rating.score}/5
+                            </div>
+                            <p style={{ margin: 0, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
+                              {selectedReport.rating.comment || 'No additional comment provided.'}
+                            </p>
+                            {selectedReport.rating.ratedAt ? (
+                              <p style={{ margin: '0.55rem 0 0', color: 'var(--color-text-soft)', fontSize: '0.8rem' }}>
+                                Rated on {new Date(selectedReport.rating.ratedAt).toLocaleString()}
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+                      ) : null}
 
                       <div className="ap-report-details-description">
                         <p className="form-label">Description</p>

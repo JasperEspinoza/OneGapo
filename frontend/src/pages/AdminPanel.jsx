@@ -2286,7 +2286,16 @@ export default function AdminPanel() {
                     markers={residentReportMarkers}
                     helpText={null}
                     preserveViewOnRefresh
+                    enableCategoryFilter
+                    enableStatusFilter
                     enableHeatmapToggle
+                    statusOptions={[
+                      { value: 'submitted', label: 'Submitted' },
+                      { value: 'in_progress', label: 'In Progress' },
+                      { value: 'in_review', label: 'In Review' },
+                      { value: 'resolved', label: 'Resolved' },
+                      { value: 'declined', label: 'Declined' },
+                    ]}
                   />
                   <div className="ap-report-legend" aria-label="Report category legend">
                     {residentLegendItems.map((item) => (
@@ -2413,7 +2422,16 @@ export default function AdminPanel() {
                     markers={residentReportMarkers}
                     helpText={null}
                     preserveViewOnRefresh
+                    enableCategoryFilter
+                    enableStatusFilter
                     enableHeatmapToggle
+                    statusOptions={[
+                      { value: 'submitted', label: 'Submitted' },
+                      { value: 'in_progress', label: 'In Progress' },
+                      { value: 'in_review', label: 'In Review' },
+                      { value: 'resolved', label: 'Resolved' },
+                      { value: 'declined', label: 'Declined' },
+                    ]}
                   />
                   <div className="ap-report-legend" aria-label="Report category legend">
                     {residentLegendItems.map((item) => (
@@ -2526,6 +2544,7 @@ export default function AdminPanel() {
                           <th>Title</th>
                           <th>Category</th>
                           <th>Status</th>
+                          <th>Rating</th>
                           <th>Address</th>
                           <th>Reporter</th>
                           <th>Created</th>
@@ -2556,6 +2575,24 @@ export default function AdminPanel() {
                                 </span>
                               ) : (
                                 <span className="ap-muted">—</span>
+                              )}
+                              {report?.status === 'resolved' && report?.rating?.score ? (
+                                <span
+                                  className="badge badge-success"
+                                  style={{ marginLeft: '0.5rem', whiteSpace: 'nowrap' }}
+                                  title={`Resident rating: ${report.rating.score}/5`}
+                                >
+                                  {report.rating.score}/5
+                                </span>
+                              ) : null}
+                            </td>
+                            <td>
+                              {report?.rating?.score ? (
+                                <span style={{ whiteSpace: 'nowrap', fontWeight: 600 }}>
+                                  {'★'.repeat(Number(report.rating.score))}{'☆'.repeat(5 - Number(report.rating.score))} {report.rating.score}/5
+                                </span>
+                              ) : (
+                                <span className="ap-muted">No rating</span>
                               )}
                             </td>
                             <td>{report?.location?.address || <span className="ap-muted">—</span>}</td>
@@ -2611,6 +2648,25 @@ export default function AdminPanel() {
                     <div className="ap-report-details-row"><span>Created</span><strong>{selectedReport.createdAt ? new Date(selectedReport.createdAt).toLocaleString() : '—'}</strong></div>
                     <div className="ap-report-details-row"><span>Updated</span><strong>{selectedReport.updatedAt ? new Date(selectedReport.updatedAt).toLocaleString() : '—'}</strong></div>
                   </div>
+
+                  {selectedReport?.rating?.score ? (
+                    <div className="ap-report-details-description">
+                      <p className="form-label">Resident rating</p>
+                      <div style={{ border: '1px solid var(--color-border)', borderRadius: '0.75rem', padding: '0.85rem 1rem', background: 'var(--color-surface-muted)' }}>
+                        <div style={{ fontWeight: 700, marginBottom: '0.35rem' }}>
+                          {'★'.repeat(Number(selectedReport.rating.score))}{'☆'.repeat(5 - Number(selectedReport.rating.score))} {selectedReport.rating.score}/5
+                        </div>
+                        <p style={{ margin: 0, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
+                          {selectedReport.rating.comment || 'No additional comment provided.'}
+                        </p>
+                        {selectedReport.rating.ratedAt ? (
+                          <p style={{ margin: '0.55rem 0 0', color: 'var(--color-text-soft)', fontSize: '0.8rem' }}>
+                            Rated on {new Date(selectedReport.rating.ratedAt).toLocaleString()}
+                          </p>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
 
                   {canAssignResponders ? (
                     null

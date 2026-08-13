@@ -740,6 +740,7 @@ export default function ReportLocationMap({
   autoRouteRequestKey = 0,
   enableHeatmapToggle = false,
   enableCategoryFilter = false,
+  enableStatusFilter = false,
   enableRouteControls = true,
 }) {
   const [tileSourceIndex, setTileSourceIndex] = useState(0);
@@ -755,6 +756,7 @@ export default function ReportLocationMap({
   const [routeError, setRouteError] = useState('');
   const [heatmapEnabled, setHeatmapEnabled] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [isDarkTheme, setIsDarkTheme] = useState(false);
   const sidebarCloseTimeoutRef = useRef(null);
   const lastAppliedFocusIdRef = useRef('');
@@ -808,18 +810,41 @@ export default function ReportLocationMap({
     return REPORT_CATEGORY_LEGEND.filter((item) => available.has(item.key));
   }, [safeMarkers]);
 
+  const statusFilterOptions = useMemo(() => {
+    const defaultOptions = [
+      { value: 'all', label: 'All statuses' },
+      { value: 'submitted', label: 'Submitted' },
+      { value: 'in_progress', label: 'In Progress' },
+      { value: 'in_review', label: 'In Review' },
+      { value: 'resolved', label: 'Resolved' },
+      { value: 'declined', label: 'Declined' },
+    ];
+
+    if (!Array.isArray(statusOptions) || statusOptions.length === 0) {
+      return defaultOptions;
+    }
+
+    return [{ value: 'all', label: 'All statuses' }, ...statusOptions];
+  }, [statusOptions]);
+
   const categoryFilteredMarkers = useMemo(() => {
     if (categoryFilter === 'all') return safeMarkers;
     return safeMarkers.filter((marker) => String(marker?.category || 'general').toLowerCase() === categoryFilter);
   }, [categoryFilter, safeMarkers]);
 
+  const statusFilteredMarkers = useMemo(() => {
+    if (statusFilter === 'all') return categoryFilteredMarkers;
+    const normalizedStatus = String(statusFilter).trim().toLowerCase();
+    return categoryFilteredMarkers.filter((marker) => String(marker?.status || 'submitted').trim().toLowerCase() === normalizedStatus);
+  }, [categoryFilteredMarkers, statusFilter]);
+
   const markerLegendItems = useMemo(() => {
     const shouldApplyBarangayFilter = enableFullscreenBarangayFilter && fullscreenBarangayFilter !== 'all';
     const legendMarkers = showFullscreenMap
       ? (shouldApplyBarangayFilter
-          ? categoryFilteredMarkers.filter((marker) => extractBarangayFromMarker(marker) === fullscreenBarangayFilter)
-          : categoryFilteredMarkers)
-      : categoryFilteredMarkers;
+          ? statusFilteredMarkers.filter((marker) => extractBarangayFromMarker(marker) === fullscreenBarangayFilter)
+          : statusFilteredMarkers)
+      : statusFilteredMarkers;
 
     const legendMap = new Map(
       REPORT_CATEGORY_LEGEND.map((item) => [item.key, { ...item, count: 0 }])
@@ -843,22 +868,22 @@ export default function ReportLocationMap({
     });
 
     return Array.from(legendMap.values());
-  }, [categoryFilteredMarkers, showFullscreenMap, enableFullscreenBarangayFilter, fullscreenBarangayFilter]);
+  }, [statusFilteredMarkers, showFullscreenMap, enableFullscreenBarangayFilter, fullscreenBarangayFilter]);
 
   const fullscreenBarangayOptions = useMemo(() => {
     return Array.from(
       new Set(
-        categoryFilteredMarkers
+        statusFilteredMarkers
           .map((marker) => extractBarangayFromMarker(marker))
           .filter(Boolean)
       )
     ).sort((a, b) => a.localeCompare(b));
-  }, [categoryFilteredMarkers]);
+  }, [statusFilteredMarkers]);
 
   const fullscreenFilteredMarkers = useMemo(() => {
-    if (!enableFullscreenBarangayFilter || fullscreenBarangayFilter === 'all') return categoryFilteredMarkers;
-    return categoryFilteredMarkers.filter((marker) => extractBarangayFromMarker(marker) === fullscreenBarangayFilter);
-  }, [categoryFilteredMarkers, enableFullscreenBarangayFilter, fullscreenBarangayFilter]);
+    if (!enableFullscreenBarangayFilter || fullscreenBarangayFilter === 'all') return statusFilteredMarkers;
+    return statusFilteredMarkers.filter((marker) => extractBarangayFromMarker(marker) === fullscreenBarangayFilter);
+  }, [statusFilteredMarkers, enableFullscreenBarangayFilter, fullscreenBarangayFilter]);
 
   const hasProximityGroups = useMemo(() => {
     return buildNearbyMarkerGroups(fullscreenFilteredMarkers)
@@ -883,8 +908,8 @@ export default function ReportLocationMap({
   }, [preferredBarangayToken]);
 
   const inlineAutoFitMarkers = useMemo(
-    () => getAutoFitMarkers(categoryFilteredMarkers),
-    [categoryFilteredMarkers, getAutoFitMarkers]
+    () => getAutoFitMarkers(statusFilteredMarkers),
+    [statusFilteredMarkers, getAutoFitMarkers]
   );
 
   const fullscreenAutoFitMarkers = useMemo(
@@ -894,7 +919,7 @@ export default function ReportLocationMap({
 
   useEffect(() => {
     if (!activeMarker) return;
-    const updatedMarker = categoryFilteredMarkers.find((marker) => marker.id === activeMarker.id);
+    const updatedMarker = statusFilteredMarkers.find((marker) => marker.id === activeMarker.id);
     if (!updatedMarker) {
       setActiveMarker(null);
       return;
@@ -903,7 +928,7 @@ export default function ReportLocationMap({
     if (updatedMarker !== activeMarker) {
       setActiveMarker(updatedMarker);
     }
-  }, [activeMarker, categoryFilteredMarkers]);
+  }, [activeMarker, statusFilteredMarkers]);
 
   useEffect(() => {
     if (!showFullscreenMap || !activeMarker) return;
@@ -1139,20 +1164,35 @@ export default function ReportLocationMap({
         <div className={`report-map-layout ${activeMarker ? 'report-map-layout-with-sidebar' : ''}`}>
           <div className="report-map-pane">
             <div className="report-map-toolbar">
-              {enableCategoryFilter ? (
+              {(enableCategoryFilter || enableStatusFilter) ? (
                 <>
-                  <select
-                    id="inline-category-filter"
-                    className="form-select report-map-filter-select"
-                    value={categoryFilter}
-                    onChange={(event) => setCategoryFilter(event.target.value)}
-                    aria-label="Filter by report category"
-                  >
-                    <option value="all">All categories</option>
-                    {categoryFilterOptions.map((item) => (
-                      <option key={item.key} value={item.key}>{item.label}</option>
-                    ))}
-                  </select>
+                  {enableCategoryFilter ? (
+                    <select
+                      id="inline-category-filter"
+                      className="form-select report-map-filter-select"
+                      value={categoryFilter}
+                      onChange={(event) => setCategoryFilter(event.target.value)}
+                      aria-label="Filter by report category"
+                    >
+                      <option value="all">All categories</option>
+                      {categoryFilterOptions.map((item) => (
+                        <option key={item.key} value={item.key}>{item.label}</option>
+                      ))}
+                    </select>
+                  ) : null}
+                  {enableStatusFilter ? (
+                    <select
+                      id="inline-status-filter"
+                      className="form-select report-map-filter-select"
+                      value={statusFilter}
+                      onChange={(event) => setStatusFilter(event.target.value)}
+                      aria-label="Filter by report status"
+                    >
+                      {statusFilterOptions.map((item) => (
+                        <option key={item.value} value={item.value}>{item.label}</option>
+                      ))}
+                    </select>
+                  ) : null}
                 </>
               ) : null}
               {enableHeatmapToggle ? (
@@ -1182,7 +1222,7 @@ export default function ReportLocationMap({
             </div>
             <MapCanvas
               selectedPosition={selectedPosition}
-              safeMarkers={categoryFilteredMarkers}
+              safeMarkers={statusFilteredMarkers}
               autoFitMarkers={inlineAutoFitMarkers}
               tileSource={tileSource}
               handleTileError={handleTileError}
@@ -1253,6 +1293,21 @@ export default function ReportLocationMap({
                       <option value="all">All categories</option>
                       {categoryFilterOptions.map((item) => (
                         <option key={item.key} value={item.key}>{item.label}</option>
+                      ))}
+                    </select>
+                    </div>
+                  ) : null}
+                  {enableStatusFilter ? (
+                    <div className="report-map-filter-group">
+                    <select
+                      id="fullscreen-status-filter"
+                      className="form-select report-map-filter-select"
+                      value={statusFilter}
+                      onChange={(event) => setStatusFilter(event.target.value)}
+                      aria-label="Filter by report status"
+                    >
+                      {statusFilterOptions.map((item) => (
+                        <option key={item.value} value={item.value}>{item.label}</option>
                       ))}
                     </select>
                     </div>
