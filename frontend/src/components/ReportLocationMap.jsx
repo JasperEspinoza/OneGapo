@@ -756,7 +756,7 @@ export default function ReportLocationMap({
   const [routeError, setRouteError] = useState('');
   const [heatmapEnabled, setHeatmapEnabled] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState('all');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('active');
   const [isDarkTheme, setIsDarkTheme] = useState(false);
   const sidebarCloseTimeoutRef = useRef(null);
   const lastAppliedFocusIdRef = useRef('');
@@ -812,6 +812,7 @@ export default function ReportLocationMap({
 
   const statusFilterOptions = useMemo(() => {
     const defaultOptions = [
+      { value: 'active', label: 'Active reports' },
       { value: 'all', label: 'All statuses' },
       { value: 'submitted', label: 'Submitted' },
       { value: 'in_progress', label: 'In Progress' },
@@ -824,7 +825,11 @@ export default function ReportLocationMap({
       return defaultOptions;
     }
 
-    return [{ value: 'all', label: 'All statuses' }, ...statusOptions];
+    return [
+      { value: 'active', label: 'Active reports' },
+      { value: 'all', label: 'All statuses' },
+      ...statusOptions,
+    ];
   }, [statusOptions]);
 
   const categoryFilteredMarkers = useMemo(() => {
@@ -834,6 +839,9 @@ export default function ReportLocationMap({
 
   const statusFilteredMarkers = useMemo(() => {
     if (statusFilter === 'all') return categoryFilteredMarkers;
+    if (statusFilter === 'active') {
+      return categoryFilteredMarkers.filter((marker) => String(marker?.status || '').trim().toLowerCase() !== 'resolved');
+    }
     const normalizedStatus = String(statusFilter).trim().toLowerCase();
     return categoryFilteredMarkers.filter((marker) => String(marker?.status || 'submitted').trim().toLowerCase() === normalizedStatus);
   }, [categoryFilteredMarkers, statusFilter]);
