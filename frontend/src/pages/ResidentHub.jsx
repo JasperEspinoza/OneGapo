@@ -1455,6 +1455,10 @@ export default function ResidentHub({ viewMode = 'resident' }) {
 
               <div>
                 <label className="form-label" htmlFor="resident-attachments">Images / Videos (optional)</label>
+                <InfoTooltip
+                  label="Explain report attachments"
+                  text="Attach up to 3 image or video files. Each file must be 25 MB or smaller."
+                />
                 <div className="resident-media-actions">
                   <input
                     id="resident-attachments"

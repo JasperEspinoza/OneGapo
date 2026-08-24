@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { useSettingsModal } from '../context/SettingsModalContext';
 import ReportLocationMap from '../components/ReportLocationMap';
 import AppModal from '../components/AppModal';
+import InfoTooltip from '../components/InfoTooltip';
 import OneGapoLogo from '../components/OneGapoLogo';
 import { getSocketServerUrl } from '../config/runtime';
 
@@ -1728,7 +1729,7 @@ export default function StaffPanel() {
                     <div className="ap-card-header">
                       <h3 className="ap-card-title">Reports Inbox</h3>
                       <div className="ss-controls-inline">
-                        <label htmlFor="staff-status-filter" className="ss-control-label">Status</label>
+                        <label htmlFor="staff-status-filter" className="ss-control-label">Status <InfoTooltip label="Explain report status" text="Status shows the report workflow. Staff can move reports into progress, resolve them with notes or evidence, or decline them with a reason." /></label>
                         <select
                           id="staff-status-filter"
                           className="form-select ss-status-filter"
@@ -1741,7 +1742,7 @@ export default function StaffPanel() {
                           ))}
                         </select>
 
-                        <label htmlFor="staff-classification-filter" className="ss-control-label">Classification</label>
+                        <label htmlFor="staff-classification-filter" className="ss-control-label">Classification <InfoTooltip label="Explain report classification" text="Classification is the issue category used to organize reports and identify the responsible service area." /></label>
                         <select
                           id="staff-classification-filter"
                           className="form-select ss-status-filter"
@@ -1826,6 +1827,12 @@ export default function StaffPanel() {
                             {canManageReportLifecycle ? (
                               <div className="ss-report-actions" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
                                 <div className="ss-report-action-buttons">
+                                  <InfoTooltip
+                                    label="Explain report lifecycle actions"
+                                    text={activeSection === 'archive'
+                                      ? 'Unarchive returns the report to active workspaces. Delete permanently removes it and cannot be undone.'
+                                      : 'Archive removes the report from active workspaces while keeping it available in the archive.'}
+                                  />
                                   {activeSection !== 'archive' ? (
                                     <button
                                       type="button"
@@ -2040,7 +2047,7 @@ export default function StaffPanel() {
                       <div className="ap-modal-actions-section">
                         {selectedReportCanManageStatusAndForward ? (
                           <div className="ap-modal-action-group">
-                            <label htmlFor="modal-report-status" className="form-label">Update status</label>
+                            <label htmlFor="modal-report-status" className="form-label">Update status <InfoTooltip label="Explain report status" text="Status shows the report workflow. Resolving requires a progress note or resolution evidence; declining requires a reason." /></label>
                             <select
                               id="modal-report-status"
                               className="form-select"
@@ -2062,7 +2069,7 @@ export default function StaffPanel() {
                         
                         {selectedReportCanManageStatusAndForward && !selectedReport?.forwarding ? (
                           <div className="ap-modal-action-group">
-                            <label htmlFor="modal-report-forward" className="form-label">Forward to</label>
+                            <label htmlFor="modal-report-forward" className="form-label">Forward to <InfoTooltip label="Explain report forwarding" text="Forwarding moves this report to another branch and notifies its staff. A report can only be forwarded once." /></label>
                             <div className="ap-modal-action-row">
                               <select
                                 id="modal-report-forward"
@@ -2096,7 +2103,7 @@ export default function StaffPanel() {
 
                         {canAssignResponders ? (
                           <div className="ap-modal-action-group">
-                            <label htmlFor="modal-report-responder" className="form-label">Assign responder</label>
+                            <label htmlFor="modal-report-responder" className="form-label">Assign responder <InfoTooltip label="Explain responder assignment" text="Assigning a responder places this report in that person's assigned queue." /></label>
                             {selectedReportResponderOptions.length > 0 ? (
                               <div className="ap-modal-action-row ap-modal-action-row-stackable">
                                 <select
@@ -2239,7 +2246,7 @@ export default function StaffPanel() {
                         {duplicateModalError ? <div className="auth-error" role="alert">{duplicateModalError}</div> : null}
 
                         <div>
-                          <label htmlFor="duplicate-mother-select" className="form-label">Mother report</label>
+                          <label htmlFor="duplicate-mother-select" className="form-label">Mother report <InfoTooltip label="Explain duplicate reports" text="The mother report is the original issue. Linked duplicate reports follow its status and resolution updates." /></label>
                           <select
                             id="duplicate-mother-select"
                             className="form-select"
@@ -2329,7 +2336,7 @@ export default function StaffPanel() {
                     >
                       <form className="ap-form" onSubmit={handleSubmitResolution}>
                         <div>
-                          <label htmlFor="resolve-progress-note" className="form-label">Progress notes</label>
+                          <label htmlFor="resolve-progress-note" className="form-label">Progress notes <InfoTooltip label="Explain resolution notes" text="Describe the action taken and the outcome. A note or at least one resolution photo is required to resolve a report." /></label>
                           <textarea
                             id="resolve-progress-note"
                             className="form-input"
@@ -2342,7 +2349,7 @@ export default function StaffPanel() {
                         </div>
 
                         <div>
-                          <label htmlFor="resolve-photos" className="form-label">Resolution photos (optional if notes are provided)</label>
+                          <label htmlFor="resolve-photos" className="form-label">Resolution photos (optional if notes are provided) <InfoTooltip label="Explain resolution photos" text="Add visual evidence of completed work. Photos are required when no progress note is provided." /></label>
                           <input
                             id="resolve-photos"
                             type="file"

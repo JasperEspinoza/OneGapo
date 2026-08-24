@@ -2600,6 +2600,7 @@ export default function AdminPanel() {
                             <td>{report.createdAt ? new Date(report.createdAt).toLocaleString() : <span className="ap-muted">—</span>}</td>
                             <td className="ap-table-actions">
                               <div className="ap-report-row-actions" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
+                                <InfoTooltip label="Explain archive" text="Archives the report so it leaves active workspaces but remains available in the archive." />
                                 <button
                                   type="button"
                                   className="ap-report-action-btn"
@@ -2717,6 +2718,7 @@ export default function AdminPanel() {
                   </div>
 
                   <div className="ap-report-modal-actions">
+                    <InfoTooltip label="Explain archive" text="Archives the report so it leaves active workspaces but remains available in the archive." />
                     <button
                       type="button"
                       className="ap-report-action-btn"
@@ -2729,6 +2731,7 @@ export default function AdminPanel() {
                           ? 'Archived'
                           : 'Archive'}
                     </button>
+                    <InfoTooltip label="Explain permanent deletion" text="Permanently deletes this archived report and cannot be undone." />
                     <button
                       type="button"
                       className="ap-report-action-btn ap-report-action-btn-danger"
@@ -2814,6 +2817,7 @@ export default function AdminPanel() {
                             <td>{resolveReporterName(report)}</td>
                             <td className="ap-table-actions">
                               <div className="ap-report-row-actions" style={{ gap: '0.5rem' }}>
+                                <InfoTooltip label="Explain archived report actions" text="Unarchive returns the report to active workspaces. Delete permanently removes it and cannot be undone." />
                                 <button
                                   type="button"
                                   className="ap-report-action-btn"
@@ -2925,7 +2929,7 @@ export default function AdminPanel() {
                       />
                     </div>
                     <div>
-                      <label htmlFor="edit-branch-staff-email" className="form-label">Branch admin email (optional)</label>
+                      <label htmlFor="edit-branch-staff-email" className="form-label">Branch admin email (optional) <InfoTooltip label="Explain branch admin email" text="Set an email to assign this branch's admin account. If the account does not exist, one may be created." /></label>
                       <input
                         id="edit-branch-staff-email"
                         type="email"
@@ -2985,7 +2989,7 @@ export default function AdminPanel() {
                     />
                   </div>
                   <div>
-                    <p className="form-label" style={{ marginBottom: '0.5rem' }}>Permissions</p>
+                    <p className="form-label" style={{ marginBottom: '0.5rem' }}>Permissions <InfoTooltip label="Explain role permissions" text="Permissions control which report, branch, role, and staff tools accounts with this role can use." /></p>
                     <div className="ap-perms-grid">
                       {PERMISSION_OPTIONS.map((opt) => (
                         <label key={opt.value} className="ap-perm-item">
@@ -3028,7 +3032,7 @@ export default function AdminPanel() {
                           />
                         </div>
                         <div>
-                          <p className="form-label" style={{ marginBottom: '0.5rem' }}>Permissions</p>
+                          <p className="form-label" style={{ marginBottom: '0.5rem' }}>Permissions <InfoTooltip label="Explain role permissions" text="Permissions control which report, branch, role, and staff tools accounts with this role can use." /></p>
                           <div className="ap-perms-grid">
                             {PERMISSION_OPTIONS.map((opt) => (
                               <label key={opt.value} className="ap-perm-item">
@@ -3484,7 +3488,7 @@ export default function AdminPanel() {
                     <p className="ap-stat-label">Total Reports</p>
                   </div>
                   <h3 className="ap-stat-value">{performanceLoading ? '…' : reportAnalyticsSummary.totalReports}</h3>
-                  <p className="ap-stat-meta">Reports tracked in the system</p>
+                  <p className="ap-stat-meta">Reports tracked in the system <InfoTooltip label="Explain total reports" text="The number of reports included in the current analytics dataset." /></p>
                 </div>
 
                 <div className="ap-stat-card">
@@ -3495,7 +3499,7 @@ export default function AdminPanel() {
                     <p className="ap-stat-label">Resolved</p>
                   </div>
                   <h3 className="ap-stat-value">{performanceLoading ? '…' : reportAnalyticsSummary.resolvedReports}</h3>
-                  <p className="ap-stat-meta">{performanceLoading ? '…' : `${reportAnalyticsSummary.resolutionRate.toFixed(1)}% resolution rate`}</p>
+                  <p className="ap-stat-meta">{performanceLoading ? '…' : `${reportAnalyticsSummary.resolutionRate.toFixed(1)}% resolution rate`} <InfoTooltip label="Explain resolution rate" text="Resolved reports divided by total reports in the current analytics dataset." /></p>
                 </div>
 
                 <div className="ap-stat-card">
@@ -3506,7 +3510,7 @@ export default function AdminPanel() {
                     <p className="ap-stat-label">Average MTTR</p>
                   </div>
                   <h3 className="ap-stat-value">{performanceLoading ? '…' : reportAnalyticsSummary.averageMttrLabel}</h3>
-                  <p className="ap-stat-meta">Mean time to resolve</p>
+                  <p className="ap-stat-meta">Mean time to resolve <InfoTooltip label="Explain average MTTR" text="Average time from report submission to resolution, calculated only from resolved reports." /></p>
                 </div>
 
                 <div className="ap-stat-card">
@@ -3517,7 +3521,7 @@ export default function AdminPanel() {
                     <p className="ap-stat-label">Pending</p>
                   </div>
                   <h3 className="ap-stat-value">{performanceLoading ? '…' : reportAnalyticsSummary.pendingReports}</h3>
-                  <p className="ap-stat-meta">Submitted or in review</p>
+                  <p className="ap-stat-meta">Submitted or in review <InfoTooltip label="Explain pending reports" text="Reports that are not resolved or declined, including submitted, in review, and in-progress reports." /></p>
                 </div>
               </div>
 

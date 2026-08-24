@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet.heat';
+import InfoTooltip from './InfoTooltip';
 
 const defaultCenter = [14.8386, 120.2842];
 
@@ -1213,6 +1214,12 @@ export default function ReportLocationMap({
                   Heatmap: {heatmapEnabled ? 'On' : 'Off'}
                 </button>
               ) : null}
+              {enableHeatmapToggle ? (
+                <InfoTooltip
+                  label="Explain heatmap"
+                  text="Shows report concentration by category; brighter areas indicate more reports."
+                />
+              ) : null}
               <button
                 type="button"
                 className="btn-outline report-map-expand-btn report-map-icon-btn"
@@ -1346,6 +1353,12 @@ export default function ReportLocationMap({
                     >
                       Heatmap: {heatmapEnabled ? 'On' : 'Off'}
                     </button>
+                  ) : null}
+                  {enableHeatmapToggle ? (
+                    <InfoTooltip
+                      label="Explain heatmap"
+                      text="Shows report concentration by category; brighter areas indicate more reports."
+                    />
                   ) : null}
                 </div>
               </div>
