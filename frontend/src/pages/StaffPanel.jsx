@@ -56,11 +56,17 @@ function formatDate(value) {
 }
 
 function normalizeStatus(status) {
-  return String(status || 'submitted').replace(/_/g, ' ');
+  const key = normalizeReportStatusKey(status);
+  return key.replace(/_/g, ' ');
+}
+
+function normalizeReportStatusKey(status) {
+  const key = String(status || 'submitted').trim().toLowerCase().replace(/\s+/g, '_');
+  return key === 'rejected' ? 'declined' : key;
 }
 
 function getStatusClass(status) {
-  const key = String(status || 'submitted').toLowerCase();
+  const key = normalizeReportStatusKey(status);
   return `ss-status ss-status-${key}`;
 }
 
@@ -406,7 +412,12 @@ export default function StaffPanel() {
       const res = await api('/api/reports');
       const data = await res.json().catch(() => []);
       if (!res.ok) throw new Error(data.error || 'Failed to load reports.');
-      setReports(Array.isArray(data) ? data : []);
+      setReports(Array.isArray(data)
+        ? data.map((report) => ({
+            ...report,
+            status: normalizeReportStatusKey(report?.status),
+          }))
+        : []);
     } catch (err) {
       setReportsError(err.message || 'Failed to load reports.');
     } finally {
@@ -726,17 +737,38 @@ export default function StaffPanel() {
         });
       }
 
-      const data = await res.json().catch(() => ({}));
+      let data = await res.json().catch(() => ({}));
+
+      // Older hosted API deployments used "rejected" instead of "declined".
+      // Retry only when the API explicitly reports that legacy contract.
+      const canRetryWithRejected = nextStatus === 'declined'
+        && res.status === 400
+        && String(data?.error || '').toLowerCase().includes('rejected');
+      if (canRetryWithRejected) {
+        res = await api(`/api/reports/${reportId}/status`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            status: 'rejected',
+            ...(progressNote ? { progressNote } : {}),
+          }),
+        });
+        data = await res.json().catch(() => ({}));
+      }
+
       if (!res.ok) throw new Error(data.error || 'Failed to update report status.');
+
+      const normalizedResponseReport = data?.report
+        ? { ...data.report, status: normalizeReportStatusKey(data.report.status || nextStatus) }
+        : null;
 
       setReports((prev) =>
         prev.map((report) =>
           report.id === reportId
             ? {
                 ...report,
-                ...(data?.report || {}),
-                status: data?.report?.status || nextStatus,
-                updatedAt: data?.report?.updatedAt || new Date().toISOString(),
+                ...(normalizedResponseReport || {}),
+                status: normalizedResponseReport?.status || normalizeReportStatusKey(nextStatus),
+                updatedAt: normalizedResponseReport?.updatedAt || new Date().toISOString(),
               }
             : report
         )
@@ -746,9 +778,9 @@ export default function StaffPanel() {
         if (!prev || prev.id !== reportId) return prev;
         return {
           ...prev,
-          ...(data?.report || {}),
-          status: data?.report?.status || nextStatus,
-          updatedAt: data?.report?.updatedAt || new Date().toISOString(),
+          ...(normalizedResponseReport || {}),
+          status: normalizedResponseReport?.status || normalizeReportStatusKey(nextStatus),
+          updatedAt: normalizedResponseReport?.updatedAt || new Date().toISOString(),
         };
       });
 
@@ -1240,7 +1272,9 @@ export default function StaffPanel() {
       if (activeSection === 'archive' && !isArchived) return false;
       if (activeSection !== 'archive' && isArchived) return false;
 
-      const statusMatches = reportStatusFilter === 'all' ? true : String(report?.status || '').toLowerCase() === reportStatusFilter;
+      const statusMatches = reportStatusFilter === 'all'
+        ? true
+        : normalizeReportStatusKey(report?.status) === normalizeReportStatusKey(reportStatusFilter);
       if (!statusMatches) return false;
 
       const classificationMatches = reportClassificationFilter === 'all'
@@ -1331,10 +1365,10 @@ export default function StaffPanel() {
   }, [latestEmergencyReport, latestUnreadEmergency?.metadata?.reportId, reports]);
 
   const reportStats = useMemo(() => {
-    const submitted = reports.filter((r) => r.status === 'submitted').length;
-    const inReview = reports.filter((r) => r.status === 'in_review').length;
-    const resolved = reports.filter((r) => r.status === 'resolved').length;
-    const declined = reports.filter((r) => r.status === 'declined').length;
+    const submitted = reports.filter((r) => normalizeReportStatusKey(r.status) === 'submitted').length;
+    const inReview = reports.filter((r) => normalizeReportStatusKey(r.status) === 'in_review').length;
+    const resolved = reports.filter((r) => normalizeReportStatusKey(r.status) === 'resolved').length;
+    const declined = reports.filter((r) => normalizeReportStatusKey(r.status) === 'declined').length;
     return { submitted, inReview, resolved, declined };
   }, [reports]);
 

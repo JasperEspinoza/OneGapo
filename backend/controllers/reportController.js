@@ -2,6 +2,7 @@ const admin = require('../config/firebaseAdmin');
 const { isCloudinaryConfigured, uploadBufferToCloudinary } = require('../services/cloudinaryService');
 
 const REPORT_STATUSES = ['submitted', 'in_progress', 'in_review', 'resolved', 'declined'];
+const REPORT_STATUS_ALIASES = new Map([['rejected', 'declined']]);
 const BAJAC_BAJAC_BRANCHES = new Set(['east bajac bajac', 'west bajac bajac']);
 const HIGH_PRIORITY_REPORT_CATEGORIES = new Set(['disaster', 'safety']);
 const PENDING_SLA_STATUSES = new Set(['submitted', 'in_progress', 'in_review']);
@@ -1412,7 +1413,8 @@ async function updateReportStatus(req, res, next) {
     }
 
     const reportId = String(req.params?.reportId || '').trim();
-    const status = String(req.body?.status || '').trim().toLowerCase();
+    const requestedStatus = String(req.body?.status || '').trim().toLowerCase();
+    const status = REPORT_STATUS_ALIASES.get(requestedStatus) || requestedStatus;
     const progressNote = String(req.body?.progressNote || '').trim();
 
     if (!REPORT_STATUSES.includes(status)) {
