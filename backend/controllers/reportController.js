@@ -4,7 +4,6 @@ const { isCloudinaryConfigured, uploadBufferToCloudinary } = require('../service
 const REPORT_STATUSES = ['submitted', 'in_progress', 'in_review', 'resolved', 'declined'];
 const REPORT_STATUS_ALIASES = new Map([['rejected', 'declined']]);
 const BAJAC_BAJAC_BRANCHES = new Set(['east bajac bajac', 'west bajac bajac']);
-const HIGH_PRIORITY_REPORT_CATEGORIES = new Set(['disaster', 'safety']);
 const PENDING_SLA_STATUSES = new Set(['submitted', 'in_progress', 'in_review']);
 const SLA_SYNC_BATCH_LIMIT = 400;
 const REPORT_SUBMISSION_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
@@ -784,6 +783,14 @@ function toNotificationDto(doc) {
   };
 }
 
+function isLegacyEmergencyNotification(notification) {
+  const type = String(notification?.type || '').trim().toLowerCase();
+  const alertCategory = String(notification?.metadata?.alertCategory || '').trim().toLowerCase();
+  return type === 'report_emergency_submitted'
+    || type === 'report_emergency_escalation'
+    || alertCategory === 'emergency';
+}
+
 function emitReportsRefresh(reportId) {
   try {
     const socketInstance = require('../realtime/socketInstance');
@@ -1028,40 +1035,21 @@ async function getPerformanceMetrics(req, res, next) {
   }
 }
 
-function isEmergencyEscalation({ report, note }) {
-  const category = String(report?.category || '').trim().toLowerCase();
-  if (HIGH_PRIORITY_REPORT_CATEGORIES.has(category)) {
-    return true;
-  }
-
-  const noteText = String(note || '').trim().toLowerCase();
-  if (!noteText) {
-    return false;
-  }
-
-  return /(emergency|urgent|escalat|high[\s-]?priority)/i.test(noteText);
-}
-
 async function notifyUsersForForwarding({ db, recipients, report, targetBranch, actor, note }) {
   if (!Array.isArray(recipients) || recipients.length === 0) {
     return;
   }
 
   const batch = db.batch();
-  const emergencyEscalation = isEmergencyEscalation({ report, note });
-  const title = emergencyEscalation
-    ? `Emergency escalation to ${targetBranch.name}`
-    : `Report forwarded to ${targetBranch.name}`;
-  const message = emergencyEscalation
-    ? `${actor.email || actor.uid || 'An operator'} escalated "${report.title || report.id}" as high priority.`
-    : `${actor.email || actor.uid || 'An operator'} forwarded "${report.title || report.id}".`;
+  const title = `Report forwarded to ${targetBranch.name}`;
+  const message = `${actor.email || actor.uid || 'An operator'} forwarded "${report.title || report.id}".`;
 
   for (const recipient of recipients) {
     const ref = db.collection('notifications').doc();
     batch.set(ref, {
       recipientUid: recipient.uid,
-      type: emergencyEscalation ? 'report_emergency_escalation' : 'report_forwarded',
-      priority: emergencyEscalation ? 'high' : 'normal',
+      type: 'report_forwarded',
+      priority: 'normal',
       title,
       message,
       isRead: false,
@@ -1070,65 +1058,8 @@ async function notifyUsersForForwarding({ db, recipients, report, targetBranch, 
         targetBranchId: targetBranch.id,
         targetBranchName: targetBranch.name,
         reportCategory: String(report?.category || '').trim().toLowerCase() || null,
-        alertCategory: emergencyEscalation ? 'emergency' : 'general',
+        alertCategory: 'general',
         note: note || null,
-      },
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-  }
-
-  await batch.commit();
-}
-
-async function notifyUsersForEmergencySubmission({ db, report, reporter }) {
-  const category = String(report?.category || '').trim().toLowerCase();
-  if (!HIGH_PRIORITY_REPORT_CATEGORIES.has(category)) {
-    return;
-  }
-
-  const coverage = String(getReportCoverage(report) || report?.location?.barangay || report?.location?.address || '').trim();
-  const areaLabel = coverage || 'assigned area';
-
-  const staffSnap = await db.collection('users').where('role', '==', 'staff').get();
-  const staffRecipients = staffSnap.docs
-    .map((doc) => doc.data())
-    .filter((user) => user?.uid && canStaffAccessReport(report, user))
-    .map((user) => ({ uid: user.uid }));
-
-  const adminSnap = await db.collection('users').where('role', '==', 'admin').get();
-  const adminRecipients = adminSnap.docs
-    .map((doc) => doc.data())
-    .filter((user) => user?.uid)
-    .map((user) => ({ uid: user.uid }));
-
-  const recipientMap = new Map();
-  for (const recipient of [...staffRecipients, ...adminRecipients]) {
-    recipientMap.set(recipient.uid, recipient);
-  }
-
-  if (recipientMap.size === 0) {
-    return;
-  }
-
-  const batch = db.batch();
-  const title = `Emergency in ${areaLabel}: ${report.title || report.id}`;
-  const message = `${reporter?.email || 'A resident'} submitted a high-priority ${category} report for ${areaLabel}.`;
-
-  for (const recipient of recipientMap.values()) {
-    const ref = db.collection('notifications').doc();
-    batch.set(ref, {
-      recipientUid: recipient.uid,
-      type: 'report_emergency_submitted',
-      priority: 'high',
-      title,
-      message,
-      isRead: false,
-      reportId: report.id,
-      metadata: {
-        reportCategory: category,
-        alertCategory: 'emergency',
-        alertArea: areaLabel,
-        coverage,
       },
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
@@ -1251,19 +1182,6 @@ async function createReport(req, res, next) {
     await reportRef.set(payload);
 
     emitReportsRefresh(reportRef.id);
-
-    try {
-      await notifyUsersForEmergencySubmission({
-        db,
-        report: payload,
-        reporter: {
-          uid: requesterUid,
-          email: req.user?.email || '',
-        },
-      });
-    } catch (notifErr) {
-      console.warn('[createReport] Failed to create emergency notifications:', notifErr.message || notifErr);
-    }
 
     return res.status(201).json({
       message: 'Report submitted successfully.',
@@ -2458,7 +2376,9 @@ async function listNotifications(req, res, next) {
         .limit(50)
         .get();
 
-      notifications = snap.docs.map(toNotificationDto);
+      notifications = snap.docs
+        .map(toNotificationDto)
+        .filter((notification) => !isLegacyEmergencyNotification(notification));
     } catch (orderedQueryErr) {
       if (isResourceExhaustedError(orderedQueryErr)) {
         return res.status(429).json({ error: 'Notifications are temporarily rate-limited. Please retry shortly.' });
@@ -2476,6 +2396,7 @@ async function listNotifications(req, res, next) {
 
         notifications = fallbackFilteredSnap.docs
           .map(toNotificationDto)
+          .filter((notification) => !isLegacyEmergencyNotification(notification))
           .sort((a, b) => {
             const aMs = a.createdAt ? new Date(a.createdAt).getTime() : 0;
             const bMs = b.createdAt ? new Date(b.createdAt).getTime() : 0;
