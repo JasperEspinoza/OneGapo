@@ -438,26 +438,9 @@ async function updateBranch(req, res, next) {
   }
 }
 
-/**
- * DELETE /api/admin/branches/:id
- * Deletes a branch entity. Does not cascade — staff accounts retain their claims.
- */
-async function deleteBranch(req, res, next) {
-  try {
-    const { id } = req.params;
-    if (!id) return res.status(400).json({ error: 'Branch id is required.' });
-
-    await admin.firestore().collection('branches').doc(id).delete();
-    return res.json({ message: 'Branch deleted.' });
-  } catch (err) {
-    return next(err);
-  }
-}
-
 module.exports = {
   createBranch,
   listBranches,
   provisionDefaultBranches,
   updateBranch,
-  deleteBranch,
 };

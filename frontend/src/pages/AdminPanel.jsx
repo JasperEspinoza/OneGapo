@@ -1244,140 +1244,259 @@ export default function AdminPanel() {
   }, [filteredBranchPerformanceRows]);
 
   const exportAnalyticsPdf = useCallback(() => {
+    // ── Palette ──────────────────────────────────────────────────────────────
+    const C = {
+      navy:         [15,  23,  42],   // header bg
+      navyMid:      [30,  41,  59],   // header sub-text bg
+      teal:         [20, 184, 166],   // accent bar / section pill
+      tealDark:     [13, 148, 136],   // section pill text bg
+      white:        [255, 255, 255],
+      slate50:      [248, 250, 252],  // page background tint rows
+      slate100:     [241, 245, 249],  // alternate row bg
+      slate200:     [226, 232, 240],  // row border
+      slate300:     [203, 213, 225],  // header border / dividers
+      slate600:     [71,  85, 105],   // body muted text
+      slate900:     [15,  23,  42],   // body text
+      indigo:       [79,  70, 229],   // stat card accent
+      emerald:      [16, 185, 129],   // resolved stat
+      amber:        [245, 158,  11],  // pending stat
+      rose:         [239,  68,  68],  // badge warning
+    };
+
     const doc = new jsPDF({ unit: 'pt', format: 'a4' });
-    const margin = 40;
-    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageWidth  = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
-    const tableWidth = pageWidth - (margin * 2);
-    let y = margin;
+    const marginX    = 40;
+    const contentW   = pageWidth - marginX * 2;
+    let y = 0;
+    let currentPage = 1;
+    const totalPagesToken = '{TOTAL_PAGES}';
 
-    const ensurePageSpace = (requiredHeight = 0) => {
-      if (y + requiredHeight <= pageHeight - margin) return;
+    // ── Helpers ──────────────────────────────────────────────────────────────
+    const setFill  = (arr) => doc.setFillColor(...arr);
+    const setDraw  = (arr) => doc.setDrawColor(...arr);
+    const setColor = (arr) => doc.setTextColor(...arr);
+    const setFont  = (style = 'normal', size = 9) => {
+      doc.setFont('helvetica', style);
+      doc.setFontSize(size);
+    };
+
+    const addFooter = () => {
+      const fy = pageHeight - 22;
+      setFill(C.slate100);
+      setDraw(C.slate200);
+      doc.rect(marginX, fy - 6, contentW, 0, 'S');
+      setFont('normal', 7.5);
+      setColor(C.slate600);
+      doc.text('OneGapo — City Government of Olongapo | Confidential Analytics Report', marginX, fy + 4);
+      doc.text(`Page ${currentPage} of ${totalPagesToken}`, pageWidth - marginX, fy + 4, { align: 'right' });
+    };
+
+    const addPage = () => {
+      addFooter();
       doc.addPage();
-      y = margin;
+      currentPage += 1;
+      y = 40;
     };
 
-    const writeLine = (text, options = {}) => {
-      const fontSize = options.fontSize || 10;
-      const lineHeight = options.lineHeight || Math.round(fontSize * 1.4);
-      doc.setFont('helvetica', options.bold ? 'bold' : 'normal');
-      doc.setFontSize(fontSize);
-
-      const lines = doc.splitTextToSize(String(text), tableWidth);
-      lines.forEach((line) => {
-        ensurePageSpace(lineHeight);
-        doc.text(line, margin, y);
-        y += lineHeight;
-      });
+    const guard = (needed) => {
+      if (y + needed > pageHeight - 50) addPage();
     };
 
-    const addSectionGap = () => {
-      y += 6;
-      ensurePageSpace(0);
-    };
+    // ── HEADER BANNER ────────────────────────────────────────────────────────
+    setFill(C.navy);
+    doc.rect(0, 0, pageWidth, 72, 'F');
 
-    const drawTable = ({ title, columns, rows, widthWeights }) => {
-      const headerHeight = 20;
-      const rowLineHeight = 12;
-      const cellPaddingX = 6;
-      const cellPaddingY = 4;
+    setFill(C.teal);
+    doc.rect(0, 0, 5, 72, 'F');
+
+    setFont('bold', 18);
+    setColor(C.white);
+    doc.text('OneGapo', marginX + 2, 32);
+
+    setFont('normal', 10);
+    setColor([162, 218, 255]);
+    doc.text('Analytics & Performance Report', marginX + 2, 50);
+
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
+    const timeStr = now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
+    setFont('normal', 8);
+    setColor([148, 196, 232]);
+    doc.text('Generated', pageWidth - marginX, 26, { align: 'right' });
+    setFont('bold', 9);
+    setColor(C.white);
+    doc.text(dateStr, pageWidth - marginX, 40, { align: 'right' });
+    setFont('normal', 8);
+    setColor([148, 196, 232]);
+    doc.text(timeStr, pageWidth - marginX, 53, { align: 'right' });
+
+    y = 84;
+
+    // ── META INFO STRIP ──────────────────────────────────────────────────────
+    setFill(C.slate100);
+    setDraw(C.slate200);
+    doc.roundedRect(marginX, y, contentW, 28, 3, 3, 'FD');
+
+    setFont('normal', 8);
+    setColor(C.slate600);
+    const filterText = `Search: ${analyticsSearchQuery || 'none'}  ·  Status filter: ${analyticsStatusFilter}`;
+    doc.text('Active Filters:', marginX + 10, y + 11);
+    setFont('bold', 8);
+    setColor(C.slate900);
+    doc.text(filterText, marginX + 68, y + 11);
+
+    setFont('normal', 8);
+    setColor(C.slate600);
+    doc.text('Olongapo City — Incident Management System', marginX + 10, y + 21);
+
+    y += 38;
+
+    // ── SUMMARY STAT CARDS ───────────────────────────────────────────────────
+    const stats = [
+      { label: 'Total Reports',    value: String(reportAnalyticsSummary.totalReports  ?? 0), color: C.indigo  },
+      { label: 'Resolved',         value: String(reportAnalyticsSummary.resolvedReports ?? 0), color: C.emerald },
+      { label: 'Pending',          value: String(reportAnalyticsSummary.pendingReports ?? 0), color: C.amber   },
+      { label: 'Resolution Rate',  value: `${Number(reportAnalyticsSummary.resolutionRate || 0).toFixed(1)}%`, color: C.teal },
+      { label: 'Avg. MTTR',        value: String(reportAnalyticsSummary.averageMttrLabel ?? '—'), color: C.rose  },
+    ];
+
+    guard(56);
+    const cardW = contentW / stats.length;
+    stats.forEach((stat, i) => {
+      const cx = marginX + i * cardW;
+      setFill(C.white);
+      setDraw(C.slate200);
+      doc.rect(cx, y, cardW, 48, 'FD');
+      setFill(stat.color);
+      doc.rect(cx, y, cardW, 3, 'F');
+      setFont('bold', 13);
+      setColor(stat.color);
+      doc.text(String(stat.value), cx + cardW / 2, y + 23, { align: 'center' });
+      setFont('normal', 7.5);
+      setColor(C.slate600);
+      doc.text(stat.label.toUpperCase(), cx + cardW / 2, y + 36, { align: 'center' });
+    });
+
+    y += 58;
+
+    // ── SECTION DRAWING ──────────────────────────────────────────────────────
+    const drawSection = ({ title, subtitle, columns, rows, widthWeights }) => {
+      const headerH   = 22;
+      const rowMinH   = 20;
+      const cellPadX  = 8;
+      const cellPadY  = 5;
+      const rowTextSz = 8.5;
+      const rowLineH  = 11;
 
       const safeColumns = Array.isArray(columns) ? columns : [];
-      const safeRows = Array.isArray(rows) ? rows : [];
+      const safeRows    = Array.isArray(rows) ? rows : [];
       if (safeColumns.length === 0) return;
 
-      const weights = Array.isArray(widthWeights) && widthWeights.length === safeColumns.length
-        ? widthWeights
-        : safeColumns.map(() => 1);
-      const totalWeight = weights.reduce((sum, value) => sum + (Number(value) || 0), 0) || safeColumns.length;
-      const colWidths = weights.map((value) => (tableWidth * (Number(value) || 0)) / totalWeight);
+      const weights    = Array.isArray(widthWeights) && widthWeights.length === safeColumns.length
+        ? widthWeights : safeColumns.map(() => 1);
+      const totalW     = weights.reduce((s, v) => s + (Number(v) || 0), 0) || safeColumns.length;
+      const colWidths  = weights.map((v) => (contentW * (Number(v) || 0)) / totalW);
 
-      const drawHeader = () => {
-        ensurePageSpace(headerHeight);
-        let x = margin;
-        doc.setFillColor(241, 245, 249);
-        doc.setDrawColor(203, 213, 225);
-        doc.setTextColor(15, 23, 42);
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(9);
+      guard(42);
+      setFill(C.teal);
+      doc.roundedRect(marginX, y, 4, 18, 1, 1, 'F');
+      setFont('bold', 11);
+      setColor(C.navy);
+      doc.text(title, marginX + 11, y + 13);
 
-        safeColumns.forEach((column, index) => {
-          const width = colWidths[index];
-          doc.rect(x, y, width, headerHeight, 'FD');
-          doc.text(String(column), x + cellPaddingX, y + 13);
-          x += width;
+      if (subtitle) {
+        setFont('normal', 8);
+        setColor(C.slate600);
+        const subW = doc.getTextWidth(title) + 18;
+        doc.text(`— ${subtitle}`, marginX + 11 + subW, y + 13);
+      }
+      y += 24;
+      setDraw(C.teal);
+      doc.setLineWidth(0.5);
+      doc.line(marginX, y, marginX + contentW, y);
+      doc.setLineWidth(0.2);
+      y += 6;
+
+      const drawColHeader = () => {
+        guard(headerH);
+        let x = marginX;
+        setFill(C.navy);
+        setDraw(C.navy);
+        doc.rect(marginX, y, contentW, headerH, 'F');
+        setFont('bold', 8);
+        setColor(C.white);
+        safeColumns.forEach((col, idx) => {
+          doc.text(String(col).toUpperCase(), x + cellPadX, y + 15);
+          x += colWidths[idx];
         });
-
-        y += headerHeight;
+        y += headerH;
       };
 
-      writeLine(title, { bold: true, fontSize: 12, lineHeight: 18 });
-      y += 2;
-      drawHeader();
+      drawColHeader();
 
       const rowsToRender = safeRows.length > 0
         ? safeRows
-        : [['No rows available for current filters.', ...safeColumns.slice(1).map(() => '')]];
+        : [['No data available.', ...safeColumns.slice(1).map(() => '')]];
 
-      rowsToRender.forEach((row) => {
-        const normalizedRow = safeColumns.map((_, index) => String(row?.[index] ?? ''));
-        const cellLines = normalizedRow.map((value, index) => {
-          const maxCellWidth = Math.max(20, colWidths[index] - (cellPaddingX * 2));
-          return doc.splitTextToSize(value, maxCellWidth);
+      rowsToRender.forEach((row, rowIdx) => {
+        const normalizedRow = safeColumns.map((_, ci) => String(row?.[ci] ?? ''));
+        const cellLines = normalizedRow.map((val, ci) => {
+          const maxW = Math.max(16, colWidths[ci] - cellPadX * 2);
+          return doc.splitTextToSize(val, maxW);
         });
 
-        const tallestCellLineCount = cellLines.reduce((max, lines) => Math.max(max, lines.length), 1);
-        const rowHeight = (tallestCellLineCount * rowLineHeight) + (cellPaddingY * 2);
+        const tallest  = cellLines.reduce((m, l) => Math.max(m, l.length), 1);
+        const rowH     = Math.max(rowMinH, tallest * rowLineH + cellPadY * 2);
 
-        if (y + rowHeight > pageHeight - margin) {
-          doc.addPage();
-          y = margin;
-          drawHeader();
+        if (y + rowH > pageHeight - 50) {
+          addPage();
+          drawColHeader();
         }
 
-        let x = margin;
-        doc.setDrawColor(226, 232, 240);
-        doc.setTextColor(15, 23, 42);
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(9);
+        setFill(rowIdx % 2 === 0 ? C.white : C.slate100);
+        setDraw(C.slate200);
+        doc.rect(marginX, y, contentW, rowH, 'FD');
 
-        cellLines.forEach((lines, index) => {
-          const width = colWidths[index];
-          doc.rect(x, y, width, rowHeight);
-          doc.text(lines, x + cellPaddingX, y + cellPaddingY + 9);
-          x += width;
+        if (rowIdx % 2 === 0) {
+          setFill(C.slate200);
+          doc.rect(marginX, y, 2, rowH, 'F');
+        }
+
+        let x = marginX;
+        setFont('normal', rowTextSz);
+        setColor(C.slate900);
+
+        cellLines.forEach((lines, ci) => {
+          if (ci === 0) {
+            setFont('bold', rowTextSz);
+            setColor(C.navy);
+          } else {
+            setFont('normal', rowTextSz);
+            setColor(C.slate900);
+          }
+          doc.text(lines, x + cellPadX, y + cellPadY + 9);
+          x += colWidths[ci];
         });
 
-        y += rowHeight;
+        let sx = marginX;
+        setDraw(C.slate200);
+        colWidths.slice(0, -1).forEach((cw) => {
+          sx += cw;
+          doc.line(sx, y, sx, y + rowH);
+        });
+        y += rowH;
       });
-
-      addSectionGap();
+      setDraw(C.slate300);
+      doc.line(marginX, y, marginX + contentW, y);
+      y += 20;
     };
 
-    writeLine('OneGapo Analytics Export', { bold: true, fontSize: 15, lineHeight: 22 });
-    writeLine(`Generated: ${new Date().toLocaleString()}`);
-    writeLine(
-      `Active filters - Search: ${analyticsSearchQuery || 'none'} | Report filter: ${analyticsStatusFilter}`,
-      { fontSize: 9 }
-    );
-
-    drawTable({
-      title: 'Summary',
-      columns: ['Metric', 'Value'],
-      widthWeights: [2.4, 1.6],
-      rows: [
-        ['Total reports', reportAnalyticsSummary.totalReports],
-        ['Resolved reports', reportAnalyticsSummary.resolvedReports],
-        ['Pending reports', reportAnalyticsSummary.pendingReports],
-        ['Resolution rate', `${Number(reportAnalyticsSummary.resolutionRate || 0).toFixed(1)}%`],
-        ['Average MTTR', reportAnalyticsSummary.averageMttrLabel],
-      ],
-    });
-
-    drawTable({
-      title: 'Barangay MTTR',
-      columns: ['Barangay', 'Reports', 'Resolved', 'Pending', 'MTTR', 'Resolution'],
-      widthWeights: [2.1, 1, 1, 1, 1.2, 1.2],
+    drawSection({
+      title: 'Barangay Performance',
+      subtitle: 'Mean Time to Resolution by barangay',
+      columns: ['Barangay', 'Total', 'Resolved', 'Pending', 'Avg. MTTR', 'Res. Rate'],
+      widthWeights: [2.2, 0.9, 1, 1, 1.2, 1.2],
       rows: filteredBarangayPerformanceRows.map((row) => [
         row.name,
         row.totalReports,
@@ -1388,10 +1507,11 @@ export default function AdminPanel() {
       ]),
     });
 
-    drawTable({
-      title: 'Branch MTTR',
-      columns: ['Branch', 'Type', 'Reports', 'Resolved', 'Pending', 'MTTR', 'Resolution'],
-      widthWeights: [2, 1, 1, 1, 1, 1.15, 1.15],
+    drawSection({
+      title: 'Branch Performance',
+      subtitle: 'Mean Time to Resolution by branch office',
+      columns: ['Branch', 'Type', 'Total', 'Resolved', 'Pending', 'Avg. MTTR', 'Res. Rate'],
+      widthWeights: [2, 0.85, 0.85, 1, 1, 1.1, 1.1],
       rows: filteredBranchPerformanceRows.map((row) => [
         row.name,
         row.type || 'public',
@@ -1403,7 +1523,33 @@ export default function AdminPanel() {
       ]),
     });
 
-    doc.save('analytics-statistics.pdf');
+    // ── FOOTER on last page & total pages patch ───────────────────────────────
+    addFooter();
+
+    const totalPages = currentPage;
+    const pdfOutput  = doc.output('arraybuffer');
+    const pdfBytes   = new Uint8Array(pdfOutput);
+    const tokenBytes = new TextEncoder().encode(totalPagesToken);
+    const replBytes  = new TextEncoder().encode(String(totalPages).padEnd(tokenBytes.length, ' '));
+
+    for (let i = 0; i <= pdfBytes.length - tokenBytes.length; i++) {
+      let match = true;
+      for (let j = 0; j < tokenBytes.length; j++) {
+        if (pdfBytes[i + j] !== tokenBytes[j]) { match = false; break; }
+      }
+      if (match) {
+        for (let j = 0; j < replBytes.length; j++) pdfBytes[i + j] = replBytes[j];
+        break;
+      }
+    }
+
+    const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `onegapo-analytics-${now.toISOString().slice(0, 10)}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
   }, [
     analyticsSearchQuery,
     analyticsStatusFilter,
@@ -1607,30 +1753,6 @@ export default function AdminPanel() {
       setBranchError(err.message);
     } finally {
       setCreatingBranch(false);
-    }
-  };
-
-  const handleDeleteBranch = async (branch, { skipConfirm = false } = {}) => {
-    if (!skipConfirm) {
-      openConfirmDialog({
-        title: 'Delete branch',
-        message: `Delete "${branch.name}"? Staff assigned here will retain their current claims until re-provisioned.`,
-        confirmLabel: 'Delete',
-        confirmClassName: 'ap-btn-danger',
-        onConfirm: () => handleDeleteBranch(branch, { skipConfirm: true }),
-      });
-      return;
-    }
-    setBranchError('');
-    try {
-      const res = await api(`/api/admin/branches/${branch.id}`, { method: 'DELETE' });
-      if (!res.ok) {
-        const d = await res.json();
-        throw new Error(d.error || 'Failed to delete branch.');
-      }
-      setBranches((prev) => prev.filter((b) => b.id !== branch.id));
-    } catch (err) {
-      setBranchError(err.message);
     }
   };
 
@@ -2900,7 +3022,6 @@ export default function AdminPanel() {
                               <td className="ap-table-actions">
                                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                                   <button onClick={() => handleBranchEditStart(b, headStaff?.email || '')} className="ap-btn-outline ap-btn-sm">Edit</button>
-                                  <button onClick={() => handleDeleteBranch(b)} className="ap-btn-danger ap-btn-sm">Delete</button>
                                 </div>
                               </td>
                             </tr>

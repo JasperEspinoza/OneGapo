@@ -5,7 +5,6 @@ const {
 	listBranches,
 	provisionDefaultBranches,
 	updateBranch,
-	deleteBranch,
 } = require('../controllers/branchController');
 
 const router = Router();
@@ -16,6 +15,5 @@ router.get('/', requireAnyPermission(['add_branches', 'add_staffs']), listBranch
 router.post('/', requirePermission('add_branches'), createBranch);
 router.post('/provision-defaults', requirePermission('add_branches'), provisionDefaultBranches);
 router.patch('/:id', requirePermission('add_branches'), updateBranch);
-router.delete('/:id', requirePermission('add_branches'), deleteBranch);
 
 module.exports = router;
