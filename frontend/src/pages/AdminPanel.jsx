@@ -1398,20 +1398,27 @@ export default function AdminPanel() {
       const totalW     = weights.reduce((s, v) => s + (Number(v) || 0), 0) || safeColumns.length;
       const colWidths  = weights.map((v) => (contentW * (Number(v) || 0)) / totalW);
 
-      guard(42);
-      setFill(C.teal);
-      doc.roundedRect(marginX, y, 4, 18, 1, 1, 'F');
-      setFont('bold', 11);
-      setColor(C.navy);
-      doc.text(title, marginX + 11, y + 13);
-
       if (subtitle) {
+        // Two-line header: title + subtitle on separate lines
+        guard(52);
+        setFill(C.teal);
+        doc.roundedRect(marginX, y, 4, 30, 1, 1, 'F');
+        setFont('bold', 11);
+        setColor(C.navy);
+        doc.text(title, marginX + 11, y + 13);
         setFont('normal', 8);
         setColor(C.slate600);
-        const subW = doc.getTextWidth(title) + 18;
-        doc.text(`— ${subtitle}`, marginX + 11 + subW, y + 13);
+        doc.text(subtitle, marginX + 11, y + 26);
+        y += 36;
+      } else {
+        guard(36);
+        setFill(C.teal);
+        doc.roundedRect(marginX, y, 4, 18, 1, 1, 'F');
+        setFont('bold', 11);
+        setColor(C.navy);
+        doc.text(title, marginX + 11, y + 13);
+        y += 24;
       }
-      y += 24;
       setDraw(C.teal);
       doc.setLineWidth(0.5);
       doc.line(marginX, y, marginX + contentW, y);
@@ -2699,15 +2706,6 @@ export default function AdminPanel() {
                               ) : (
                                 <span className="ap-muted">—</span>
                               )}
-                              {report?.status === 'resolved' && report?.rating?.score ? (
-                                <span
-                                  className="badge badge-success"
-                                  style={{ marginLeft: '0.5rem', whiteSpace: 'nowrap' }}
-                                  title={`Resident rating: ${report.rating.score}/5`}
-                                >
-                                  {report.rating.score}/5
-                                </span>
-                              ) : null}
                             </td>
                             <td>
                               {report?.rating?.score ? (

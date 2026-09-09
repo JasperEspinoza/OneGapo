@@ -44,10 +44,14 @@ function formatReportDate(value) {
   return date.toLocaleString();
 }
 
-function formatResidentStatusLabel(status) {
+function getStatusKey(status) {
   const key = String(status || 'submitted').trim().toLowerCase().replace(/\s+/g, '_');
-  if (key === 'declined') return 'Declined';
-  return key.replace(/_/g, ' ');
+  return key === 'rejected' ? 'declined' : key;
+}
+
+function formatResidentStatusLabel(status) {
+  const key = getStatusKey(status);
+  return key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
 }
 
 export default function Dashboard() {
@@ -519,7 +523,7 @@ export default function Dashboard() {
                   <article key={report.id} className="report-item-card">
                     <div className="report-item-header">
                       <h3>{report.title}</h3>
-                      <span className={`report-status report-status-${report.status || 'submitted'}`}>
+                      <span className={`report-status report-status-${getStatusKey(report.status)}`}>
                         {formatResidentStatusLabel(report.status)}
                       </span>
                     </div>

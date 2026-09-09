@@ -90,14 +90,14 @@ function formatReportDate(value) {
   return date.toLocaleString();
 }
 
-function normalizeStatus(status) {
-  const key = getReportStatusKey(status);
-  if (key === 'declined') return 'Declined';
-  return key.replace(/_/g, ' ');
+function getReportStatusKey(status) {
+  const key = String(status || 'submitted').trim().toLowerCase().replace(/\s+/g, '_');
+  return key === 'rejected' ? 'declined' : key;
 }
 
-function getReportStatusKey(status) {
-  return String(status || 'submitted').trim().toLowerCase().replace(/\s+/g, '_');
+function normalizeStatus(status) {
+  const key = getReportStatusKey(status);
+  return key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
 }
 
 
@@ -1321,7 +1321,7 @@ export default function ResidentHub({ viewMode = 'resident' }) {
                         onClick={() => setActiveTicketReport(report)}
                       >
                         <div className="resident-report-pills">
-                          <span className={`res-pill report-status-${report.status || 'submitted'}`}>
+                          <span className={`res-pill report-status-${getReportStatusKey(report.status)}`}>
                             {normalizeStatus(report.status)}
                           </span>
                           <span className={`res-pill res-pill-cat ${getCategoryPillClass(report.category)}`}>
@@ -1568,7 +1568,7 @@ export default function ResidentHub({ viewMode = 'resident' }) {
                     onClick={() => setActiveTicketReport(report)}
                   >
                     <div className="resident-report-pills">
-                      <span className={`res-pill report-status-${report.status || 'submitted'}`}>
+                      <span className={`res-pill report-status-${getReportStatusKey(report.status)}`}>
                         {normalizeStatus(report.status)}
                       </span>
                       <span className={`res-pill res-pill-cat ${getCategoryPillClass(report.category)}`}>
@@ -1716,7 +1716,7 @@ export default function ResidentHub({ viewMode = 'resident' }) {
               return (
                 <div className="resident-ticket-modal-content">
                   <div className="resident-ticket-modal-summary">
-                    <span className={`report-status report-status-${activeTicketReport.status || 'submitted'}`}>
+                    <span className={`report-status report-status-${getReportStatusKey(activeTicketReport.status)}`}>
                       {normalizeStatus(activeTicketReport.status)}
                     </span>
                     <p className="resident-ticket-modal-meta">
