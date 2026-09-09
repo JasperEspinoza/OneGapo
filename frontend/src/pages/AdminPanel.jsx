@@ -251,7 +251,8 @@ function getReportCategoryLabel(category) {
 }
 
 function getReportStatusKey(status) {
-  return String(status || 'submitted').trim().toLowerCase().replace(/\s+/g, '_');
+  const key = String(status || 'submitted').trim().toLowerCase().replace(/\s+/g, '_');
+  return key === 'rejected' ? 'declined' : key;
 }
 
 function getReportStatusLabel(status) {
@@ -2600,7 +2601,6 @@ export default function AdminPanel() {
                             <td>{report.createdAt ? new Date(report.createdAt).toLocaleString() : <span className="ap-muted">—</span>}</td>
                             <td className="ap-table-actions">
                               <div className="ap-report-row-actions" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
-                                <InfoTooltip label="Explain archive" text="Archives the report so it leaves active workspaces but remains available in the archive." />
                                 <button
                                   type="button"
                                   className="ap-report-action-btn"
