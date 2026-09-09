@@ -169,7 +169,7 @@ export default function Register() {
 
         {error && <div role="alert" className="auth-error">{error}</div>}
 
-        <form onSubmit={handleSubmit} className="auth-form register-form" noValidate>
+        <form onSubmit={handleSubmit} className="auth-form register-form-grid" noValidate>
           <div>
             <label htmlFor="fullName" className="form-label">Full name</label>
             <input
@@ -181,36 +181,6 @@ export default function Register() {
               onChange={(e) => setFullName(e.target.value)}
               className="form-input"
               placeholder="Juan dela Cruz"
-              disabled={loading}
-            />
-          </div>
-
-          <div>
-            <label htmlFor="email" className="form-label">Email address</label>
-            <input
-              id="email"
-              type="email"
-              autoComplete="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="form-input"
-              placeholder="you@example.com"
-              disabled={loading}
-            />
-          </div>
-
-          <div>
-            <label htmlFor="dateOfBirth" className="form-label">Date of birth</label>
-            <input
-              id="dateOfBirth"
-              type="date"
-              required
-              value={dateOfBirth}
-              onChange={(e) => setDateOfBirth(e.target.value)}
-              className="form-input"
-              max={new Date().toISOString().split('T')[0]}
-              min="1900-01-01"
               disabled={loading}
             />
           </div>
@@ -233,6 +203,36 @@ export default function Register() {
           </div>
 
           <div>
+            <label htmlFor="dateOfBirth" className="form-label">Date of birth</label>
+            <input
+              id="dateOfBirth"
+              type="date"
+              required
+              value={dateOfBirth}
+              onChange={(e) => setDateOfBirth(e.target.value)}
+              className="form-input"
+              max={new Date().toISOString().split('T')[0]}
+              min="1900-01-01"
+              disabled={loading}
+            />
+          </div>
+
+          <div>
+            <label htmlFor="email" className="form-label">Email address</label>
+            <input
+              id="email"
+              type="email"
+              autoComplete="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="form-input"
+              placeholder="you@example.com"
+              disabled={loading}
+            />
+          </div>
+
+          <div className="form-span-full">
             <label htmlFor="address" className="form-label">Address</label>
             <input
               id="address"
@@ -277,7 +277,7 @@ export default function Register() {
             />
           </div>
 
-          <div className="register-consent">
+          <div className="register-consent form-span-full">
             <input
               id="policyConsent"
               type="checkbox"
@@ -299,23 +299,25 @@ export default function Register() {
             </label>
           </div>
 
-          <button
-            type="submit"
-            disabled={
-              loading ||
-              !fullName ||
-              !email ||
-              !dateOfBirth ||
-              !contactNumber.trim() ||
-              !address.trim() ||
-              !password ||
-              !confirm ||
-              !acceptedPolicies
-            }
-            className="btn-primary"
-          >
-            {loading ? 'Creating account…' : 'Create account'}
-          </button>
+          <div className="form-span-full">
+            <button
+              type="submit"
+              disabled={
+                loading ||
+                !fullName ||
+                !email ||
+                !dateOfBirth ||
+                !contactNumber.trim() ||
+                !address.trim() ||
+                !password ||
+                !confirm ||
+                !acceptedPolicies
+              }
+              className="btn-primary"
+            >
+              {loading ? 'Creating account…' : 'Create account'}
+            </button>
+          </div>
         </form>
 
         <div className="auth-footer">
