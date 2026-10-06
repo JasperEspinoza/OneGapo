@@ -458,6 +458,9 @@ function getKnownBarangayName(value) {
   const normalized = normalizeBarangayToken(value);
   if (!normalized) return '';
 
+  // Treat "New Asinan" as the same barangay as "Asinan"
+  if (normalized === 'new asinan' || normalized.includes('new asinan')) return 'Asinan';
+
   const exact = BARANGAY_BY_NORMALIZED.get(normalized);
   if (exact) return exact;
 

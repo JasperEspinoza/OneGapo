@@ -337,7 +337,7 @@ async function syncPendingSlaFlags(db, reports) {
 
 const COVERAGE_ALIASES = new Map([
   ['asinan', 'Asinan'],
-  ['new asinan', 'New Asinan'],
+  ['new asinan', 'Asinan'],
   ['banicain', 'Banicain'],
   ['barretto', 'Barretto'],
   ['east bajac bajac', 'East Bajac-Bajac'],
@@ -368,7 +368,6 @@ const COVERAGE_ALIASES = new Map([
 
 const METRICS_BARANGAYS = [
   'Asinan',
-  'New Asinan',
   'Banicain',
   'Barretto',
   'East Bajac-Bajac',
