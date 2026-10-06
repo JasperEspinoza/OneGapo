@@ -101,9 +101,15 @@ async function verifyToken(req, res, next) {
         if (userSnap.exists) {
           const userData = userSnap.data() || {};
           profileOverlay.fullName = userData.fullName || hydratedToken.fullName || '';
+          profileOverlay.branchId = userData.branchId || hydratedToken.branchId || null;
           profileOverlay.branchName = userData.branchName || hydratedToken.branchName || hydratedToken.location || null;
+          profileOverlay.location = userData.branchName || hydratedToken.location || null;
+          profileOverlay.entityType = userData.entityType || hydratedToken.entityType || null;
           profileOverlay.customRoleId = userData.customRoleId || hydratedToken.customRoleId || null;
           profileOverlay.customRoleName = userData.customRoleName || hydratedToken.customRoleName || null;
+          profileOverlay.permissions = Array.isArray(userData.permissions)
+            ? userData.permissions
+            : (Array.isArray(hydratedToken.permissions) ? hydratedToken.permissions : []);
           profileOverlay.phone = userData.phone || hydratedToken.phone || null;
           profileOverlay.address = userData.address || hydratedToken.address || null;
           profileOverlay.verified = Boolean(userData.verified === true || hydratedToken.verified === true);
