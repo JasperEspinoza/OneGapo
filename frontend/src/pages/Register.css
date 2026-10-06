@@ -68,6 +68,134 @@
   border-radius: 0.2rem;
 }
 
+/* Button reset so <button> looks like an inline link */
+.register-consent-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  cursor: pointer;
+  display: inline;
+}
+
+/* ── Legal Modal ─────────────────────────────────────────────────────────── */
+.legal-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  animation: modal-fade-in 0.18s ease;
+}
+
+@keyframes modal-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.legal-modal {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 1rem;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.35);
+  width: min(100%, 38rem);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  outline: none;
+  animation: modal-slide-up 0.2s ease;
+}
+
+@keyframes modal-slide-up {
+  from { transform: translateY(1rem); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+.legal-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.5rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+  flex: 0 0 auto;
+}
+
+.legal-modal-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.legal-modal-close {
+  background: none;
+  border: none;
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 0.35rem 0.5rem;
+  border-radius: 0.4rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.legal-modal-close:hover {
+  background: var(--color-surface-muted);
+  color: var(--color-text);
+}
+
+.legal-modal-close:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.legal-modal-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.legal-modal-section {
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.legal-modal-section:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+
+.legal-modal-section-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  margin-bottom: 0.35rem;
+}
+
+.legal-modal-section-body {
+  font-size: 0.875rem;
+  line-height: 1.7;
+  color: var(--color-text-muted);
+}
+
+.legal-modal-footer {
+  padding: 1rem 1.5rem 1.25rem;
+  border-top: 1px solid var(--color-border);
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.legal-modal-done {
+  min-width: 6rem;
+}
+
 @media (max-width: 680px) {
   .auth-card.register-card {
     padding: 1.75rem 1.25rem;

@@ -1,5 +1,5 @@
 import './Register.css';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   createUserWithEmailAndPassword,
   updateProfile,
@@ -8,7 +8,60 @@ import { Link, useNavigate, Navigate } from 'react-router-dom';
 import { auth, firebaseConfigErrorMessage, isFirebaseConfigured } from '../config/firebase';
 import { useAuth } from '../context/AuthContext';
 import OneGapoLogo from '../components/OneGapoLogo';
+import { termsSections, privacySections } from './legalContent';
 // NOTE: window.fetch is globally patched in main.jsx — bare /api/ paths work in production.
+
+/* ── Inline Legal Modal ─────────────────────────────────────────────────── */
+function LegalModal({ title, sections, onClose }) {
+  const dialogRef = useRef(null);
+
+  // Trap focus & close on Escape
+  useEffect(() => {
+    const el = dialogRef.current;
+    if (!el) return;
+    el.focus();
+    const onKeyDown = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
+  return (
+    <div
+      className="legal-modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="legal-modal" ref={dialogRef} tabIndex={-1}>
+        <div className="legal-modal-header">
+          <h2 className="legal-modal-title">{title}</h2>
+          <button
+            type="button"
+            className="legal-modal-close"
+            aria-label="Close"
+            onClick={onClose}
+          >
+            ✕
+          </button>
+        </div>
+        <div className="legal-modal-body">
+          {sections.map((section) => (
+            <section key={section.title} className="legal-modal-section">
+              <h3 className="legal-modal-section-title">{section.title}</h3>
+              <p className="legal-modal-section-body">{section.body}</p>
+            </section>
+          ))}
+        </div>
+        <div className="legal-modal-footer">
+          <button type="button" className="btn-primary legal-modal-done" onClick={onClose}>
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function getErrorMessage(code) {
   switch (code) {
@@ -72,6 +125,8 @@ export default function Register() {
   const [acceptedPolicies, setAcceptedPolicies] = useState(false);
   const [error,    setError]      = useState('');
   const [loading,  setLoading]    = useState(false);
+  // null | 'terms' | 'privacy'
+  const [legalModal, setLegalModal] = useState(null);
 
   // Already signed in (and not in the middle of registering) → go to dashboard
   if (currentUser && !loading) return <Navigate to="/" replace />;
@@ -160,6 +215,20 @@ export default function Register() {
 
   return (
     <div className="auth-page register-page">
+      {legalModal === 'terms' && (
+        <LegalModal
+          title="Terms and Conditions"
+          sections={termsSections}
+          onClose={() => setLegalModal(null)}
+        />
+      )}
+      {legalModal === 'privacy' && (
+        <LegalModal
+          title="Privacy Policy"
+          sections={privacySections}
+          onClose={() => setLegalModal(null)}
+        />
+      )}
       <div className="auth-card register-card">
         <div className="auth-header">
           <OneGapoLogo className="auth-logo" alt="OneGapo" />
@@ -288,13 +357,21 @@ export default function Register() {
             />
             <label htmlFor="policyConsent" className="register-consent-text">
               I agree to the{' '}
-              <Link to="/terms" className="register-consent-link">
+              <button
+                type="button"
+                className="register-consent-link register-consent-btn"
+                onClick={() => setLegalModal('terms')}
+              >
                 Terms and Conditions
-              </Link>{' '}
+              </button>{' '}
               and{' '}
-              <Link to="/privacy" className="register-consent-link">
+              <button
+                type="button"
+                className="register-consent-link register-consent-btn"
+                onClick={() => setLegalModal('privacy')}
+              >
                 Privacy Policy
-              </Link>
+              </button>
               .
             </label>
           </div>
