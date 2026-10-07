@@ -273,9 +273,9 @@ async function updateStaff(req, res, next) {
     const claimUpdates     = {};
 
     if (role !== undefined) {
-      if (!ALLOWED_ROLES.includes(role)) {
+      if (!ALLOWED_ROLES.includes(role) && role !== 'resident') {
         return res.status(400).json({
-          error: `Invalid role. Allowed values are: ${ALLOWED_ROLES.join(', ')}.`,
+          error: `Invalid role. Allowed values are: ${ALLOWED_ROLES.join(', ')}, resident.`,
         });
       }
 
@@ -288,6 +288,21 @@ async function updateStaff(req, res, next) {
 
       firestoreUpdates.role = role;
       claimUpdates.role     = role;
+
+      if (role === 'resident') {
+        firestoreUpdates.branchId       = null;
+        firestoreUpdates.branchName     = null;
+        firestoreUpdates.entityType     = null;
+        firestoreUpdates.customRoleId   = null;
+        firestoreUpdates.customRoleName = null;
+        firestoreUpdates.permissions    = [];
+        claimUpdates.branchId           = null;
+        claimUpdates.location           = null;
+        claimUpdates.entityType         = null;
+        claimUpdates.customRoleId       = null;
+        claimUpdates.customRoleName     = null;
+        claimUpdates.permissions        = [];
+      }
     }
 
     const db = admin.firestore();
@@ -378,6 +393,10 @@ async function deleteUser(req, res, next) {
     const { uid } = req.params;
     if (!uid) return res.status(400).json({ error: 'uid is required.' });
 
+    if (req.query.roleOnly === 'true' || req.query.roleOnly === true) {
+      return removeStaffRole(req, res, next);
+    }
+
     if (uid === req.user.uid) {
       return res.status(400).json({ error: 'You cannot delete your own account.' });
     }
@@ -402,6 +421,89 @@ async function deleteUser(req, res, next) {
     ]);
 
     return res.json({ message: 'User deleted.' });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+/**
+ * DELETE /api/admin/users/:uid/role
+ * DELETE /api/admin/staff/:uid
+ *
+ * Revokes a user's staff/operational role and demotes them to a regular 'resident',
+ * clearing branch assignment, custom role, and permissions, while keeping
+ * their account in the database (Firebase Auth and Firestore).
+ *
+ * Protected: verifyToken + requirePermission('add_staffs')
+ */
+async function removeStaffRole(req, res, next) {
+  try {
+    const { uid } = req.params;
+    if (!uid) return res.status(400).json({ error: 'uid is required.' });
+
+    if (uid === req.user.uid) {
+      return res.status(400).json({ error: 'You cannot remove your own staff role.' });
+    }
+
+    const targetUserRecord = await admin.auth().getUser(uid).catch(() => null);
+    if (targetUserRecord?.email?.toLowerCase() === PRIMARY_ADMIN_EMAIL) {
+      return res.status(403).json({
+        error: `The primary admin account ${PRIMARY_ADMIN_EMAIL} cannot have their role removed.`,
+      });
+    }
+
+    const db = admin.firestore();
+    const userDocRef = db.collection('users').doc(uid);
+    const userDoc = await userDocRef.get();
+
+    if (!targetUserRecord && !userDoc.exists) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    if (targetUserRecord) {
+      const currentClaims = targetUserRecord.customClaims || {};
+      await admin.auth().setCustomUserClaims(uid, {
+        ...currentClaims,
+        role: 'resident',
+        branchId: null,
+        location: null,
+        entityType: null,
+        customRoleId: null,
+        customRoleName: null,
+        permissions: [],
+      });
+    }
+
+    const firestoreUpdates = {
+      role: 'resident',
+      branchId: null,
+      branchName: null,
+      entityType: null,
+      customRoleId: null,
+      customRoleName: null,
+      permissions: [],
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedBy: req.user.uid,
+    };
+
+    if (userDoc.exists) {
+      await userDocRef.update(firestoreUpdates);
+    } else if (targetUserRecord) {
+      await userDocRef.set({
+        uid,
+        email: targetUserRecord.email || '',
+        fullName: targetUserRecord.displayName || '',
+        ...firestoreUpdates,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdBy: req.user.uid,
+      });
+    }
+
+    return res.json({
+      message: 'Staff role removed successfully. User account retained as resident.',
+      uid,
+      role: 'resident',
+    });
   } catch (err) {
     return next(err);
   }
@@ -729,5 +831,5 @@ async function migrateResponderRoles(req, res, next) {
   }
 }
 
-module.exports = { createStaff, createBranchStaff, listBranchStaff, listUsers, updateStaff, deleteUser, resendVerification, migrateResponderRoles };
+module.exports = { createStaff, createBranchStaff, listBranchStaff, listUsers, updateStaff, deleteUser, removeStaffRole, resendVerification, migrateResponderRoles };
 

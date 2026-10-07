@@ -1859,6 +1859,49 @@ export default function AdminPanel() {
     }
   };
 
+  const handleRemoveStaffRole = async (user, { skipConfirm = false } = {}) => {
+    if (!skipConfirm) {
+      openConfirmDialog({
+        title: 'Remove staff role',
+        message: `Remove staff role for ${user.email}? This will revoke their staff privileges and branch assignments, but their account will remain in the database as a resident.`,
+        confirmLabel: 'Remove Role',
+        confirmClassName: 'ap-btn-danger',
+        onConfirm: () => handleRemoveStaffRole(user, { skipConfirm: true }),
+      });
+      return;
+    }
+    setStaffError('');
+    setUsersError('');
+    try {
+      const res = await api(`/api/admin/users/${user.uid}/role`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to remove staff role.');
+      }
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.uid === user.uid
+            ? {
+                ...u,
+                role: 'resident',
+                branchId: null,
+                branchName: null,
+                entityType: null,
+                customRoleId: null,
+                customRoleName: null,
+                permissions: [],
+              }
+            : u
+        )
+      );
+      if (editingUser?.uid === user.uid) setEditingUser(null);
+      setStaffSuccess(data.message || `Staff role removed for ${user.email}. Account kept as resident.`);
+    } catch (err) {
+      setStaffError(err.message);
+      setUsersError(err.message);
+    }
+  };
+
   const handleDeleteUser = async (user, { skipConfirm = false } = {}) => {
     if (!skipConfirm) {
       openConfirmDialog({
@@ -3397,6 +3440,8 @@ export default function AdminPanel() {
                     {usersLoading ? 'Loading…' : 'Refresh'}
                   </button>
                 </div>
+                {staffError && <div role="alert" className="auth-error" style={{ marginBottom: '1rem' }}>{staffError}</div>}
+                {staffSuccess && <div role="status" className="auth-success" style={{ marginBottom: '1rem' }}>{staffSuccess}</div>}
                 {(() => {
                   const staffList = users.filter((u) => isOperationalUser(u));
                   if (usersLoading) return <p className="ap-loading">Loading…</p>;
@@ -3442,7 +3487,15 @@ export default function AdminPanel() {
                                     </button>
                                   )}
                                   <button onClick={() => handleEditStart(u)} className="ap-btn-outline ap-btn-sm">Edit</button>
-                                  <button onClick={() => handleDeleteUser(u)} className="ap-btn-danger ap-btn-sm">Delete</button>
+                                  {u.email?.toLowerCase() !== 'onegapo2026@gmail.com' && u.uid !== currentUser?.uid && (
+                                    <button
+                                      onClick={() => handleRemoveStaffRole(u)}
+                                      className="ap-btn-danger ap-btn-sm"
+                                      title="Remove staff role without deleting account from database"
+                                    >
+                                      Remove Role
+                                    </button>
+                                  )}
                                 </div>
                               </td>
                             </tr>
