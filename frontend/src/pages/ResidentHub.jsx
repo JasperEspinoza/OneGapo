@@ -373,6 +373,7 @@ export default function ResidentHub({ viewMode = 'resident' }) {
   const [outsideOlongapoModalOpen, setOutsideOlongapoModalOpen] = useState(false);
   const [cooldownRemaining, setCooldownRemaining] = useState(0);
   const [barangaySearch, setBarangaySearch] = useState('');
+  const manuallySelectedBarangayRef = useRef(false);
 
   const [myReports, setMyReports] = useState([]);
   const [reportsLoading, setReportsLoading] = useState(false);
@@ -898,9 +899,7 @@ export default function ResidentHub({ viewMode = 'resident' }) {
       ...prev,
       latitude: lat.toFixed(6),
       longitude: lng.toFixed(6),
-      barangay: '',
     }));
-    setBarangaySearch('');
 
     try {
       const geoRes = await fetch(
@@ -918,9 +917,11 @@ export default function ResidentHub({ viewMode = 'resident' }) {
       setForm((prev) => ({
         ...prev,
         ...(geoData?.display_name ? { address: geoData.display_name } : {}),
-        barangay: inferredBarangay,
+        ...(manuallySelectedBarangayRef.current ? {} : { barangay: inferredBarangay }),
       }));
-      setBarangaySearch(inferredBarangay);
+      if (!manuallySelectedBarangayRef.current) {
+        setBarangaySearch(inferredBarangay);
+      }
     } catch {
       // Reverse geocoding is best-effort only.
     }
@@ -974,8 +975,10 @@ export default function ResidentHub({ viewMode = 'resident' }) {
 
   const handleBarangayChange = (event) => {
     const value = event.target.value;
+    const canonical = getKnownBarangayName(value);
+    manuallySelectedBarangayRef.current = Boolean(canonical);
     setBarangaySearch(value);
-    setForm((prev) => ({ ...prev, barangay: getKnownBarangayName(value) || value }));
+    setForm((prev) => ({ ...prev, barangay: canonical || value }));
   };
 
   const handleApplyTemplate = (template) => {
@@ -1222,6 +1225,7 @@ export default function ResidentHub({ viewMode = 'resident' }) {
       localStorage.setItem('onegapo_last_report_at', Date.now().toString());
       setForm(INITIAL_FORM);
       setBarangaySearch('');
+      manuallySelectedBarangayRef.current = false;
       setAttachments([]);
       setActiveTab(isResponder ? 'reports' : 'home');
       await loadMyReports();
@@ -1545,10 +1549,6 @@ export default function ResidentHub({ viewMode = 'resident' }) {
 
               <div>
                 <label className="form-label" htmlFor="resident-attachments">Images / Videos (optional)</label>
-                <InfoTooltip
-                  label="Explain report attachments"
-                  text="Attach up to 3 image or video files. Each file must be 25 MB or smaller."
-                />
                 <div className="resident-media-actions">
                   <input
                     id="resident-attachments"
