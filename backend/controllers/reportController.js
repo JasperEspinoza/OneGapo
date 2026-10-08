@@ -773,23 +773,30 @@ function validateInsideOlongapo(lat, lng) {
 }
 
 function canStaffAccessReport(report, reqUser) {
-  const staffCoverage = String(reqUser?.location || '').trim();
-  if (!staffCoverage) {
-    return false;
-  }
-
   const assignedResponderUid = String(report?.assignedResponder?.uid || '').trim();
   if (assignedResponderUid && assignedResponderUid === String(reqUser?.uid || '').trim()) {
     return true;
   }
 
-  if (isReportInCoverage(report, staffCoverage)) {
+  const staffBranchId = String(reqUser?.branchId || '').trim();
+  const reportBranchIds = [
+    report?.routingBranchId,
+    report?.forwarding?.to?.branchId,
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean);
+  if (staffBranchId && reportBranchIds.includes(staffBranchId)) {
     return true;
   }
 
-  const staffBranchId = normalizeToken(reqUser?.branchId || '');
-  const forwardedBranchId = normalizeToken(report?.forwarding?.to?.branchId || '');
-  if (staffBranchId && forwardedBranchId && staffBranchId === forwardedBranchId) {
+  // New reports have an authoritative branch ID. Do not let a conflicting
+  // address or legacy barangay field route them to another branch.
+  if (String(report?.routingBranchId || '').trim()) {
+    return false;
+  }
+
+  const staffCoverage = String(reqUser?.location || '').trim();
+  if (staffCoverage && isReportInCoverage(report, staffCoverage)) {
     return true;
   }
 
@@ -819,6 +826,22 @@ async function resolveStaffCoverage(db, reqUser) {
   }
 
   return Array.from(coverageNames);
+}
+
+async function resolveRoutingBranch(db, routingBarangay) {
+  const canonicalName = canonicalCoverageName(routingBarangay);
+  if (!canonicalName) {
+    return { id: '', name: '' };
+  }
+
+  const branchSnap = await db.collection('branches').get();
+  const branchDoc = branchSnap.docs.find((doc) => (
+    canonicalCoverageName(doc.data()?.name || '') === canonicalName
+  ));
+
+  return branchDoc
+    ? { id: branchDoc.id, name: canonicalName }
+    : { id: '', name: canonicalName };
 }
 
 function hasPermission(reqUser, permission) {
@@ -1233,6 +1256,12 @@ async function createReport(req, res, next) {
 
     const reportRef = db.collection('reports').doc();
     const routingBarangay = selectedBarangay || inferredBarangay;
+    let routingBranch = { id: '', name: routingBarangay };
+    try {
+      routingBranch = await resolveRoutingBranch(db, routingBarangay);
+    } catch (err) {
+      console.warn('[createReport] Failed to resolve routing branch:', err.message || err);
+    }
 
     const payload = {
       id: reportRef.id,
@@ -1249,6 +1278,8 @@ async function createReport(req, res, next) {
         mapProvider: 'openstreetmap',
       },
       routingBarangay,
+      routingBranchId: routingBranch.id || null,
+      routingBranchName: routingBranch.name || null,
       reporter: {
         uid: requesterUid,
         email: req.user.email || '',
