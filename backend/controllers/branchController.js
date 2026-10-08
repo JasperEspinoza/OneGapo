@@ -16,7 +16,6 @@ const DEFAULT_BRANCH_CATALOG = [
   { name: 'Kalaklan' },
   { name: 'Kalalake' },
   { name: 'Mabayuan' },
-  { name: 'New Asinan' },
   { name: 'New Cabalan' },
   { name: 'New Ilalim' },
   { name: 'New Kababae' },
@@ -29,6 +28,8 @@ const DEFAULT_BRANCH_CATALOG = [
 ];
 
 const BRANCH_NAME_ALIASES = new Map([
+  ['new asinan', 'Asinan'],
+  ['poblacion', 'Asinan'],
   ['sta rita', 'Sta. Rita'],
   ['sta. rita', 'Sta. Rita'],
   ['santa rita', 'Sta. Rita'],
