@@ -1612,12 +1612,12 @@ export default function StaffPanel() {
                             {canManageReportLifecycle ? (
                               <div className="ss-report-actions" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
                                 <div className="ss-report-action-buttons">
-                                  <InfoTooltip
-                                    label="Explain report lifecycle actions"
-                                    text={activeSection === 'archive'
-                                      ? 'Unarchive returns the report to active workspaces. Delete permanently removes it and cannot be undone.'
-                                      : 'Archive removes the report from active workspaces while keeping it available in the archive.'}
-                                  />
+                                  {activeSection !== 'archive' && (
+                                    <InfoTooltip
+                                      label="Explain report lifecycle actions"
+                                      text="Archive removes the report from active workspaces while keeping it available in the archive."
+                                    />
+                                  )}
                                   {activeSection !== 'archive' ? (
                                     <button
                                       type="button"

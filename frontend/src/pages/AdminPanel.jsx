@@ -2983,7 +2983,6 @@ export default function AdminPanel() {
                             <td>{resolveReporterName(report)}</td>
                             <td className="ap-table-actions">
                               <div className="ap-report-row-actions" style={{ gap: '0.5rem' }}>
-                                <InfoTooltip label="Explain archived report actions" text="Unarchive returns the report to active workspaces. Delete permanently removes it and cannot be undone." />
                                 <button
                                   type="button"
                                   className="ap-report-action-btn"
