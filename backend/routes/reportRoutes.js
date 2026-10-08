@@ -20,6 +20,7 @@ const {
   markNotificationRead,
   submitReportRating,
 } = require('../controllers/reportController');
+const { getBoundariesGeoJSON, findBarangayByCoordinates } = require('../services/barangayLookup');
 
 const router = Router();
 
@@ -83,6 +84,24 @@ const uploadResolutionEvidence = multer({
     err.status = 400;
     cb(err);
   },
+});
+
+router.get('/boundaries', (_req, res) => {
+  res.json(getBoundariesGeoJSON());
+});
+
+router.get('/lookup-barangay', (req, res) => {
+  const lat = Number(req.query?.lat);
+  const lng = Number(req.query?.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return res.status(400).json({ error: 'Valid lat and lng query params are required.' });
+  }
+  const result = findBarangayByCoordinates(lat, lng);
+  return res.json({
+    found: Boolean(result),
+    barangay: result?.name || '',
+    psgc: result?.psgc || null,
+  });
 });
 
 router.post('/', verifyToken, upload.array('attachments', 3), createReport);

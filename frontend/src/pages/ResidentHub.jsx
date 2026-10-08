@@ -914,28 +914,55 @@ export default function ResidentHub({ viewMode = 'resident' }) {
       longitude: lng.toFixed(6),
     }));
 
+    let detectedBarangay = '';
+    try {
+      const lookupRes = await api(`/api/reports/lookup-barangay?lat=${lat}&lng=${lng}`);
+      if (lookupRes.ok) {
+        const lookupData = await lookupRes.json();
+        if (lookupData?.found && lookupData?.barangay) {
+          detectedBarangay = lookupData.barangay;
+        }
+      }
+    } catch {
+      // Backend lookup failed, proceed to reverse geocoder fallback
+    }
+
     try {
       const geoRes = await fetch(
         `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`
       );
-      if (!geoRes.ok) return;
+      if (!geoRes.ok) {
+        if (detectedBarangay) {
+          setForm((prev) => ({
+            ...prev,
+            ...(manuallySelectedBarangayRef.current ? {} : { barangay: detectedBarangay }),
+          }));
+        }
+        return;
+      }
       const geoData = await geoRes.json();
-      const inferredBarangay = getKnownBarangayName(
+      const fallbackBarangay = detectedBarangay || getKnownBarangayName(
         geoData?.address?.barangay
           || geoData?.address?.quarter
           || geoData?.address?.suburb
           || geoData?.display_name
           || ''
       );
+
       setForm((prev) => ({
         ...prev,
         ...(geoData?.display_name ? { address: normalizeReportAddress(geoData.display_name) } : {}),
-        ...(manuallySelectedBarangayRef.current ? {} : { barangay: inferredBarangay }),
+        ...(manuallySelectedBarangayRef.current ? {} : { barangay: fallbackBarangay }),
       }));
     } catch {
-      // Reverse geocoding is best-effort only.
+      if (detectedBarangay) {
+        setForm((prev) => ({
+          ...prev,
+          ...(manuallySelectedBarangayRef.current ? {} : { barangay: detectedBarangay }),
+        }));
+      }
     }
-  }, []);
+  }, [api]);
 
   const handleUseCurrentLocation = () => {
     if (!navigator.geolocation) {
@@ -1525,8 +1552,8 @@ export default function ResidentHub({ viewMode = 'resident' }) {
 
               <div>
                 <label className="form-label" htmlFor="resident-barangay">
-                  Barangay (optional)
-                  <InfoTooltip text="Select the barangay for this report. Choosing a barangay directs your report to the designated barangay office." />
+                  Barangay (Office Routing)
+                  <InfoTooltip text="Select the barangay for this report. Choosing a barangay directs your report directly to that specific barangay office." />
                 </label>
                 <select
                   id="resident-barangay"
@@ -1536,16 +1563,22 @@ export default function ResidentHub({ viewMode = 'resident' }) {
                   onChange={handleBarangayChange}
                   disabled={submitting}
                 >
-                  <option value="">-- Select Barangay (Optional) --</option>
+                  <option value="">-- Select Barangay (or auto-detect from map pin) --</option>
                   {OLONGAPO_BARANGAYS.map((barangay) => (
                     <option key={barangay} value={barangay}>
                       {barangay}
                     </option>
                   ))}
                 </select>
-                <p className="resident-barangay-note">
-                  Please check that the barangay is correct before submitting your report.
-                </p>
+                {form.barangay ? (
+                  <p className="resident-barangay-note" style={{ color: '#16a34a', fontWeight: 600 }}>
+                    Directing to <strong>Barangay {form.barangay}</strong> office
+                  </p>
+                ) : (
+                  <p className="resident-barangay-note">
+                    Pin a location on the map to auto-detect the barangay, or choose from the list above.
+                  </p>
+                )}
               </div>
 
               <div>

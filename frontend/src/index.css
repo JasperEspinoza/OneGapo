@@ -1948,3 +1948,15 @@ img, svg {
 .theme-dark .badge-unverified { background-color: #3b1f24; color: #fecdd3; }
 .theme-dark .badge-forwarded   { background-color: #1f2a4d; color: #c7d2fe; }
 
+.barangay-boundary-tooltip {
+  background: rgba(15, 23, 42, 0.88);
+  color: #f8fafc;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  padding: 3px 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+}
+

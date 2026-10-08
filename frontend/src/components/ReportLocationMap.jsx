@@ -1,4 +1,4 @@
-import { CircleMarker, MapContainer, Marker, Polyline, TileLayer, useMap, useMapEvents } from 'react-leaflet';
+import { CircleMarker, GeoJSON, MapContainer, Marker, Polyline, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -392,7 +392,7 @@ function HeatmapLayer({ markers, enabled }) {
   return null;
 }
 
-function MapCanvas({ selectedPosition, safeMarkers, autoFitMarkers, tileSource, handleTileError, onPick, expandKey, activeMarkerId, onMarkerClick, routePath, userPosition, freezeMarkerAutoFit, showHeatmap }) {
+function MapCanvas({ selectedPosition, safeMarkers, autoFitMarkers, tileSource, handleTileError, onPick, expandKey, activeMarkerId, onMarkerClick, routePath, userPosition, freezeMarkerAutoFit, showHeatmap, boundaries }) {
   const initialMarkers = autoFitMarkers.length > 0 ? autoFitMarkers : safeMarkers;
   const renderedMarkers = useMemo(() => buildNearbyMarkerGroups(safeMarkers), [safeMarkers]);
 
@@ -410,6 +410,29 @@ function MapCanvas({ selectedPosition, safeMarkers, autoFitMarkers, tileSource, 
           tileerror: handleTileError,
         }}
       />
+      {boundaries && (
+        <GeoJSON
+          key="barangay-boundaries"
+          data={boundaries}
+          style={() => ({
+            color: '#3b82f6',
+            weight: 1.5,
+            opacity: 0.65,
+            fillColor: '#3b82f6',
+            fillOpacity: 0.04,
+            dashArray: '3, 4',
+          })}
+          onEachFeature={(feature, layer) => {
+            if (feature.properties?.name) {
+              layer.bindTooltip(`Brgy. ${feature.properties.name}`, {
+                sticky: true,
+                direction: 'center',
+                className: 'barangay-boundary-tooltip',
+              });
+            }
+          }}
+        />
+      )}
       <RecenterOnPosition position={selectedPosition} />
       <RecenterOnMarkers markers={initialMarkers} disabled={Boolean(selectedPosition)} freezeAfterFirstFit={freezeMarkerAutoFit} />
       <InvalidateMapSize expandKey={expandKey} />
@@ -711,7 +734,23 @@ export default function ReportLocationMap({
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('active');
   const [isDarkTheme, setIsDarkTheme] = useState(false);
+  const [boundaries, setBoundaries] = useState(null);
   const sidebarCloseTimeoutRef = useRef(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    fetch('/api/reports/boundaries')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (isMounted && data && Array.isArray(data.features)) {
+          setBoundaries(data);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, []);
   const lastAppliedFocusIdRef = useRef('');
   const lastAutoRouteRequestKeyRef = useRef(0);
   const previousActiveMarkerIdRef = useRef('');
@@ -1201,6 +1240,7 @@ export default function ReportLocationMap({
               userPosition={enableRouteControls ? userPosition : null}
               freezeMarkerAutoFit={preserveViewOnRefresh}
               showHeatmap={heatmapEnabled}
+              boundaries={boundaries}
             />
           </div>
           <MarkerDetailsSidebar
@@ -1333,6 +1373,7 @@ export default function ReportLocationMap({
                     userPosition={enableRouteControls ? userPosition : null}
                     freezeMarkerAutoFit={preserveViewOnRefresh}
                     showHeatmap={heatmapEnabled}
+                    boundaries={boundaries}
                   />
 
                   {markerLegendItems.length > 0 ? (

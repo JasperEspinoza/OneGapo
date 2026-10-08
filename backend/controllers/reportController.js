@@ -1,5 +1,6 @@
 const admin = require('../config/firebaseAdmin');
 const { isCloudinaryConfigured, uploadBufferToCloudinary } = require('../services/cloudinaryService');
+const { findBarangayByCoordinates, hasBoundaryData } = require('../services/barangayLookup');
 
 const REPORT_STATUSES = ['submitted', 'in_progress', 'in_review', 'resolved', 'declined'];
 const REPORT_STATUS_ALIASES = new Map([['rejected', 'declined']]);
@@ -785,6 +786,7 @@ function canStaffAccessReport(report, reqUser) {
   ]
     .map((value) => String(value || '').trim())
     .filter(Boolean);
+  console.debug('[canStaffAccessReport] checking report', report?.id, '| staffBranchId:', staffBranchId, '| reportBranchIds:', reportBranchIds, '| location:', reqUser?.location, '| routingBarangay:', report?.routingBarangay, '| routingBranchId:', report?.routingBranchId);
   if (staffBranchId && reportBranchIds.includes(staffBranchId)) {
     return true;
   }
@@ -824,6 +826,8 @@ async function resolveStaffCoverage(db, reqUser) {
     if (canonical) coverageNames.add(canonical);
   };
 
+  console.debug('[resolveStaffCoverage] uid:', reqUser?.uid, '| location:', reqUser?.location, '| branchName:', reqUser?.branchName, '| branchId:', reqUser?.branchId);
+
   addCoverage(reqUser?.location);
   addCoverage(reqUser?.branchName);
 
@@ -832,14 +836,19 @@ async function resolveStaffCoverage(db, reqUser) {
     try {
       const branchSnap = await db.collection('branches').doc(branchId).get();
       if (branchSnap.exists) {
+        console.debug('[resolveStaffCoverage] Firestore branch doc name:', branchSnap.data()?.name);
         addCoverage(branchSnap.data()?.name);
+      } else {
+        console.debug('[resolveStaffCoverage] Firestore branch doc NOT FOUND for id:', branchId);
       }
     } catch (err) {
       console.warn('[resolveStaffCoverage] Failed to load assigned branch:', err.message || err);
     }
   }
 
-  return Array.from(coverageNames);
+  const result = Array.from(coverageNames);
+  console.debug('[resolveStaffCoverage] resolved coverages:', result);
+  return result;
 }
 
 async function resolveRoutingBranch(db, routingBarangay) {
@@ -1212,7 +1221,17 @@ async function createReport(req, res, next) {
     const description = String(req.body?.description || '').trim();
     const category = String(req.body?.category || 'general').trim().toLowerCase();
     const address = normalizeReportAddress(req.body?.address);
-    const inferredBarangay = extractCoverageFromAddress(address);
+
+    const lat = parseCoordinate(req.body?.latitude, 'latitude');
+    const lng = parseCoordinate(req.body?.longitude, 'longitude');
+    validateLatLng(lat, lng);
+    validateInsideOlongapo(lat, lng);
+
+    // ── Barangay detection ──────────────────────────────────────────────────
+    // Priority:
+    //   1. User's explicit dropdown selection (most trusted — user knows their location)
+    //   2. Point-in-polygon from submitted coordinates (authoritative, no name collisions)
+    //   3. Name extraction from the address string (legacy fallback)
     const selectedBarangayInput = String(req.body?.barangay || '').trim();
     const selectedBarangay = selectedBarangayInput
       ? canonicalCoverageName(selectedBarangayInput)
@@ -1222,10 +1241,33 @@ async function createReport(req, res, next) {
         error: 'Please select a valid barangay within Olongapo City.',
       });
     }
-    const lat = parseCoordinate(req.body?.latitude, 'latitude');
-    const lng = parseCoordinate(req.body?.longitude, 'longitude');
-    validateLatLng(lat, lng);
-    validateInsideOlongapo(lat, lng);
+
+    // Point-in-polygon lookup (only used when user didn't manually select)
+    let polygonBarangay = '';
+    if (!selectedBarangay) {
+      try {
+        const polygonResult = findBarangayByCoordinates(lat, lng);
+        if (polygonResult) {
+          polygonBarangay = polygonResult.name;
+          console.debug('[createReport] polygon lookup:', polygonResult);
+        } else if (hasBoundaryData()) {
+          // Boundary data is loaded but point didn't land in any polygon
+          console.warn('[createReport] Coordinates not inside any known barangay polygon:', { lat, lng });
+        }
+      } catch (polyErr) {
+        console.warn('[createReport] Point-in-polygon lookup failed:', polyErr.message);
+      }
+    }
+
+    const inferredBarangay = polygonBarangay || extractCoverageFromAddress(address);
+    const routingBarangay = selectedBarangay || inferredBarangay;
+
+    console.debug('[createReport] barangay resolution:', {
+      selectedBarangay,
+      polygonBarangay,
+      inferredBarangay,
+      routingBarangay,
+    });
 
     if (!title || title.length < 5) {
       return res.status(400).json({ error: 'Title is required and must be at least 5 characters.' });
@@ -1269,7 +1311,6 @@ async function createReport(req, res, next) {
     );
 
     const reportRef = db.collection('reports').doc();
-    const routingBarangay = selectedBarangay || inferredBarangay;
     let routingBranch = { id: '', name: routingBarangay };
     try {
       routingBranch = await resolveRoutingBranch(db, routingBarangay);

@@ -84,6 +84,7 @@ export default function Dashboard() {
   const [autoLocationAttempted, setAutoLocationAttempted] = useState(false);
   const [outsideOlongapoModalOpen, setOutsideOlongapoModalOpen] = useState(false);
   const composeSectionRef = useRef(null);
+  const manuallySelectedBarangayRef = useRef(false);
 
   const [myReports, setMyReports] = useState([]);
   const [reportsLoading, setReportsLoading] = useState(false);
@@ -138,19 +139,47 @@ export default function Dashboard() {
       longitude: lng.toFixed(6),
     }));
 
+    let detectedBarangay = '';
+    try {
+      const lookupRes = await api(`/api/reports/lookup-barangay?lat=${lat}&lng=${lng}`);
+      if (lookupRes.ok) {
+        const lookupData = await lookupRes.json();
+        if (lookupData?.found && lookupData?.barangay) {
+          detectedBarangay = lookupData.barangay;
+        }
+      }
+    } catch {
+      // Backend lookup failed, proceed to geocoder fallback
+    }
+
     try {
       const geoRes = await fetch(
         `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`
       );
-      if (!geoRes.ok) return;
-      const geoData = await geoRes.json();
-      if (geoData?.display_name) {
-        setForm((prev) => ({ ...prev, address: normalizeReportAddress(geoData.display_name) }));
+      if (!geoRes.ok) {
+        if (detectedBarangay) {
+          setForm((prev) => ({
+            ...prev,
+            ...(manuallySelectedBarangayRef.current ? {} : { barangay: detectedBarangay }),
+          }));
+        }
+        return;
       }
+      const geoData = await geoRes.json();
+      setForm((prev) => ({
+        ...prev,
+        ...(geoData?.display_name ? { address: normalizeReportAddress(geoData.display_name) } : {}),
+        ...(manuallySelectedBarangayRef.current ? {} : (detectedBarangay ? { barangay: detectedBarangay } : {})),
+      }));
     } catch {
-      // Reverse geocoding is best-effort only.
+      if (detectedBarangay) {
+        setForm((prev) => ({
+          ...prev,
+          ...(manuallySelectedBarangayRef.current ? {} : { barangay: detectedBarangay }),
+        }));
+      }
     }
-  }, []);
+  }, [api]);
 
   const handleUseCurrentLocation = () => {
     if (!navigator.geolocation) {
@@ -195,6 +224,9 @@ export default function Dashboard() {
 
   const handleInputChange = (event) => {
     const { name, value } = event.target;
+    if (name === 'barangay') {
+      manuallySelectedBarangayRef.current = Boolean(value);
+    }
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
@@ -286,6 +318,7 @@ export default function Dashboard() {
 
       showSubmitFeedback('success', data.message || 'Report submitted successfully.');
       setForm(INITIAL_FORM);
+      manuallySelectedBarangayRef.current = false;
       setAttachments([]);
       await loadMyReports();
     } catch (err) {
@@ -474,7 +507,7 @@ export default function Dashboard() {
 
               <div>
                 <label className="form-label" htmlFor="report-barangay">
-                  Barangay (optional)
+                  Barangay (Office Routing)
                 </label>
                 <select
                   id="report-barangay"
@@ -484,16 +517,22 @@ export default function Dashboard() {
                   onChange={handleInputChange}
                   disabled={submitting}
                 >
-                  <option value="">-- Select Barangay (Optional) --</option>
+                  <option value="">-- Select Barangay (or auto-detect from map pin) --</option>
                   {OLONGAPO_BARANGAYS.map((barangay) => (
                     <option key={barangay} value={barangay}>
                       {barangay}
                     </option>
                   ))}
                 </select>
-                <p className="resident-barangay-note">
-                  Please check that the barangay is correct before submitting your report.
-                </p>
+                {form.barangay ? (
+                  <p className="resident-barangay-note" style={{ color: '#16a34a', fontWeight: 600 }}>
+                    Directing to <strong>Barangay {form.barangay}</strong> office
+                  </p>
+                ) : (
+                  <p className="resident-barangay-note">
+                    Pin a location on the map to auto-detect the barangay, or choose from the list above.
+                  </p>
+                )}
               </div>
 
               <div>
