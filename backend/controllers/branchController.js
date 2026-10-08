@@ -5,6 +5,13 @@ const {
 } = require('../services/emailService');
 const { sendAccountVerificationEmail } = require('../services/verificationService');
 
+const DEFAULT_STAFF_PERMISSIONS = [
+  'view_reports',
+  'update_reports',
+  'close_reports',
+  'assign_responders',
+];
+
 const DEFAULT_BRANCH_CATALOG = [
   { name: 'Asinan' },
   { name: 'Banicain' },
@@ -130,7 +137,7 @@ async function createBranch(req, res, next) {
         branchId:   ref.id,
         location:   canonicalName,
         entityType: 'public',
-        permissions: [],
+        permissions: [...DEFAULT_STAFF_PERMISSIONS],
         verified:   false,
       });
 
@@ -145,7 +152,7 @@ async function createBranch(req, res, next) {
         entityType:     'public',
         customRoleId:   null,
         customRoleName: null,
-        permissions:    [],
+        permissions:    [...DEFAULT_STAFF_PERMISSIONS],
         verified:       false,
         createdAt:      admin.firestore.FieldValue.serverTimestamp(),
         createdBy:      req.user.uid,
@@ -382,7 +389,7 @@ async function updateBranch(req, res, next) {
           branchId: id,
           location: finalBranchName,
           entityType: finalBranchType,
-          permissions: [],
+          permissions: [...DEFAULT_STAFF_PERMISSIONS],
           verified: false,
         });
 
@@ -396,7 +403,7 @@ async function updateBranch(req, res, next) {
           entityType: finalBranchType,
           customRoleId: null,
           customRoleName: null,
-          permissions: [],
+          permissions: [...DEFAULT_STAFF_PERMISSIONS],
           verified: false,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
           createdBy: req.user.uid,

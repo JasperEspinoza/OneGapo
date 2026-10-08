@@ -153,8 +153,8 @@ async function getResidentVerificationStatus(req, res, next) {
     // Fall back to token claims only when no Firestore doc exists yet.
     const role         = firestoreData?.role         ?? req.user?.role         ?? null;
     const branchId     = firestoreData?.branchId     ?? req.user?.branchId     ?? null;
-    const branchName   = firestoreData?.branchName   ?? req.user?.branchName   ?? req.user?.location ?? null;
-    const location     = firestoreData?.branchName   ?? req.user?.location     ?? null;
+    const branchName   = firestoreData?.branchName   ?? firestoreData?.location ?? req.user?.branchName   ?? req.user?.location ?? null;
+    const location     = firestoreData?.location     ?? firestoreData?.branchName ?? req.user?.location     ?? req.user?.branchName ?? null;
     const entityType   = firestoreData?.entityType   ?? req.user?.entityType   ?? null;
     const customRoleId   = firestoreData?.customRoleId   ?? req.user?.customRoleId   ?? null;
     const customRoleName = firestoreData?.customRoleName ?? req.user?.customRoleName ?? null;

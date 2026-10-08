@@ -339,6 +339,8 @@ const COVERAGE_ALIASES = new Map([
   ['asinan', 'Asinan'],
   ['new asinan', 'Asinan'],
   ['poblacion', 'Asinan'],
+  ['barangay asinan', 'Asinan'],
+  ['brgy asinan', 'Asinan'],
   ['banicain', 'Banicain'],
   ['barretto', 'Barretto'],
   ['east bajac bajac', 'East Bajac-Bajac'],
@@ -366,6 +368,10 @@ const COVERAGE_ALIASES = new Map([
   ['subic bay freeport zone', 'SBMA Freeport Zone'],
   ['subic bay metropolitan authority', 'SBMA Freeport Zone'],
 ]);
+
+const SORTED_COVERAGE_ALIASES = Array.from(COVERAGE_ALIASES.entries()).sort(
+  (a, b) => b[0].length - a[0].length
+);
 
 const METRICS_BARANGAYS = [
   'Asinan',
@@ -411,7 +417,7 @@ function canonicalCoverageName(value) {
     return COVERAGE_ALIASES.get(normalized);
   }
 
-  for (const [alias, canonical] of COVERAGE_ALIASES.entries()) {
+  for (const [alias, canonical] of SORTED_COVERAGE_ALIASES) {
     if (normalized.includes(alias)) {
       return canonical;
     }

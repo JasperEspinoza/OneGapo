@@ -227,8 +227,8 @@ export default function StaffPanel() {
   const effectivePermissions = permissions;
   const location = userClaims?.location || 'Unassigned';
 
-  const canViewReports = effectivePermissions.includes('view_reports') || effectivePermissions.includes('update_reports') || effectivePermissions.includes('close_reports') || effectivePermissions.includes('archive_reports');
-  const canUpdateReports = effectivePermissions.includes('update_reports') || effectivePermissions.includes('close_reports');
+  const canViewReports = role === 'staff' || role === 'admin' || effectivePermissions.includes('view_reports') || effectivePermissions.includes('update_reports') || effectivePermissions.includes('close_reports') || effectivePermissions.includes('archive_reports');
+  const canUpdateReports = role === 'staff' || role === 'admin' || effectivePermissions.includes('update_reports') || effectivePermissions.includes('close_reports');
   const canManageReportLifecycle = role === 'admin' || effectivePermissions.includes('archive_reports');
   const canManageStaff = effectivePermissions.includes('add_staffs');
 

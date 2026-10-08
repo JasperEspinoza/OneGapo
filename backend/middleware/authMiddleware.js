@@ -102,8 +102,8 @@ async function verifyToken(req, res, next) {
           const userData = userSnap.data() || {};
           profileOverlay.fullName = userData.fullName || hydratedToken.fullName || '';
           profileOverlay.branchId = userData.branchId || hydratedToken.branchId || null;
-          profileOverlay.branchName = userData.branchName || hydratedToken.branchName || hydratedToken.location || null;
-          profileOverlay.location = userData.branchName || hydratedToken.location || null;
+          profileOverlay.branchName = userData.branchName || userData.location || hydratedToken.branchName || hydratedToken.location || null;
+          profileOverlay.location = userData.location || userData.branchName || hydratedToken.location || hydratedToken.branchName || null;
           profileOverlay.entityType = userData.entityType || hydratedToken.entityType || null;
           profileOverlay.customRoleId = userData.customRoleId || hydratedToken.customRoleId || null;
           profileOverlay.customRoleName = userData.customRoleName || hydratedToken.customRoleName || null;

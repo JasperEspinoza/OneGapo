@@ -386,7 +386,6 @@ export default function ResidentHub({ viewMode = 'resident' }) {
   const [autoLocationAttempted, setAutoLocationAttempted] = useState(false);
   const [outsideOlongapoModalOpen, setOutsideOlongapoModalOpen] = useState(false);
   const [cooldownRemaining, setCooldownRemaining] = useState(0);
-  const [barangaySearch, setBarangaySearch] = useState('');
   const manuallySelectedBarangayRef = useRef(false);
 
   const [myReports, setMyReports] = useState([]);
@@ -933,9 +932,6 @@ export default function ResidentHub({ viewMode = 'resident' }) {
         ...(geoData?.display_name ? { address: normalizeReportAddress(geoData.display_name) } : {}),
         ...(manuallySelectedBarangayRef.current ? {} : { barangay: inferredBarangay }),
       }));
-      if (!manuallySelectedBarangayRef.current) {
-        setBarangaySearch(inferredBarangay);
-      }
     } catch {
       // Reverse geocoding is best-effort only.
     }
@@ -989,10 +985,8 @@ export default function ResidentHub({ viewMode = 'resident' }) {
 
   const handleBarangayChange = (event) => {
     const value = event.target.value;
-    const canonical = getKnownBarangayName(value);
-    manuallySelectedBarangayRef.current = Boolean(canonical);
-    setBarangaySearch(value);
-    setForm((prev) => ({ ...prev, barangay: canonical || value }));
+    manuallySelectedBarangayRef.current = Boolean(value);
+    setForm((prev) => ({ ...prev, barangay: value }));
   };
 
   const handleApplyTemplate = (template) => {
@@ -1238,7 +1232,6 @@ export default function ResidentHub({ viewMode = 'resident' }) {
       showSubmitFeedback('success', data.message || 'Report submitted successfully.');
       localStorage.setItem('onegapo_last_report_at', Date.now().toString());
       setForm(INITIAL_FORM);
-      setBarangaySearch('');
       manuallySelectedBarangayRef.current = false;
       setAttachments([]);
       setActiveTab(isResponder ? 'reports' : 'home');
@@ -1533,29 +1526,23 @@ export default function ResidentHub({ viewMode = 'resident' }) {
               <div>
                 <label className="form-label" htmlFor="resident-barangay">
                   Barangay (optional)
-                  <InfoTooltip text="The map location will suggest a barangay. You may search and select the designated barangay if the suggestion is not accurate." />
+                  <InfoTooltip text="Select the barangay for this report. Choosing a barangay directs your report to the designated barangay office." />
                 </label>
-                <input
+                <select
                   id="resident-barangay"
                   name="barangay"
-                  className="form-input"
-                  list="resident-barangay-options"
-                  value={barangaySearch}
+                  className="form-input form-select"
+                  value={form.barangay}
                   onChange={handleBarangayChange}
-                  onBlur={() => {
-                    const canonical = getKnownBarangayName(barangaySearch);
-                    setBarangaySearch(canonical || '');
-                    setForm((prev) => ({ ...prev, barangay: canonical }));
-                  }}
-                  placeholder="Search or select a barangay"
-                  autoComplete="off"
                   disabled={submitting}
-                />
-                <datalist id="resident-barangay-options">
+                >
+                  <option value="">-- Select Barangay (Optional) --</option>
                   {OLONGAPO_BARANGAYS.map((barangay) => (
-                    <option key={barangay} value={barangay} />
+                    <option key={barangay} value={barangay}>
+                      {barangay}
+                    </option>
                   ))}
-                </datalist>
+                </select>
                 <p className="resident-barangay-note">
                   Please check that the barangay is correct before submitting your report.
                 </p>
