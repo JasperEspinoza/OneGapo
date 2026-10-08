@@ -28,6 +28,20 @@ const OLONGAPO_BOUNDS = {
   maxLng: 120.34,
 };
 
+function normalizeReportAddress(address) {
+  return String(address || '')
+    .split(',')
+    .map((segment) => segment.trim())
+    .filter((segment) => {
+      const normalized = segment.toLowerCase().replace(/\s+/g, ' ').trim();
+      return normalized
+        && normalized !== 'central luzon'
+        && normalized !== '2200'
+        && normalized !== 'philippines';
+    })
+    .join(', ');
+}
+
 function isWithinOlongapoBounds(lat, lng) {
   return (
     lat >= OLONGAPO_BOUNDS.minLat
@@ -129,7 +143,7 @@ export default function Dashboard() {
       if (!geoRes.ok) return;
       const geoData = await geoRes.json();
       if (geoData?.display_name) {
-        setForm((prev) => ({ ...prev, address: geoData.display_name }));
+        setForm((prev) => ({ ...prev, address: normalizeReportAddress(geoData.display_name) }));
       }
     } catch {
       // Reverse geocoding is best-effort only.
@@ -240,7 +254,7 @@ export default function Dashboard() {
       payload.append('category', form.category);
       payload.append('latitude', form.latitude);
       payload.append('longitude', form.longitude);
-      payload.append('address', form.address.trim());
+      payload.append('address', normalizeReportAddress(form.address));
 
       attachments.forEach((file) => {
         payload.append('attachments', file);

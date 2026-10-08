@@ -447,6 +447,21 @@ function extractCoverageFromAddress(address) {
 
   return canonicalCoverageName(rawAddress);
 }
+
+function normalizeReportAddress(address) {
+  return String(address || '')
+    .split(',')
+    .map((segment) => segment.trim())
+    .filter((segment) => {
+      const normalized = normalizeToken(segment);
+      return normalized
+        && normalized !== 'central luzon'
+        && normalized !== '2200'
+        && normalized !== 'philippines';
+    })
+    .join(', ');
+}
+
 function getReportCoverage(report) {
   const directBarangay = canonicalCoverageName(report?.location?.barangay || report?.barangay || '');
   if (directBarangay) return directBarangay;
@@ -529,9 +544,24 @@ function safeDocData(doc) {
 }
 
 function normalizeReportRecord(data, id) {
+  const location = data?.location && typeof data.location === 'object'
+    ? { ...data.location }
+    : {};
+  const canonicalBarangay = canonicalCoverageName(
+    location.barangay || data?.barangay || ''
+  );
+
+  if (canonicalBarangay) {
+    location.barangay = canonicalBarangay;
+  }
+  if (location.address) {
+    location.address = normalizeReportAddress(location.address);
+  }
+
   return {
     id: data?.id || id,
     ...data,
+    location,
     createdAt: toIso(data?.createdAt),
     updatedAt: toIso(data?.updatedAt),
   };
@@ -1096,7 +1126,7 @@ async function createReport(req, res, next) {
     const title = String(req.body?.title || '').trim();
     const description = String(req.body?.description || '').trim();
     const category = String(req.body?.category || 'general').trim().toLowerCase();
-    const address = String(req.body?.address || '').trim();
+    const address = normalizeReportAddress(req.body?.address);
     const inferredBarangay = extractCoverageFromAddress(address);
     const selectedBarangayInput = String(req.body?.barangay || '').trim();
     const selectedBarangay = selectedBarangayInput
@@ -1230,12 +1260,7 @@ async function listOwnReports(req, res, next) {
     const rawReports = snap.docs
       .map((doc) => {
         const data = safeDocData(doc);
-        return {
-          id: data.id || doc.id,
-          ...data,
-          createdAt: toIso(data.createdAt),
-          updatedAt: toIso(data.updatedAt),
-        };
+        return normalizeReportRecord(data, doc.id);
       })
       .filter((report) => Boolean(report && report.id));
 

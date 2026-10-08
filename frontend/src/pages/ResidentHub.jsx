@@ -76,6 +76,20 @@ const OLONGAPO_BOUNDS = {
   maxLng: 120.34,
 };
 
+function normalizeReportAddress(address) {
+  return String(address || '')
+    .split(',')
+    .map((segment) => segment.trim())
+    .filter((segment) => {
+      const normalized = segment.toLowerCase().replace(/\s+/g, ' ').trim();
+      return normalized
+        && normalized !== 'central luzon'
+        && normalized !== '2200'
+        && normalized !== 'philippines';
+    })
+    .join(', ');
+}
+
 function isWithinOlongapoBounds(lat, lng) {
   return (
     lat >= OLONGAPO_BOUNDS.minLat
@@ -916,7 +930,7 @@ export default function ResidentHub({ viewMode = 'resident' }) {
       );
       setForm((prev) => ({
         ...prev,
-        ...(geoData?.display_name ? { address: geoData.display_name } : {}),
+        ...(geoData?.display_name ? { address: normalizeReportAddress(geoData.display_name) } : {}),
         ...(manuallySelectedBarangayRef.current ? {} : { barangay: inferredBarangay }),
       }));
       if (!manuallySelectedBarangayRef.current) {
@@ -1193,7 +1207,7 @@ export default function ResidentHub({ viewMode = 'resident' }) {
       payload.append('category', form.category);
       payload.append('latitude', form.latitude);
       payload.append('longitude', form.longitude);
-      payload.append('address', form.address.trim());
+      payload.append('address', normalizeReportAddress(form.address));
       if (form.barangay.trim()) {
         payload.append('barangay', form.barangay.trim());
       }
