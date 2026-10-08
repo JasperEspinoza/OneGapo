@@ -10,32 +10,35 @@ function normalizeRoleKey(value) {
   return String(value || '').trim().toLowerCase();
 }
 
-function getEffectiveRoleKey(claims = {}) {
-  const roleKey = normalizeRoleKey(claims.roleKey || claims.role);
-  const customRoleKey = normalizeRoleKey(claims.customRoleName);
-
-  return roleKey || customRoleKey || '';
-}
 
 function mergeSessionProfile(tokenClaims = {}, sessionProfile = null) {
   const profile = sessionProfile?.profile || {};
 
-  const merged = {
-    ...tokenClaims,
-    ...(profile || {}),
-  };
-  const effectiveRole = getEffectiveRoleKey(merged);
+  // The session profile is fetched live from Firestore on every auth state change,
+  // so it reflects role removals immediately. Token claims can be up to 1 hour stale.
+  // Profile fields take priority over token claims for role-sensitive fields.
+  const hasProfile = profile && Object.keys(profile).length > 0;
+
+  const role = hasProfile
+    ? (normalizeRoleKey(profile.role) || normalizeRoleKey(tokenClaims.role) || '')
+    : (normalizeRoleKey(tokenClaims.role) || '');
+
+  const effectiveRole = role || normalizeRoleKey(tokenClaims.roleKey) || '';
 
   return {
-    ...merged,
-    role: effectiveRole || tokenClaims.role || profile.role || '',
+    ...tokenClaims,
+    ...(hasProfile ? profile : {}),
+    role: effectiveRole,
     roleKey: effectiveRole,
-    customRoleName: tokenClaims.customRoleName || profile.customRoleName || null,
-    branchId: tokenClaims.branchId || profile.branchId || null,
-    location: tokenClaims.location || profile.location || profile.branchName || null,
-    branchName: tokenClaims.branchName || profile.branchName || profile.location || null,
-    entityType: tokenClaims.entityType || profile.entityType || null,
-    permissions: Array.isArray(tokenClaims.permissions) ? tokenClaims.permissions : Array.isArray(profile.permissions) ? profile.permissions : [],
+    // Profile wins for branch/permission fields since they come from Firestore
+    customRoleName: (hasProfile ? profile.customRoleName : null) ?? tokenClaims.customRoleName ?? null,
+    branchId:       (hasProfile ? profile.branchId       : null) ?? tokenClaims.branchId       ?? null,
+    location:       (hasProfile ? (profile.location || profile.branchName) : null) ?? tokenClaims.location ?? null,
+    branchName:     (hasProfile ? (profile.branchName || profile.location) : null) ?? tokenClaims.branchName ?? null,
+    entityType:     (hasProfile ? profile.entityType     : null) ?? tokenClaims.entityType     ?? null,
+    permissions: Array.isArray(profile.permissions)
+      ? profile.permissions
+      : Array.isArray(tokenClaims.permissions) ? tokenClaims.permissions : [],
   };
 }
 

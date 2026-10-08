@@ -140,20 +140,41 @@ async function getResidentVerificationStatus(req, res, next) {
       return res.status(401).json({ error: 'Unauthorized: Missing user identifier.' });
     }
 
-    const verified = await getVerificationStatus(uid);
+    // Fetch from Firestore — this is always up-to-date even when the JWT token
+    // still carries old claims (e.g. after a role is removed, before token refresh).
+    const [verified, userSnap] = await Promise.all([
+      getVerificationStatus(uid),
+      admin.firestore().collection('users').doc(uid).get(),
+    ]);
+
+    const firestoreData = userSnap.exists ? (userSnap.data() || {}) : null;
+
+    // Use Firestore as the authoritative source for role & permissions.
+    // Fall back to token claims only when no Firestore doc exists yet.
+    const role         = firestoreData?.role         ?? req.user?.role         ?? null;
+    const branchId     = firestoreData?.branchId     ?? req.user?.branchId     ?? null;
+    const branchName   = firestoreData?.branchName   ?? req.user?.branchName   ?? req.user?.location ?? null;
+    const location     = firestoreData?.branchName   ?? req.user?.location     ?? null;
+    const entityType   = firestoreData?.entityType   ?? req.user?.entityType   ?? null;
+    const customRoleId   = firestoreData?.customRoleId   ?? req.user?.customRoleId   ?? null;
+    const customRoleName = firestoreData?.customRoleName ?? req.user?.customRoleName ?? null;
+    const permissions  = Array.isArray(firestoreData?.permissions)
+      ? firestoreData.permissions
+      : Array.isArray(req.user?.permissions) ? req.user.permissions : [];
+
     return res.json({
       verified,
       profile: {
-        uid: req.user?.uid || uid,
+        uid,
         email: req.user?.email || '',
-        role: req.user?.roleKey || req.user?.role || null,
-        branchId: req.user?.branchId || null,
-        branchName: req.user?.branchName || req.user?.location || null,
-        location: req.user?.location || null,
-        entityType: req.user?.entityType || null,
-        customRoleId: req.user?.customRoleId || null,
-        customRoleName: req.user?.customRoleName || null,
-        permissions: Array.isArray(req.user?.permissions) ? req.user.permissions : [],
+        role,
+        branchId,
+        branchName,
+        location,
+        entityType,
+        customRoleId,
+        customRoleName,
+        permissions,
         isPrimaryAdmin: req.user?.isPrimaryAdmin === true,
       },
     });
