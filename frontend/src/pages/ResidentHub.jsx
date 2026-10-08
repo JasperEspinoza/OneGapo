@@ -100,6 +100,40 @@ function normalizeStatus(status) {
   return key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
 }
 
+/**
+ * For the resident view, archived reports should show their last real
+ * workflow status (e.g. "Resolved", "Submitted") instead of "Archived",
+ * since archiving is an internal staff operation residents don't need to see.
+ */
+function getResidentDisplayStatus(report) {
+  const status = getReportStatusKey(report?.status);
+  if (status !== 'archived') return status;
+
+  // Walk the audit trail to find the last non-archived toStatus
+  const auditTrail = Array.isArray(report?.auditTrail) ? report.auditTrail : [];
+  const lastRealEntry = auditTrail
+    .slice()
+    .sort((a, b) => new Date(b?.changedAt || 0) - new Date(a?.changedAt || 0))
+    .find((entry) => {
+      const ts = String(entry?.toStatus || '').trim().toLowerCase();
+      return ts && ts !== 'archived';
+    });
+
+  if (lastRealEntry) {
+    return getReportStatusKey(lastRealEntry.toStatus);
+  }
+
+  // If no audit trail entry is available, fall back to the fromStatus on the archive entry
+  const archiveEntry = auditTrail.find(
+    (entry) => String(entry?.type || '').trim().toLowerCase() === 'archived'
+  );
+  if (archiveEntry?.fromStatus) {
+    return getReportStatusKey(archiveEntry.fromStatus);
+  }
+
+  return 'submitted';
+}
+
 
 function getMediaUrl(media) {
   if (!media || typeof media !== 'object') return '';
@@ -1321,8 +1355,8 @@ export default function ResidentHub({ viewMode = 'resident' }) {
                         onClick={() => setActiveTicketReport(report)}
                       >
                         <div className="resident-report-pills">
-                          <span className={`res-pill report-status-${getReportStatusKey(report.status)}`}>
-                            {normalizeStatus(report.status)}
+                          <span className={`res-pill report-status-${getResidentDisplayStatus(report)}`}>
+                            {normalizeStatus(getResidentDisplayStatus(report))}
                           </span>
                           <span className={`res-pill res-pill-cat ${getCategoryPillClass(report.category)}`}>
                             {report.category}
@@ -1568,8 +1602,8 @@ export default function ResidentHub({ viewMode = 'resident' }) {
                     onClick={() => setActiveTicketReport(report)}
                   >
                     <div className="resident-report-pills">
-                      <span className={`res-pill report-status-${getReportStatusKey(report.status)}`}>
-                        {normalizeStatus(report.status)}
+                      <span className={`res-pill report-status-${getResidentDisplayStatus(report)}`}>
+                        {normalizeStatus(getResidentDisplayStatus(report))}
                       </span>
                       <span className={`res-pill res-pill-cat ${getCategoryPillClass(report.category)}`}>
                         {report.category}
@@ -1716,8 +1750,8 @@ export default function ResidentHub({ viewMode = 'resident' }) {
               return (
                 <div className="resident-ticket-modal-content">
                   <div className="resident-ticket-modal-summary">
-                    <span className={`report-status report-status-${getReportStatusKey(activeTicketReport.status)}`}>
-                      {normalizeStatus(activeTicketReport.status)}
+                    <span className={`report-status report-status-${getResidentDisplayStatus(activeTicketReport)}`}>
+                      {normalizeStatus(getResidentDisplayStatus(activeTicketReport))}
                     </span>
                     <p className="resident-ticket-modal-meta">
                       Last updated {formatReportDate(activeTicketReport.updatedAt || activeTicketReport.createdAt)}
