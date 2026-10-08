@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet.heat';
 import InfoTooltip from './InfoTooltip';
+import { getKnownBarangayName, normalizeBarangayToken } from '../constants/barangays';
 
 const defaultCenter = [14.8386, 120.2842];
 
@@ -259,62 +260,10 @@ function buildProximityMarkerIcon(marker) {
   });
 }
 
-const OLONGAPO_BARANGAYS = [
-  'Asinan',
-  'Bajac-Bajac',
-  'Barretto',
-  'East Bajac-Bajac',
-  'East Tapinac',
-  'Gordon Heights',
-  'Kalaklan',
-  'Mabayuan',
-  'New Cabalan',
-  'New Ilalim',
-  'New Kababae',
-  'New Kalalake',
-  'Old Cabalan',
-  'Pag-asa',
-  'Santa Rita',
-  'West Bajac-Bajac',
-  'West Tapinac',
-];
-
-const BARANGAY_BY_NORMALIZED = new Map(
-  OLONGAPO_BARANGAYS.map((name) => [
-    String(name).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(),
-    name,
-  ])
-);
-
-function normalizeBarangayToken(value) {
-  return String(value || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
-}
-
 function toTitleCase(value) {
   return String(value || '')
     .toLowerCase()
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function getKnownBarangayName(value) {
-  const normalized = normalizeBarangayToken(value);
-  if (!normalized) return '';
-
-  // Treat "New Asinan" or "Poblacion" as the same barangay as "Asinan"
-  if (normalized === 'new asinan' || normalized.includes('new asinan') || normalized === 'poblacion' || normalized.includes('poblacion')) return 'Asinan';
-
-  const exact = BARANGAY_BY_NORMALIZED.get(normalized);
-  if (exact) return exact;
-
-  const partial = OLONGAPO_BARANGAYS.find((name) => {
-    const known = normalizeBarangayToken(name);
-    return normalized.includes(known);
-  });
-
-  return partial || '';
 }
 
 function extractBarangayFromMarker(marker) {

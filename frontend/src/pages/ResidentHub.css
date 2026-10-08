@@ -691,6 +691,13 @@
   color: var(--res-text-muted);
 }
 
+.resident-barangay-note {
+  margin: 0.35rem 0 0;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--res-text-muted);
+}
+
 /* attachment file list */
 .report-files-list {
   list-style: none;

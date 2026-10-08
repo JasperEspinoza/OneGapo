@@ -1098,6 +1098,15 @@ async function createReport(req, res, next) {
     const category = String(req.body?.category || 'general').trim().toLowerCase();
     const address = String(req.body?.address || '').trim();
     const inferredBarangay = extractCoverageFromAddress(address);
+    const selectedBarangayInput = String(req.body?.barangay || '').trim();
+    const selectedBarangay = selectedBarangayInput
+      ? canonicalCoverageName(selectedBarangayInput)
+      : '';
+    if (selectedBarangayInput && !selectedBarangay) {
+      return res.status(400).json({
+        error: 'Please select a valid barangay within Olongapo City.',
+      });
+    }
     const lat = parseCoordinate(req.body?.latitude, 'latitude');
     const lng = parseCoordinate(req.body?.longitude, 'longitude');
     validateLatLng(lat, lng);
@@ -1157,7 +1166,7 @@ async function createReport(req, res, next) {
         latitude: lat,
         longitude: lng,
         address,
-        barangay: inferredBarangay,
+        barangay: selectedBarangay || inferredBarangay,
         mapProvider: 'openstreetmap',
       },
       reporter: {
