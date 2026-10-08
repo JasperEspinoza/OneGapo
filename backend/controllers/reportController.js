@@ -773,6 +773,29 @@ function canStaffAccessReport(report, reqUser) {
   return false;
 }
 
+async function resolveStaffCoverage(db, reqUser) {
+  const branchId = String(reqUser?.branchId || '').trim();
+  if (branchId) {
+    try {
+      const branchSnap = await db.collection('branches').doc(branchId).get();
+      if (branchSnap.exists) {
+        const branchName = canonicalCoverageName(branchSnap.data()?.name || '');
+        if (branchName) {
+          return branchName;
+        }
+      }
+    } catch (err) {
+      console.warn('[resolveStaffCoverage] Failed to load assigned branch:', err.message || err);
+    }
+  }
+
+  return (
+    canonicalCoverageName(reqUser?.location)
+    || canonicalCoverageName(reqUser?.branchName)
+    || ''
+  );
+}
+
 function hasPermission(reqUser, permission) {
   if (!permission) return false;
   const permissions = Array.isArray(reqUser?.permissions) ? reqUser.permissions : [];
@@ -1318,16 +1341,20 @@ async function listReportsForOperators(req, res, next) {
       .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 
     if (role === 'staff') {
-      const staffCoverage = String(req.user?.location || '').trim();
+      const staffCoverage = await resolveStaffCoverage(db, req.user);
       if (!staffCoverage) {
         return res.status(403).json({
           error: 'Staff account is not assigned to a branch/barangay coverage.',
         });
       }
 
+      const scopedUser = {
+        ...req.user,
+        location: staffCoverage,
+      };
       hydratedReports = hydratedReports.filter((report) => {
         try {
-          return canStaffAccessReport(report, req.user);
+          return canStaffAccessReport(report, scopedUser);
         } catch {
           return false;
         }
