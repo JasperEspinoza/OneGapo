@@ -99,7 +99,27 @@ export function AuthProvider({ children }) {
     return unsubscribe;
   }, []);
 
-  const logout = () => (auth ? signOut(auth) : Promise.resolve());
+  const logout = async () => {
+    // Sign out from Firebase first
+    if (auth) {
+      await signOut(auth);
+    }
+
+    // Clear all browser Cache Storage (PWA/service-worker caches)
+    // This prevents stale role/permission data from persisting after sign-out.
+    try {
+      if (typeof caches !== 'undefined') {
+        const cacheNames = await caches.keys();
+        await Promise.all(cacheNames.map((name) => caches.delete(name)));
+      }
+    } catch {
+      // Non-fatal — ignore in environments where Cache API is unavailable.
+    }
+
+    // Clear session and local storage so no cached user state lingers.
+    try { sessionStorage.clear(); } catch { /* ignore */ }
+    try { localStorage.clear(); } catch { /* ignore */ }
+  };
 
   const refreshUser = async () => {
     if (!auth || !isFirebaseConfigured) return false;
