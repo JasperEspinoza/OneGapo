@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import ReportLocationMap from '../components/ReportLocationMap';
 import AppModal from '../components/AppModal';
+import { OLONGAPO_BARANGAYS } from '../constants/barangays';
 
 const REPORT_CATEGORIES = [
   { value: 'infrastructure', label: 'Infrastructure' },
@@ -19,6 +20,7 @@ const INITIAL_FORM = {
   latitude: '',
   longitude: '',
   address: '',
+  barangay: '',
 };
 
 const OLONGAPO_BOUNDS = {
@@ -255,6 +257,9 @@ export default function Dashboard() {
       payload.append('latitude', form.latitude);
       payload.append('longitude', form.longitude);
       payload.append('address', normalizeReportAddress(form.address));
+      if (form.barangay) {
+        payload.append('barangay', form.barangay);
+      }
 
       attachments.forEach((file) => {
         payload.append('attachments', file);
@@ -465,6 +470,30 @@ export default function Dashboard() {
                   placeholder="Street / purok / landmark"
                   disabled={submitting}
                 />
+              </div>
+
+              <div>
+                <label className="form-label" htmlFor="report-barangay">
+                  Barangay (optional)
+                </label>
+                <select
+                  id="report-barangay"
+                  name="barangay"
+                  className="form-input form-select"
+                  value={form.barangay}
+                  onChange={handleInputChange}
+                  disabled={submitting}
+                >
+                  <option value="">-- Select Barangay (Optional) --</option>
+                  {OLONGAPO_BARANGAYS.map((barangay) => (
+                    <option key={barangay} value={barangay}>
+                      {barangay}
+                    </option>
+                  ))}
+                </select>
+                <p className="resident-barangay-note">
+                  Please check that the barangay is correct before submitting your report.
+                </p>
               </div>
 
               <div>
