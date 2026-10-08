@@ -470,6 +470,7 @@ function normalizeReportAddress(address) {
 
 function getReportCoverage(report) {
   const directValues = [
+    report?.routingBarangay,
     report?.location?.barangay,
     report?.barangay,
     report?.location?.branchName,
@@ -563,9 +564,14 @@ function normalizeReportRecord(data, id) {
   const location = data?.location && typeof data.location === 'object'
     ? { ...data.location }
     : {};
-  const canonicalBarangay = canonicalCoverageName(
-    location.barangay || data?.barangay || ''
-  );
+  const canonicalBarangay = [
+    data?.routingBarangay,
+    location.barangay,
+    data?.barangay,
+    data?.branchName,
+  ]
+    .map((value) => canonicalCoverageName(value))
+    .find(Boolean) || '';
 
   if (canonicalBarangay) {
     location.barangay = canonicalBarangay;
@@ -578,6 +584,7 @@ function normalizeReportRecord(data, id) {
     id: data?.id || id,
     ...data,
     location,
+    ...(canonicalBarangay ? { routingBarangay: canonicalBarangay } : {}),
     createdAt: toIso(data?.createdAt),
     updatedAt: toIso(data?.updatedAt),
   };
@@ -1225,6 +1232,7 @@ async function createReport(req, res, next) {
     );
 
     const reportRef = db.collection('reports').doc();
+    const routingBarangay = selectedBarangay || inferredBarangay;
 
     const payload = {
       id: reportRef.id,
@@ -1237,9 +1245,10 @@ async function createReport(req, res, next) {
         latitude: lat,
         longitude: lng,
         address,
-        barangay: selectedBarangay || inferredBarangay,
+        barangay: routingBarangay,
         mapProvider: 'openstreetmap',
       },
+      routingBarangay,
       reporter: {
         uid: requesterUid,
         email: req.user.email || '',
