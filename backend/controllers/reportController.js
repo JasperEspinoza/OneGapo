@@ -789,13 +789,27 @@ function canStaffAccessReport(report, reqUser) {
     return true;
   }
 
-  // New reports have an authoritative branch ID. Do not let a conflicting
-  // address or legacy barangay field route them to another branch.
+  // If the report was routed to a specific branch by ID, also check by name
+  // in case the staff's branchId and the report's routingBranchId reference
+  // different Firestore documents for the same barangay (e.g. created twice).
+  const staffCoverage = String(reqUser?.location || reqUser?.branchName || '').trim();
+  if (staffCoverage) {
+    // Check routingBarangay / routingBranchName by canonical name
+    const routingBarangayCanonical = canonicalCoverageName(
+      report?.routingBarangay || report?.routingBranchName || ''
+    );
+    const staffCoverageCanonical = canonicalCoverageName(staffCoverage);
+    if (routingBarangayCanonical && staffCoverageCanonical && routingBarangayCanonical === staffCoverageCanonical) {
+      return true;
+    }
+  }
+
+  // If the report has an authoritative routingBranchId and neither ID nor name matched, deny.
   if (String(report?.routingBranchId || '').trim()) {
     return false;
   }
 
-  const staffCoverage = String(reqUser?.location || '').trim();
+  // Legacy / unrouted reports: fall back to coverage-area name matching.
   if (staffCoverage && isReportInCoverage(report, staffCoverage)) {
     return true;
   }
