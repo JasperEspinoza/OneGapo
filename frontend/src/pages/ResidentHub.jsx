@@ -11,6 +11,7 @@ import SettingsContent from '../components/SettingsContent';
 import InfoTooltip from '../components/InfoTooltip';
 import { getSocketServerUrl } from '../config/runtime';
 import { getKnownBarangayName, OLONGAPO_BARANGAYS } from '../constants/barangays';
+import { lookupBarangayClient } from '../utils/barangayLookupClient';
 
 const REPORT_CATEGORIES = [
   { value: 'infrastructure', label: 'Infrastructure' },
@@ -907,60 +908,68 @@ export default function ResidentHub({ viewMode = 'resident' }) {
   );
 
 
-  const handleMapPick = useCallback(async ({ lat, lng }) => {
+  const handleMapPick = useCallback(async ({ lat, lng, barangay: pickedBarangay }) => {
     setForm((prev) => ({
       ...prev,
       latitude: lat.toFixed(6),
       longitude: lng.toFixed(6),
+      ...(pickedBarangay && !manuallySelectedBarangayRef.current ? { barangay: pickedBarangay } : {}),
     }));
 
-    let detectedBarangay = '';
-    try {
-      const lookupRes = await api(`/api/reports/lookup-barangay?lat=${lat}&lng=${lng}`);
-      if (lookupRes.ok) {
-        const lookupData = await lookupRes.json();
-        if (lookupData?.found && lookupData?.barangay) {
-          detectedBarangay = lookupData.barangay;
+    let detectedBarangay = pickedBarangay || '';
+    if (!detectedBarangay) {
+      try {
+        const clientFound = await lookupBarangayClient(lat, lng);
+        if (clientFound) {
+          detectedBarangay = clientFound;
         }
+      } catch {
+        // Fallback to backend or manual selection
       }
-    } catch {
-      // Backend lookup failed, proceed to reverse geocoder fallback
+    }
+
+    if (!detectedBarangay) {
+      try {
+        const lookupRes = await api(`/api/reports/lookup-barangay?lat=${lat}&lng=${lng}`);
+        if (lookupRes.ok) {
+          const lookupData = await lookupRes.json();
+          if (lookupData?.found && lookupData?.barangay) {
+            detectedBarangay = lookupData.barangay;
+          }
+        }
+      } catch {
+        // Backend lookup failed, continue gracefully
+      }
+    }
+
+    if (detectedBarangay && !manuallySelectedBarangayRef.current) {
+      setForm((prev) => ({
+        ...prev,
+        barangay: detectedBarangay,
+      }));
     }
 
     try {
-      const geoRes = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`
-      );
-      if (!geoRes.ok) {
-        if (detectedBarangay) {
-          setForm((prev) => ({
-            ...prev,
-            ...(manuallySelectedBarangayRef.current ? {} : { barangay: detectedBarangay }),
-          }));
-        }
-        return;
-      }
-      const geoData = await geoRes.json();
-      const fallbackBarangay = detectedBarangay || getKnownBarangayName(
-        geoData?.address?.barangay
-          || geoData?.address?.quarter
-          || geoData?.address?.suburb
-          || geoData?.display_name
-          || ''
-      );
+      const geoRes = await api(`/api/reports/reverse-geocode?lat=${lat}&lng=${lng}`);
+      if (geoRes.ok) {
+        const geoData = await geoRes.json();
+        const fallbackBarangay = detectedBarangay || getKnownBarangayName(
+          geoData?.barangay
+            || geoData?.address?.barangay
+            || geoData?.address?.quarter
+            || geoData?.address?.suburb
+            || geoData?.displayName
+            || ''
+        );
 
-      setForm((prev) => ({
-        ...prev,
-        ...(geoData?.display_name ? { address: normalizeReportAddress(geoData.display_name) } : {}),
-        ...(manuallySelectedBarangayRef.current ? {} : { barangay: fallbackBarangay }),
-      }));
-    } catch {
-      if (detectedBarangay) {
         setForm((prev) => ({
           ...prev,
-          ...(manuallySelectedBarangayRef.current ? {} : { barangay: detectedBarangay }),
+          ...(geoData?.displayName ? { address: normalizeReportAddress(geoData.displayName) } : {}),
+          ...(manuallySelectedBarangayRef.current ? {} : (fallbackBarangay ? { barangay: fallbackBarangay } : {})),
         }));
       }
+    } catch {
+      // Reverse geocoder unavailable, gracefully continue
     }
   }, [api]);
 

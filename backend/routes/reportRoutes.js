@@ -104,6 +104,61 @@ router.get('/lookup-barangay', (req, res) => {
   });
 });
 
+const geocodeCache = new Map();
+const GEOCODE_CACHE_TTL_MS = 15 * 60 * 1000;
+
+router.get('/reverse-geocode', async (req, res) => {
+  const lat = Number(req.query?.lat);
+  const lng = Number(req.query?.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return res.status(400).json({ error: 'Valid lat and lng query params are required.' });
+  }
+
+  const localBarangay = findBarangayByCoordinates(lat, lng);
+  const cacheKey = `${lat.toFixed(4)},${lng.toFixed(4)}`;
+  const cached = geocodeCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < GEOCODE_CACHE_TTL_MS) {
+    return res.json(cached.data);
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4000);
+
+    const nominatimUrl = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`;
+    const response = await fetch(nominatimUrl, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'OneGapo/1.0 (contact@onegapo.ph)',
+        'Accept': 'application/json',
+      },
+    });
+    clearTimeout(timeout);
+
+    if (response.ok) {
+      const data = await response.json();
+      const payload = {
+        success: true,
+        displayName: data?.display_name || '',
+        address: data?.address || {},
+        barangay: localBarangay?.name || data?.address?.barangay || data?.address?.quarter || '',
+      };
+      geocodeCache.set(cacheKey, { timestamp: Date.now(), data: payload });
+      return res.json(payload);
+    }
+  } catch (err) {
+    console.warn('[reverse-geocode] Nominatim request failed:', err.message);
+  }
+
+  const fallbackPayload = {
+    success: Boolean(localBarangay),
+    displayName: localBarangay ? `Brgy. ${localBarangay.name}, Olongapo City` : '',
+    address: {},
+    barangay: localBarangay?.name || '',
+  };
+  return res.json(fallbackPayload);
+});
+
 router.post('/', verifyToken, upload.array('attachments', 3), createReport);
 router.get('/me', verifyToken, rateLimitResidentReportsRead, listOwnReports);
 router.get('/', verifyToken, rateLimitOperatorReportsRead, listReportsForOperators);

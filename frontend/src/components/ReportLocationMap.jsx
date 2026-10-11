@@ -6,6 +6,7 @@ import 'leaflet/dist/leaflet.css';
 import 'leaflet.heat';
 import InfoTooltip from './InfoTooltip';
 import { getKnownBarangayName, getBarangayColor, normalizeBarangayToken } from '../constants/barangays';
+import { getClientBoundaries } from '../utils/barangayLookupClient';
 
 const defaultCenter = [14.8386, 120.2842];
 
@@ -471,71 +472,39 @@ function MapCanvas({
           tileerror: handleTileError,
         }}
       />
-      {boundaries && (showBoundaries || Boolean(flashedBarangay)) && (
+      {boundaries && showBoundaries && (
         <GeoJSON
-          key={`barangay-boundaries-${showBoundaries ? 'show' : 'hide'}-${flashedBarangay || 'none'}`}
+          key="barangay-boundaries-active"
           data={boundaries}
           style={(feature) => {
             const featureName = feature?.properties?.name || '';
-            const isFlashed = Boolean(
-              flashedBarangay &&
-              (featureName.toLowerCase() === flashedBarangay.toLowerCase() ||
-               normalizeBarangayToken(featureName) === normalizeBarangayToken(flashedBarangay))
-            );
-
-            if (isFlashed) {
-              return {
-                color: '#f59e0b',
-                weight: 3.5,
-                opacity: 1,
-                fillColor: '#fbbf24',
-                fillOpacity: 0.38,
-                dashArray: '',
-              };
-            }
-
-            if (showBoundaries) {
-              const barangayColor = getBarangayColor(featureName);
-              return {
-                color: barangayColor,
-                weight: 2,
-                opacity: 0.9,
-                fillColor: barangayColor,
-                fillOpacity: 0.22,
-                dashArray: '',
-              };
-            }
-
+            const barangayColor = getBarangayColor(featureName);
             return {
-              color: 'transparent',
-              weight: 0,
-              opacity: 0,
-              fillColor: 'transparent',
-              fillOpacity: 0,
+              color: barangayColor,
+              weight: 2,
+              opacity: 0.9,
+              fillColor: barangayColor,
+              fillOpacity: 0.22,
+              dashArray: '',
             };
           }}
           onEachFeature={(feature, layer) => {
             const name = feature?.properties?.name;
             const displayName = getKnownBarangayName(name) || name || 'Unknown';
-            const isFlashed = Boolean(
-              flashedBarangay &&
-              (name?.toLowerCase() === flashedBarangay.toLowerCase() ||
-               normalizeBarangayToken(name) === normalizeBarangayToken(flashedBarangay))
-            );
             const barangayColor = getBarangayColor(name);
 
-            if (name && (showBoundaries || isFlashed)) {
+            if (name && showBoundaries) {
               layer.bindTooltip(
                 `<div class="barangay-tooltip-content">
-                  <span class="barangay-tooltip-swatch" style="background-color: ${isFlashed ? '#f59e0b' : barangayColor};"></span>
-                  <span class="barangay-tooltip-text">${isFlashed ? `📍 Brgy. ${displayName} (Selected)` : `Brgy. ${displayName}`}</span>
+                  <span class="barangay-tooltip-swatch" style="background-color: ${barangayColor};"></span>
+                  <span class="barangay-tooltip-text">Brgy. ${displayName}</span>
                 </div>`,
                 {
-                  sticky: !isFlashed,
-                  permanent: isFlashed,
-                  direction: isFlashed ? 'center' : 'top',
-                  offset: isFlashed ? [0, 0] : [0, -8],
-                  className: isFlashed ? 'barangay-boundary-tooltip barangay-boundary-tooltip-flashed' : 'barangay-boundary-tooltip',
+                  sticky: true,
+                  permanent: false,
+                  direction: 'top',
+                  offset: [0, -8],
+                  className: 'barangay-boundary-tooltip',
                   opacity: 0.98,
                 }
               );
@@ -548,7 +517,7 @@ function MapCanvas({
                 }
               },
               mouseover: (e) => {
-                if (!isFlashed && showBoundaries) {
+                if (showBoundaries) {
                   const targetLayer = e.target;
                   targetLayer.setStyle({
                     color: barangayColor,
@@ -564,7 +533,7 @@ function MapCanvas({
                 }
               },
               mouseout: (e) => {
-                if (!isFlashed && showBoundaries) {
+                if (showBoundaries) {
                   const targetLayer = e.target;
                   targetLayer.setStyle({
                     color: barangayColor,
@@ -928,42 +897,34 @@ export default function ReportLocationMap({
   }, []);
 
   const handleMapPick = useCallback(({ lat: pickLat, lng: pickLng }) => {
-    if (typeof onPick === 'function') {
-      onPick({ lat: pickLat, lng: pickLng });
-    }
+    let detected = null;
     if (boundaries) {
-      const detected = findBarangayByCoordinatesFromGeoJson(pickLat, pickLng, boundaries);
-      if (detected) {
-        flashBarangayByName(detected);
-      }
+      detected = findBarangayByCoordinatesFromGeoJson(pickLat, pickLng, boundaries);
     }
-  }, [boundaries, flashBarangayByName, onPick]);
+    if (typeof onPick === 'function') {
+      onPick({ lat: pickLat, lng: pickLng, barangay: detected });
+    }
+  }, [boundaries, onPick]);
 
   useEffect(() => {
     let isMounted = true;
-    const loadFromStaticFallback = () => {
-      fetch('/data/olongapoBoundaries.json')
-        .then((res) => (res.ok ? res.json() : null))
-        .then((fallbackData) => {
-          if (isMounted && fallbackData && Array.isArray(fallbackData.features)) {
-            setBoundaries(fallbackData);
-          }
-        })
-        .catch(() => {});
-    };
 
-    fetch('/api/reports/boundaries')
-      .then((res) => (res.ok ? res.json() : null))
+    getClientBoundaries()
       .then((data) => {
         if (isMounted && data && Array.isArray(data.features) && data.features.length > 0) {
           setBoundaries(data);
         } else {
-          loadFromStaticFallback();
+          fetch('/api/reports/boundaries')
+            .then((res) => (res.ok ? res.json() : null))
+            .then((backendData) => {
+              if (isMounted && backendData && Array.isArray(backendData.features) && backendData.features.length > 0) {
+                setBoundaries(backendData);
+              }
+            })
+            .catch(() => {});
         }
       })
-      .catch(() => {
-        loadFromStaticFallback();
-      });
+      .catch(() => {});
 
     return () => {
       isMounted = false;
@@ -1025,17 +986,7 @@ export default function ReportLocationMap({
     ? [lat, lng]
     : null;
 
-  useEffect(() => {
-    if (!selectedPosition || !boundaries) return;
-    const coordKey = `${selectedPosition[0].toFixed(5)},${selectedPosition[1].toFixed(5)}`;
-    if (lastFlashedCoordRef.current === coordKey) return;
-    lastFlashedCoordRef.current = coordKey;
 
-    const detected = findBarangayByCoordinatesFromGeoJson(selectedPosition[0], selectedPosition[1], boundaries);
-    if (detected) {
-      flashBarangayByName(detected);
-    }
-  }, [selectedPosition, boundaries, flashBarangayByName]);
 
   useEffect(() => {
     if (preferredBarangay && preferredBarangay !== lastPreferredBarangayRef.current) {
@@ -1462,7 +1413,7 @@ export default function ReportLocationMap({
               {enableBoundaryToggle ? (
                 <InfoTooltip
                   label="Explain boundaries"
-                  text="Toggle barangay boundary lines. Dropping a map pin also temporarily highlights the detected barangay."
+                  text="Toggle barangay boundary lines. Hovering over a boundary highlights it and shows the barangay name."
                 />
               ) : null}
               {enableHeatmapToggle ? (
@@ -1644,7 +1595,7 @@ export default function ReportLocationMap({
                   {enableBoundaryToggle ? (
                     <InfoTooltip
                       label="Explain boundaries"
-                      text="Toggle barangay boundary lines. Dropping a map pin also temporarily highlights the detected barangay."
+                      text="Toggle barangay boundary lines. Hovering over a boundary highlights it and shows the barangay name."
                     />
                   ) : null}
                   {enableHeatmapToggle ? (

@@ -2224,25 +2224,4 @@ img, svg {
   border-color: var(--color-primary, #2563eb) !important;
 }
 
-.barangay-boundary-tooltip-flashed {
-  background: rgba(217, 119, 6, 0.95) !important;
-  color: #ffffff !important;
-  border-color: rgba(251, 191, 36, 0.9) !important;
-  font-weight: 700 !important;
-  font-size: 0.78rem !important;
-  padding: 4px 10px !important;
-  box-shadow: 0 0 16px rgba(245, 158, 11, 0.6) !important;
-  animation: pulse-boundary-tooltip 1.5s ease-in-out infinite;
-}
-
-@keyframes pulse-boundary-tooltip {
-  0%, 100% {
-    transform: scale(1);
-    box-shadow: 0 0 12px rgba(245, 158, 11, 0.5);
-  }
-  50% {
-    transform: scale(1.05);
-    box-shadow: 0 0 20px rgba(245, 158, 11, 0.85);
-  }
-}
 
