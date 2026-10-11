@@ -238,6 +238,49 @@ function buildNearbyMarkerGroups(markers) {
   }));
 }
 
+function pointInRing(point, ring) {
+  const [px, py] = point;
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    const intersects =
+      yi > py !== yj > py &&
+      px < ((xj - xi) * (py - yi)) / (yj - yi) + xi;
+    if (intersects) inside = !inside;
+  }
+  return inside;
+}
+
+function pointInPolygon(point, rings) {
+  if (!rings || rings.length === 0) return false;
+  if (!pointInRing(point, rings[0])) return false;
+  for (let h = 1; h < rings.length; h++) {
+    if (pointInRing(point, rings[h])) return false;
+  }
+  return true;
+}
+
+function pointInGeometry(point, geometry) {
+  if (!geometry) return false;
+  if (geometry.type === 'Polygon') return pointInPolygon(point, geometry.coordinates);
+  if (geometry.type === 'MultiPolygon') {
+    return Array.isArray(geometry.coordinates) && geometry.coordinates.some((poly) => pointInPolygon(point, poly));
+  }
+  return false;
+}
+
+function findBarangayByCoordinatesFromGeoJson(lat, lng, boundaries) {
+  if (!boundaries || !Array.isArray(boundaries.features) || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  const point = [lng, lat];
+  for (const feature of boundaries.features) {
+    if (pointInGeometry(point, feature.geometry)) {
+      return feature.properties?.name || null;
+    }
+  }
+  return null;
+}
+
 function buildProximityMarkerIcon(marker) {
   const clusterRank = Number(marker?.proximityGroup?.clusterRank || 0);
   const clusterSize = Number(marker?.proximityGroup?.clusterSize || 1);
@@ -392,7 +435,25 @@ function HeatmapLayer({ markers, enabled }) {
   return null;
 }
 
-function MapCanvas({ selectedPosition, safeMarkers, autoFitMarkers, tileSource, handleTileError, onPick, expandKey, activeMarkerId, onMarkerClick, routePath, userPosition, freezeMarkerAutoFit, showHeatmap, boundaries }) {
+function MapCanvas({
+  selectedPosition,
+  safeMarkers,
+  autoFitMarkers,
+  tileSource,
+  handleTileError,
+  onPick,
+  expandKey,
+  activeMarkerId,
+  onMarkerClick,
+  routePath,
+  userPosition,
+  freezeMarkerAutoFit,
+  showHeatmap,
+  boundaries,
+  showBoundaries = false,
+  flashedBarangay = null,
+  isDarkTheme = false,
+}) {
   const initialMarkers = autoFitMarkers.length > 0 ? autoFitMarkers : safeMarkers;
   const renderedMarkers = useMemo(() => buildNearbyMarkerGroups(safeMarkers), [safeMarkers]);
 
@@ -410,26 +471,104 @@ function MapCanvas({ selectedPosition, safeMarkers, autoFitMarkers, tileSource, 
           tileerror: handleTileError,
         }}
       />
-      {boundaries && (
+      {boundaries && (showBoundaries || Boolean(flashedBarangay)) && (
         <GeoJSON
-          key="barangay-boundaries"
+          key={`barangay-boundaries-${showBoundaries ? 'show' : 'hide'}-${flashedBarangay || 'none'}`}
           data={boundaries}
-          style={() => ({
-            color: '#3b82f6',
-            weight: 1.5,
-            opacity: 0.65,
-            fillColor: '#3b82f6',
-            fillOpacity: 0.04,
-            dashArray: '3, 4',
-          })}
-          onEachFeature={(feature, layer) => {
-            if (feature.properties?.name) {
-              layer.bindTooltip(`Brgy. ${feature.properties.name}`, {
-                sticky: true,
-                direction: 'center',
-                className: 'barangay-boundary-tooltip',
-              });
+          style={(feature) => {
+            const featureName = feature?.properties?.name || '';
+            const isFlashed = Boolean(
+              flashedBarangay &&
+              (featureName.toLowerCase() === flashedBarangay.toLowerCase() ||
+               normalizeBarangayToken(featureName) === normalizeBarangayToken(flashedBarangay))
+            );
+
+            if (isFlashed) {
+              return {
+                color: '#f59e0b',
+                weight: 3.5,
+                opacity: 1,
+                fillColor: '#fbbf24',
+                fillOpacity: 0.32,
+                dashArray: '',
+              };
             }
+
+            if (showBoundaries) {
+              return {
+                color: isDarkTheme ? '#60a5fa' : '#2563eb',
+                weight: 1.8,
+                opacity: 0.75,
+                fillColor: isDarkTheme ? '#3b82f6' : '#60a5fa',
+                fillOpacity: 0.08,
+                dashArray: '4, 4',
+              };
+            }
+
+            return {
+              color: 'transparent',
+              weight: 0,
+              opacity: 0,
+              fillColor: 'transparent',
+              fillOpacity: 0,
+            };
+          }}
+          onEachFeature={(feature, layer) => {
+            const name = feature?.properties?.name;
+            const isFlashed = Boolean(
+              flashedBarangay &&
+              (name?.toLowerCase() === flashedBarangay.toLowerCase() ||
+               normalizeBarangayToken(name) === normalizeBarangayToken(flashedBarangay))
+            );
+
+            if (name && (showBoundaries || isFlashed)) {
+              layer.bindTooltip(
+                isFlashed ? `📍 Brgy. ${name} (Selected)` : `Brgy. ${name}`,
+                {
+                  sticky: !isFlashed,
+                  permanent: isFlashed,
+                  direction: 'center',
+                  className: isFlashed ? 'barangay-boundary-tooltip barangay-boundary-tooltip-flashed' : 'barangay-boundary-tooltip',
+                }
+              );
+            }
+
+            layer.on({
+              click: (e) => {
+                if (onPick) {
+                  onPick({ lat: e.latlng.lat, lng: e.latlng.lng });
+                }
+              },
+              mouseover: (e) => {
+                if (!isFlashed && showBoundaries) {
+                  const targetLayer = e.target;
+                  targetLayer.setStyle({
+                    color: '#2563eb',
+                    weight: 2.8,
+                    opacity: 1,
+                    fillColor: '#3b82f6',
+                    fillOpacity: 0.2,
+                    dashArray: '',
+                  });
+                  if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) {
+                    targetLayer.bringToFront();
+                  }
+                }
+              },
+              mouseout: (e) => {
+                if (!isFlashed && showBoundaries) {
+                  const targetLayer = e.target;
+                  targetLayer.setStyle({
+                    color: isDarkTheme ? '#60a5fa' : '#2563eb',
+                    weight: 1.8,
+                    opacity: 0.75,
+                    fillColor: isDarkTheme ? '#3b82f6' : '#60a5fa',
+                    fillOpacity: 0.08,
+                    dashArray: '4, 4',
+                  });
+                }
+              },
+            });
           }}
         />
       )}
@@ -718,6 +857,8 @@ export default function ReportLocationMap({
   enableCategoryFilter = false,
   enableStatusFilter = false,
   enableRouteControls = true,
+  enableBoundaryToggle = true,
+  initialShowBoundaries = false,
 }) {
   const [tileSourceIndex, setTileSourceIndex] = useState(0);
   const [showFullscreenMap, setShowFullscreenMap] = useState(false);
@@ -731,11 +872,49 @@ export default function ReportLocationMap({
   const [routeLoading, setRouteLoading] = useState(false);
   const [routeError, setRouteError] = useState('');
   const [heatmapEnabled, setHeatmapEnabled] = useState(false);
+  const [showBoundaries, setShowBoundaries] = useState(initialShowBoundaries);
+  const [flashedBarangay, setFlashedBarangay] = useState(null);
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('active');
   const [isDarkTheme, setIsDarkTheme] = useState(false);
   const [boundaries, setBoundaries] = useState(null);
   const sidebarCloseTimeoutRef = useRef(null);
+  const flashTimerRef = useRef(null);
+  const lastFlashedCoordRef = useRef('');
+  const lastPreferredBarangayRef = useRef('');
+
+  const flashBarangayByName = useCallback((barangayName, durationMs = 3800) => {
+    if (!barangayName) return;
+    const canonical = getKnownBarangayName(barangayName) || barangayName;
+    if (flashTimerRef.current) {
+      clearTimeout(flashTimerRef.current);
+    }
+    setFlashedBarangay(canonical);
+    flashTimerRef.current = setTimeout(() => {
+      setFlashedBarangay(null);
+      flashTimerRef.current = null;
+    }, durationMs);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (flashTimerRef.current) {
+        clearTimeout(flashTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleMapPick = useCallback(({ lat: pickLat, lng: pickLng }) => {
+    if (typeof onPick === 'function') {
+      onPick({ lat: pickLat, lng: pickLng });
+    }
+    if (boundaries) {
+      const detected = findBarangayByCoordinatesFromGeoJson(pickLat, pickLng, boundaries);
+      if (detected) {
+        flashBarangayByName(detected);
+      }
+    }
+  }, [boundaries, flashBarangayByName, onPick]);
 
   useEffect(() => {
     let isMounted = true;
@@ -779,6 +958,31 @@ export default function ReportLocationMap({
   const selectedPosition = Number.isFinite(lat) && Number.isFinite(lng)
     ? [lat, lng]
     : null;
+
+  useEffect(() => {
+    if (!selectedPosition || !boundaries) return;
+    const coordKey = `${selectedPosition[0].toFixed(5)},${selectedPosition[1].toFixed(5)}`;
+    if (lastFlashedCoordRef.current === coordKey) return;
+    lastFlashedCoordRef.current = coordKey;
+
+    const detected = findBarangayByCoordinatesFromGeoJson(selectedPosition[0], selectedPosition[1], boundaries);
+    if (detected) {
+      flashBarangayByName(detected);
+    }
+  }, [selectedPosition, boundaries, flashBarangayByName]);
+
+  useEffect(() => {
+    if (preferredBarangay && preferredBarangay !== lastPreferredBarangayRef.current) {
+      lastPreferredBarangayRef.current = preferredBarangay;
+      flashBarangayByName(preferredBarangay);
+    }
+  }, [preferredBarangay, flashBarangayByName]);
+
+  useEffect(() => {
+    if (fullscreenBarangayFilter && fullscreenBarangayFilter !== 'all') {
+      flashBarangayByName(fullscreenBarangayFilter);
+    }
+  }, [fullscreenBarangayFilter, flashBarangayByName]);
 
   const safeMarkers = useMemo(
     () => markers
@@ -1195,6 +1399,23 @@ export default function ReportLocationMap({
                   ) : null}
                 </>
               ) : null}
+              {enableBoundaryToggle ? (
+                <button
+                  type="button"
+                  className={`btn-outline report-map-expand-btn ${showBoundaries ? 'report-map-btn-active' : ''}`}
+                  onClick={() => setShowBoundaries((prev) => !prev)}
+                  aria-pressed={showBoundaries}
+                  title="Toggle barangay boundary lines"
+                >
+                  Boundaries: {showBoundaries ? 'On' : 'Off'}
+                </button>
+              ) : null}
+              {enableBoundaryToggle ? (
+                <InfoTooltip
+                  label="Explain boundaries"
+                  text="Toggle barangay boundary lines. Dropping a map pin also temporarily highlights the detected barangay."
+                />
+              ) : null}
               {enableHeatmapToggle ? (
                 <button
                   type="button"
@@ -1232,7 +1453,7 @@ export default function ReportLocationMap({
               autoFitMarkers={inlineAutoFitMarkers}
               tileSource={tileSource}
               handleTileError={handleTileError}
-              onPick={onPick}
+              onPick={handleMapPick}
               expandKey="inline"
               activeMarkerId={activeMarker?.id || null}
               onMarkerClick={handleMarkerSelect}
@@ -1241,6 +1462,9 @@ export default function ReportLocationMap({
               freezeMarkerAutoFit={preserveViewOnRefresh}
               showHeatmap={heatmapEnabled}
               boundaries={boundaries}
+              showBoundaries={showBoundaries}
+              flashedBarangay={flashedBarangay}
+              isDarkTheme={isDarkTheme}
             />
           </div>
           <MarkerDetailsSidebar
@@ -1336,6 +1560,23 @@ export default function ReportLocationMap({
                   ) : null}
                 </div>
                 <div className="report-map-modal-actions">
+                  {enableBoundaryToggle ? (
+                    <button
+                      type="button"
+                      className={`btn-outline report-map-expand-btn ${showBoundaries ? 'report-map-btn-active' : ''}`}
+                      onClick={() => setShowBoundaries((prev) => !prev)}
+                      aria-pressed={showBoundaries}
+                      title="Toggle barangay boundary lines"
+                    >
+                      Boundaries: {showBoundaries ? 'On' : 'Off'}
+                    </button>
+                  ) : null}
+                  {enableBoundaryToggle ? (
+                    <InfoTooltip
+                      label="Explain boundaries"
+                      text="Toggle barangay boundary lines. Dropping a map pin also temporarily highlights the detected barangay."
+                    />
+                  ) : null}
                   {enableHeatmapToggle ? (
                     <button
                       type="button"
@@ -1365,7 +1606,7 @@ export default function ReportLocationMap({
                     autoFitMarkers={fullscreenAutoFitMarkers}
                     tileSource={tileSource}
                     handleTileError={handleTileError}
-                    onPick={onPick}
+                    onPick={handleMapPick}
                     expandKey="modal"
                     activeMarkerId={activeMarker?.id || null}
                     onMarkerClick={handleMarkerSelect}
@@ -1374,6 +1615,9 @@ export default function ReportLocationMap({
                     freezeMarkerAutoFit={preserveViewOnRefresh}
                     showHeatmap={heatmapEnabled}
                     boundaries={boundaries}
+                    showBoundaries={showBoundaries}
+                    flashedBarangay={flashedBarangay}
+                    isDarkTheme={isDarkTheme}
                   />
 
                   {markerLegendItems.length > 0 ? (

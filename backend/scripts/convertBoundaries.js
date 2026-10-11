@@ -1,9 +1,10 @@
 /**
  * scripts/convertBoundaries.js
  *
- * One-time conversion script — takes the raw faeldon/philippines-json-maps
- * GeoJSON (with NAME_3 property) and converts it to the format expected by
- * barangayLookup.js (with canonical name + psgc fields).
+ * Converts and filters GeoJSON boundary data for Olongapo City.
+ * Reads from root barangays.geojson (or constants/olongapoBoundaries.json),
+ * keeps only Olongapo City barangays, normalizes names to canonical format,
+ * and saves to constants/olongapoBoundaries.json and barangays.geojson.
  *
  * Run: node scripts/convertBoundaries.js
  */
@@ -13,15 +14,18 @@
 const fs = require('fs');
 const path = require('path');
 
-const inputPath = path.join(__dirname, '..', 'constants', 'olongapoBoundaries_raw.json');
+const rootGeoJsonPath = path.join(__dirname, '..', '..', 'barangays.geojson');
+const rawConstantsPath = path.join(__dirname, '..', 'constants', 'olongapoBoundaries_raw.json');
 const outputPath = path.join(__dirname, '..', 'constants', 'olongapoBoundaries.json');
 
-// Map raw NAME_3 values → our canonical barangay names
+const inputPath = fs.existsSync(rawConstantsPath) ? rawConstantsPath : rootGeoJsonPath;
+
 const NAME_NORMALIZE = {
   'Asinan': 'Asinan',
   'Banicain': 'Banicain',
   'Barreto': 'Barretto',
   'Barretto': 'Barretto',
+  'East Bajac-bajac': 'East Bajac-Bajac',
   'East Bajac-Bajac': 'East Bajac-Bajac',
   'East Tapinac': 'East Tapinac',
   'Gordon Heights': 'Gordon Heights',
@@ -38,6 +42,7 @@ const NAME_NORMALIZE = {
   'Pag-asa': 'Pag-asa',
   'Santa Rita': 'Sta. Rita',
   'Sta. Rita': 'Sta. Rita',
+  'West Bajac-bajac': 'West Bajac-Bajac',
   'West Bajac-Bajac': 'West Bajac-Bajac',
   'West Tapinac': 'West Tapinac',
 };
@@ -49,9 +54,7 @@ const PSGC_MAP = {
   'East Bajac-Bajac': '034614004',
   'East Tapinac': '034614005',
   'Gordon Heights': '034614006',
-  'Kababae': '034614007',
   'Kalaklan': '034614008',
-  'Kalalake': '034614009',
   'Mabayuan': '034614010',
   'New Cabalan': '034614011',
   'New Ilalim': '034614012',
@@ -64,13 +67,30 @@ const PSGC_MAP = {
   'West Tapinac': '034614019',
 };
 
+console.log(`Reading input GeoJSON from: ${inputPath}`);
 const raw = JSON.parse(fs.readFileSync(inputPath, 'utf8'));
+
+// Filter to Olongapo features if input is nationwide
+const isNationwide = raw.features.some((f) => f.properties?.ADM3_EN && f.properties.ADM3_EN !== 'Olongapo City');
+const sourceFeatures = isNationwide
+  ? raw.features.filter((f) => {
+      const p = f.properties || {};
+      return (
+        p.ADM3_EN === 'Olongapo City' ||
+        p.ADM3_PCODE === 'PH0307107' ||
+        (typeof p.ADM3_EN === 'string' && p.ADM3_EN.toLowerCase().includes('olongapo'))
+      );
+    })
+  : raw.features;
+
+console.log(`Found ${sourceFeatures.length} candidate features for Olongapo City`);
+
 const seen = new Set();
 const features = [];
 
-for (const feature of raw.features) {
-  const rawName = feature.properties?.NAME_3 || feature.properties?.name || '';
-  const canonical = NAME_NORMALIZE[rawName];
+for (const feature of sourceFeatures) {
+  const rawName = feature.properties?.ADM4_EN || feature.properties?.name || feature.properties?.NAME_3 || '';
+  const canonical = NAME_NORMALIZE[rawName] || rawName;
 
   if (!canonical) {
     console.warn(`⚠ Unknown barangay name: "${rawName}" — skipping`);
@@ -87,8 +107,13 @@ for (const feature of raw.features) {
     type: 'Feature',
     properties: {
       name: canonical,
-      psgc: PSGC_MAP[canonical] || null,
+      psgc: PSGC_MAP[canonical] || feature.properties?.psgc_code || null,
       sourceName: rawName,
+      adm4_pcode: feature.properties?.ADM4_PCODE || null,
+      adm3_en: feature.properties?.ADM3_EN || 'Olongapo City',
+      area_sqkm: feature.properties?.AREA_SQKM || null,
+      ...feature.properties,
+      name: canonical,
     },
     geometry: feature.geometry,
   });
@@ -96,21 +121,18 @@ for (const feature of raw.features) {
   console.log(`  ✓ ${canonical} (source: "${rawName}", type: ${feature.geometry.type})`);
 }
 
-// Check for missing barangays
-const allCanonical = new Set(Object.values(NAME_NORMALIZE));
-const missing = [...allCanonical].filter((n) => !seen.has(n));
-if (missing.length) {
-  console.warn(`\n⚠ Missing barangays (will fall back to name-based routing):`);
-  missing.forEach((n) => console.warn(`   - ${n}`));
-}
-
 const output = {
   type: 'FeatureCollection',
   generated: new Date().toISOString(),
-  source: 'faeldon/philippines-json-maps (2011 census boundaries)',
-  note: 'Olongapo City barangay boundary polygons. Canonical names normalized.',
+  source: 'Updated barangays.geojson (filtered to Olongapo City)',
+  note: 'Olongapo City barangay boundary polygons. Non-Olongapo regions removed.',
   features,
 };
 
 fs.writeFileSync(outputPath, JSON.stringify(output, null, 2), 'utf8');
 console.log(`\n✅ Wrote ${features.length} barangay boundaries to ${outputPath}`);
+
+if (fs.existsSync(rootGeoJsonPath)) {
+  fs.writeFileSync(rootGeoJsonPath, JSON.stringify(output, null, 2), 'utf8');
+  console.log(`✅ Updated root ${rootGeoJsonPath}`);
+}
