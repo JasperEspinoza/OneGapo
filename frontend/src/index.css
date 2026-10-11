@@ -1111,28 +1111,29 @@ img, svg {
 }
 
 .report-map-modal-close-btn {
-  width: var(--report-map-button-height, 2.5rem);
-  min-width: var(--report-map-button-height, 2.5rem);
-  height: var(--report-map-button-height, 2.5rem);
-  min-height: var(--report-map-button-height, 2.5rem);
+  width: 2.85rem;
+  min-width: 2.85rem;
+  height: 2.85rem;
+  min-height: 2.85rem;
   padding: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  border-radius: 0.5rem;
+  border-radius: 0.6rem;
   background-color: var(--color-surface, #ffffff);
-  border: 1px solid var(--color-border-strong, #cbd5e1);
+  border: 2px solid var(--color-border-strong, #cbd5e1);
   color: var(--color-text, #0f172a);
   cursor: pointer;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
-  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.1s ease, color 0.15s ease;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.1s ease, color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .report-map-modal-close-btn:hover {
   background-color: var(--color-surface-muted, #f1f5f9);
-  border-color: var(--color-border-strong, #94a3b8);
-  color: var(--color-text, #0f172a);
+  border-color: var(--color-text, #0f172a);
+  color: #000000;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.16);
 }
 
 .report-map-modal-close-btn:active {
@@ -1145,11 +1146,11 @@ img, svg {
 }
 
 .report-map-modal-close-svg {
-  width: 1.5rem;
-  height: 1.5rem;
+  width: 1.85rem;
+  height: 1.85rem;
   display: block;
   stroke: currentColor;
-  stroke-width: 3.2;
+  stroke-width: 4.5;
   stroke-linecap: round;
   stroke-linejoin: round;
   flex-shrink: 0;
@@ -1302,24 +1303,24 @@ img, svg {
   }
 
   .report-map-modal-close-btn {
-    width: 2.65rem !important;
-    height: 2.65rem !important;
-    min-width: 2.65rem !important;
-    min-height: 2.65rem !important;
-    border-radius: 0.5rem !important;
+    width: 2.85rem !important;
+    height: 2.85rem !important;
+    min-width: 2.85rem !important;
+    min-height: 2.85rem !important;
+    border-radius: 0.6rem !important;
     flex-shrink: 0 !important;
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
     background: var(--color-surface, #ffffff) !important;
-    border: 1px solid var(--color-border-strong, #94a3b8) !important;
+    border: 2px solid var(--color-border-strong, #94a3b8) !important;
     color: var(--color-text, #0f172a) !important;
   }
 
   .report-map-modal-close-svg {
-    width: 1.6rem !important;
-    height: 1.6rem !important;
-    stroke-width: 3.2 !important;
+    width: 1.85rem !important;
+    height: 1.85rem !important;
+    stroke-width: 4.5 !important;
   }
 
   .report-map-modal-controls {
@@ -2122,12 +2123,13 @@ img, svg {
 .theme-dark .report-map-modal-close-btn {
   background-color: #1e293b !important;
   border-color: #475569 !important;
+  border-width: 2px !important;
   color: #f8fafc !important;
 }
 
 .theme-dark .report-map-modal-close-btn:hover {
   background-color: #334155 !important;
-  border-color: #64748b !important;
+  border-color: #cbd5e1 !important;
   color: #ffffff !important;
 }
 
@@ -2167,15 +2169,53 @@ img, svg {
 .theme-dark .badge-forwarded   { background-color: #1f2a4d; color: #c7d2fe; }
 
 .barangay-boundary-tooltip {
-  background: rgba(15, 23, 42, 0.88);
+  background: rgba(15, 23, 42, 0.94);
   color: #f8fafc;
-  font-size: 0.72rem;
+  font-size: 0.8rem;
   font-weight: 600;
-  border-radius: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  padding: 3px 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  padding: 4px 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
   pointer-events: none;
+}
+
+.leaflet-tooltip.barangay-boundary-tooltip {
+  background: rgba(15, 23, 42, 0.94) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.25) !important;
+  border-radius: 6px !important;
+  padding: 4px 10px !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
+  pointer-events: none !important;
+}
+
+.leaflet-tooltip.barangay-boundary-tooltip::before {
+  display: none !important;
+}
+
+.barangay-tooltip-content {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+.barangay-tooltip-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+  border: 1.5px solid #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.barangay-tooltip-text {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #ffffff;
+  font-size: 0.82rem;
 }
 
 .report-map-btn-active {

@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet.heat';
 import InfoTooltip from './InfoTooltip';
-import { getKnownBarangayName, normalizeBarangayToken } from '../constants/barangays';
+import { getKnownBarangayName, getBarangayColor, normalizeBarangayToken } from '../constants/barangays';
 
 const defaultCenter = [14.8386, 120.2842];
 
@@ -489,19 +489,20 @@ function MapCanvas({
                 weight: 3.5,
                 opacity: 1,
                 fillColor: '#fbbf24',
-                fillOpacity: 0.32,
+                fillOpacity: 0.38,
                 dashArray: '',
               };
             }
 
             if (showBoundaries) {
+              const barangayColor = getBarangayColor(featureName);
               return {
-                color: isDarkTheme ? '#60a5fa' : '#2563eb',
-                weight: 1.8,
-                opacity: 0.75,
-                fillColor: isDarkTheme ? '#3b82f6' : '#60a5fa',
-                fillOpacity: 0.08,
-                dashArray: '4, 4',
+                color: barangayColor,
+                weight: 2,
+                opacity: 0.9,
+                fillColor: barangayColor,
+                fillOpacity: 0.22,
+                dashArray: '',
               };
             }
 
@@ -515,20 +516,27 @@ function MapCanvas({
           }}
           onEachFeature={(feature, layer) => {
             const name = feature?.properties?.name;
+            const displayName = getKnownBarangayName(name) || name || 'Unknown';
             const isFlashed = Boolean(
               flashedBarangay &&
               (name?.toLowerCase() === flashedBarangay.toLowerCase() ||
                normalizeBarangayToken(name) === normalizeBarangayToken(flashedBarangay))
             );
+            const barangayColor = getBarangayColor(name);
 
             if (name && (showBoundaries || isFlashed)) {
               layer.bindTooltip(
-                isFlashed ? `📍 Brgy. ${name} (Selected)` : `Brgy. ${name}`,
+                `<div class="barangay-tooltip-content">
+                  <span class="barangay-tooltip-swatch" style="background-color: ${isFlashed ? '#f59e0b' : barangayColor};"></span>
+                  <span class="barangay-tooltip-text">${isFlashed ? `📍 Brgy. ${displayName} (Selected)` : `Brgy. ${displayName}`}</span>
+                </div>`,
                 {
                   sticky: !isFlashed,
                   permanent: isFlashed,
-                  direction: 'center',
+                  direction: isFlashed ? 'center' : 'top',
+                  offset: isFlashed ? [0, 0] : [0, -8],
                   className: isFlashed ? 'barangay-boundary-tooltip barangay-boundary-tooltip-flashed' : 'barangay-boundary-tooltip',
+                  opacity: 0.98,
                 }
               );
             }
@@ -543,11 +551,11 @@ function MapCanvas({
                 if (!isFlashed && showBoundaries) {
                   const targetLayer = e.target;
                   targetLayer.setStyle({
-                    color: '#2563eb',
-                    weight: 2.8,
+                    color: barangayColor,
+                    weight: 3.5,
                     opacity: 1,
-                    fillColor: '#3b82f6',
-                    fillOpacity: 0.2,
+                    fillColor: barangayColor,
+                    fillOpacity: 0.45,
                     dashArray: '',
                   });
                   if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) {
@@ -559,12 +567,12 @@ function MapCanvas({
                 if (!isFlashed && showBoundaries) {
                   const targetLayer = e.target;
                   targetLayer.setStyle({
-                    color: isDarkTheme ? '#60a5fa' : '#2563eb',
-                    weight: 1.8,
-                    opacity: 0.75,
-                    fillColor: isDarkTheme ? '#3b82f6' : '#60a5fa',
-                    fillOpacity: 0.08,
-                    dashArray: '4, 4',
+                    color: barangayColor,
+                    weight: 2,
+                    opacity: 0.9,
+                    fillColor: barangayColor,
+                    fillOpacity: 0.22,
+                    dashArray: '',
                   });
                 }
               },
@@ -933,14 +941,30 @@ export default function ReportLocationMap({
 
   useEffect(() => {
     let isMounted = true;
+    const loadFromStaticFallback = () => {
+      fetch('/data/olongapoBoundaries.json')
+        .then((res) => (res.ok ? res.json() : null))
+        .then((fallbackData) => {
+          if (isMounted && fallbackData && Array.isArray(fallbackData.features)) {
+            setBoundaries(fallbackData);
+          }
+        })
+        .catch(() => {});
+    };
+
     fetch('/api/reports/boundaries')
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (isMounted && data && Array.isArray(data.features)) {
+        if (isMounted && data && Array.isArray(data.features) && data.features.length > 0) {
           setBoundaries(data);
+        } else {
+          loadFromStaticFallback();
         }
       })
-      .catch(() => {});
+      .catch(() => {
+        loadFromStaticFallback();
+      });
+
     return () => {
       isMounted = false;
     };
@@ -1535,24 +1559,24 @@ export default function ReportLocationMap({
                   type="button"
                   className="btn-outline report-map-modal-close-btn"
                   onClick={() => setShowFullscreenMap(false)}
-                  aria-label="Close full screen map"
-                  title="Close full screen map"
+                  aria-label="Exit full screen map"
+                  title="Exit full screen map"
                 >
                   <svg
                     className="report-map-modal-close-svg"
                     viewBox="0 0 24 24"
-                    width="24"
-                    height="24"
+                    width="28"
+                    height="28"
                     fill="none"
                     stroke="currentColor"
-                    strokeWidth="3.2"
+                    strokeWidth="4.5"
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     aria-hidden="true"
                     focusable="false"
                   >
-                    <line x1="19" y1="5" x2="5" y2="19" />
-                    <line x1="5" y1="5" x2="19" y2="19" />
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
                   </svg>
                 </button>
               </div>
