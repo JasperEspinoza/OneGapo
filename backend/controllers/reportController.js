@@ -1929,15 +1929,6 @@ async function archiveReport(req, res, next) {
   try {
     const requesterUid = getRequesterUid(req);
     const role = getRequesterRoleKey(req.user);
-    if (role !== 'staff' && role !== 'admin') {
-      return res.status(403).json({ error: 'Only staff and admins can archive reports.' });
-    }
-
-    if (!canManageReportLifecycle(req.user)) {
-      return res.status(403).json({
-        error: 'Only the main admin and branch admins can archive reports.',
-      });
-    }
 
     const reportId = String(req.params?.reportId || '').trim();
     if (!reportId) {
@@ -1954,10 +1945,25 @@ async function archiveReport(req, res, next) {
     }
 
     const report = snap.data() || {};
+    const reportOwnerUid = report?.reporter?.uid || report?.reporterUid || report?.userId;
+    const isOwner = Boolean(reportOwnerUid && reportOwnerUid === requesterUid);
 
-    if (role === 'staff' && !canStaffAccessReport(report, req.user)) {
+    if (isOwner) {
+      // Allowed: Resident archiving their own report
+    } else if (role === 'staff' || role === 'admin') {
+      if (!canManageReportLifecycle(req.user)) {
+        return res.status(403).json({
+          error: 'Only the main admin and branch admins can archive reports.',
+        });
+      }
+      if (role === 'staff' && !canStaffAccessReport(report, req.user)) {
+        return res.status(403).json({
+          error: 'You can only archive reports inside your assigned branch/barangay coverage.',
+        });
+      }
+    } else {
       return res.status(403).json({
-        error: 'You can only archive reports inside your assigned branch/barangay coverage.',
+        error: 'You can only archive your own reports.',
       });
     }
 
@@ -1986,7 +1992,7 @@ async function archiveReport(req, res, next) {
         email: req.user.email || '',
         displayName: getUserDisplayName(req.user) || null,
       },
-      progressNote: reason || null,
+      progressNote: reason || (isOwner ? 'Archived by resident' : null),
     };
 
     await ref.update({
@@ -2029,13 +2035,6 @@ async function unarchiveReport(req, res, next) {
   try {
     const requesterUid = getRequesterUid(req);
     const role = getRequesterRoleKey(req.user);
-    if (role !== 'staff' && role !== 'admin') {
-      return res.status(403).json({ error: 'Only staff and admins can unarchive reports.' });
-    }
-
-    if (!canManageReportLifecycle(req.user)) {
-      return res.status(403).json({ error: 'Only the main admin and branch admins can unarchive reports.' });
-    }
 
     const reportId = String(req.params?.reportId || '').trim();
     if (!reportId) return res.status(400).json({ error: 'reportId is required.' });
@@ -2046,8 +2045,20 @@ async function unarchiveReport(req, res, next) {
     if (!snap.exists) return res.status(404).json({ error: 'Report not found.' });
 
     const report = snap.data() || {};
-    if (role === 'staff' && !canStaffAccessReport(report, req.user)) {
-      return res.status(403).json({ error: 'You can only unarchive reports inside your assigned branch/barangay coverage.' });
+    const reportOwnerUid = report?.reporter?.uid || report?.reporterUid || report?.userId;
+    const isOwner = Boolean(reportOwnerUid && reportOwnerUid === requesterUid);
+
+    if (isOwner) {
+      // Allowed: Resident unarchiving their own report
+    } else if (role === 'staff' || role === 'admin') {
+      if (!canManageReportLifecycle(req.user)) {
+        return res.status(403).json({ error: 'Only the main admin and branch admins can unarchive reports.' });
+      }
+      if (role === 'staff' && !canStaffAccessReport(report, req.user)) {
+        return res.status(403).json({ error: 'You can only unarchive reports inside your assigned branch/barangay coverage.' });
+      }
+    } else {
+      return res.status(403).json({ error: 'You can only unarchive your own reports.' });
     }
 
     const previousStatus = String(report?.status || 'submitted').trim().toLowerCase();
@@ -2084,7 +2095,7 @@ async function unarchiveReport(req, res, next) {
         email: req.user.email || '',
         displayName: getUserDisplayName(req.user) || null,
       },
-      progressNote: null,
+      progressNote: isOwner ? 'Restored by resident' : 'Restored by staff/admin',
     };
 
     await ref.update({
@@ -2121,16 +2132,8 @@ async function unarchiveReport(req, res, next) {
 
 async function deleteReport(req, res, next) {
   try {
+    const requesterUid = getRequesterUid(req);
     const role = getRequesterRoleKey(req.user);
-    if (role !== 'staff' && role !== 'admin') {
-      return res.status(403).json({ error: 'Only staff and admins can delete reports.' });
-    }
-
-    if (!canManageReportLifecycle(req.user)) {
-      return res.status(403).json({
-        error: 'Only the main admin and branch admins can delete reports.',
-      });
-    }
 
     const reportId = String(req.params?.reportId || '').trim();
     if (!reportId) {
@@ -2145,17 +2148,30 @@ async function deleteReport(req, res, next) {
     }
 
     const report = snap.data() || {};
+    const reportOwnerUid = report?.reporter?.uid || report?.reporterUid || report?.userId;
+    const isOwner = Boolean(reportOwnerUid && reportOwnerUid === requesterUid);
 
-    // Only archived reports can be permanently deleted
-    if (String(report.status || '').toLowerCase() !== 'archived') {
-      return res.status(400).json({
-        error: 'Only archived reports can be deleted. Please archive the report first.',
-      });
-    }
-
-    if (role === 'staff' && !canStaffAccessReport(report, req.user)) {
+    if (isOwner) {
+      // Allowed: Resident deleting their own report!
+    } else if (role === 'staff' || role === 'admin') {
+      if (!canManageReportLifecycle(req.user)) {
+        return res.status(403).json({
+          error: 'Only the main admin and branch admins can delete reports.',
+        });
+      }
+      if (String(report.status || '').toLowerCase() !== 'archived') {
+        return res.status(400).json({
+          error: 'Only archived reports can be deleted. Please archive the report first.',
+        });
+      }
+      if (role === 'staff' && !canStaffAccessReport(report, req.user)) {
+        return res.status(403).json({
+          error: 'You can only delete reports inside your assigned branch/barangay coverage.',
+        });
+      }
+    } else {
       return res.status(403).json({
-        error: 'You can only delete reports inside your assigned branch/barangay coverage.',
+        error: 'You can only delete your own reports.',
       });
     }
 

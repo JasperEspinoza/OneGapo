@@ -417,6 +417,12 @@ export default function ResidentHub({ viewMode = 'resident' }) {
   const [ratingError, setRatingError] = useState('');
   const [ratingSubmitting, setRatingSubmitting] = useState(false);
 
+  const [residentReportFilter, setResidentReportFilter] = useState('active');
+  const [archivingReportId, setArchivingReportId] = useState(null);
+  const [deletingReportId, setDeletingReportId] = useState(null);
+  const [confirmDeleteReport, setConfirmDeleteReport] = useState(null);
+  const [ticketActionError, setTicketActionError] = useState('');
+
   const composeSectionRef = useRef(null);
   const cameraCaptureInputRef = useRef(null);
   const videoRef = useRef(null);
@@ -607,6 +613,87 @@ export default function ResidentHub({ viewMode = 'resident' }) {
   }, [isResponder, myReports, currentUser?.uid]);
 
   const visibleReports = isResponder ? responderAssignedReports : myReports;
+
+  const activeReports = useMemo(
+    () => visibleReports.filter((report) => String(report?.status || '').toLowerCase() !== 'archived'),
+    [visibleReports]
+  );
+
+  const archivedReports = useMemo(
+    () => visibleReports.filter((report) => String(report?.status || '').toLowerCase() === 'archived'),
+    [visibleReports]
+  );
+
+  const displayedReports = residentReportFilter === 'archived' ? archivedReports : activeReports;
+
+  const handleArchiveReport = async (report) => {
+    if (!report?.id) return;
+    setArchivingReportId(report.id);
+    setTicketActionError('');
+    try {
+      const res = await api(`/api/reports/${report.id}/archive`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: 'Archived by resident' }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to archive report.');
+      const updated = data?.report || { ...report, status: 'archived' };
+      setMyReports((prev) => prev.map((r) => (r.id === report.id ? { ...r, ...updated, status: 'archived' } : r)));
+      if (activeTicketReport?.id === report.id) {
+        setActiveTicketReport((prev) => ({ ...prev, ...updated, status: 'archived' }));
+      }
+    } catch (err) {
+      setTicketActionError(err.message || 'Failed to archive report.');
+    } finally {
+      setArchivingReportId(null);
+    }
+  };
+
+  const handleUnarchiveReport = async (report) => {
+    if (!report?.id) return;
+    setArchivingReportId(report.id);
+    setTicketActionError('');
+    try {
+      const res = await api(`/api/reports/${report.id}/unarchive`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to unarchive report.');
+      const updated = data?.report || { ...report, status: 'submitted' };
+      setMyReports((prev) => prev.map((r) => (r.id === report.id ? { ...r, ...updated } : r)));
+      if (activeTicketReport?.id === report.id) {
+        setActiveTicketReport((prev) => ({ ...prev, ...updated }));
+      }
+    } catch (err) {
+      setTicketActionError(err.message || 'Failed to restore report.');
+    } finally {
+      setArchivingReportId(null);
+    }
+  };
+
+  const handleDeleteReport = async (report) => {
+    if (!report?.id) return;
+    setDeletingReportId(report.id);
+    setTicketActionError('');
+    try {
+      const res = await api(`/api/reports/${report.id}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to delete report.');
+      setMyReports((prev) => prev.filter((r) => r.id !== report.id));
+      if (activeTicketReport?.id === report.id) {
+        setActiveTicketReport(null);
+      }
+      setConfirmDeleteReport(null);
+    } catch (err) {
+      setTicketActionError(err.message || 'Failed to delete report.');
+    } finally {
+      setDeletingReportId(null);
+    }
+  };
 
   useEffect(() => {
     setTicketImageIndex(0);
@@ -1391,13 +1478,13 @@ export default function ResidentHub({ viewMode = 'resident' }) {
 
             <div className="resident-summary-row">
               <article className="resident-summary-card">
-                <p className="resident-summary-label">{isResponder ? 'Assigned Reports' : 'Total Reports'}</p>
-                <p className="resident-summary-value">{visibleReports.length}</p>
+                <p className="resident-summary-label">{isResponder ? 'Assigned Reports' : 'Active Reports'}</p>
+                <p className="resident-summary-value">{isResponder ? visibleReports.length : activeReports.length}</p>
               </article>
               <article className="resident-summary-card">
                 <p className="resident-summary-label">Open Reports</p>
                 <p className="resident-summary-value">
-                  {visibleReports.filter((report) => report.status !== 'resolved').length}
+                  {(isResponder ? visibleReports : activeReports).filter((report) => report.status !== 'resolved').length}
                 </p>
               </article>
             </div>
@@ -1410,26 +1497,59 @@ export default function ResidentHub({ viewMode = 'resident' }) {
                 </button>
               </div>
 
+              {!isResponder && (
+                <div className="resident-report-filter-tabs">
+                  <button
+                    type="button"
+                    className={`resident-filter-tab ${residentReportFilter === 'active' ? 'active' : ''}`}
+                    onClick={() => setResidentReportFilter('active')}
+                  >
+                    Active ({activeReports.length})
+                  </button>
+                  <button
+                    type="button"
+                    className={`resident-filter-tab ${residentReportFilter === 'archived' ? 'active' : ''}`}
+                    onClick={() => setResidentReportFilter('archived')}
+                  >
+                    Archived ({archivedReports.length})
+                  </button>
+                </div>
+              )}
+
               {reportsError ? <div className="dashboard-alert dashboard-alert-error">{reportsError}</div> : null}
 
               {reportsLoading ? (
                 <p className="resident-muted">Loading your reports...</p>
-              ) : visibleReports.length === 0 ? (
-                <p className="resident-muted">{isResponder ? 'No reports are assigned to your account yet.' : 'No reports yet. Tap New Report to submit one.'}</p>
+              ) : displayedReports.length === 0 ? (
+                <p className="resident-muted">
+                  {isResponder
+                    ? 'No reports are assigned to your account yet.'
+                    : residentReportFilter === 'archived'
+                      ? 'No archived reports.'
+                      : 'No active reports yet. Tap New Report to submit one.'}
+                </p>
               ) : (
                 <div className="resident-report-list">
-                  {visibleReports.map((report) => {
+                  {displayedReports.map((report) => {
+                    const isArchived = String(report.status || '').toLowerCase() === 'archived';
                     return (
                       <button
                         key={report.id}
                         type="button"
                         className="resident-report-item"
-                        onClick={() => setActiveTicketReport(report)}
+                        onClick={() => {
+                          setTicketActionError('');
+                          setActiveTicketReport(report);
+                        }}
                       >
                         <div className="resident-report-pills">
-                          <span className={`res-pill report-status-${getResidentDisplayStatus(report)}`}>
-                            {normalizeStatus(getResidentDisplayStatus(report))}
-                          </span>
+                          {isArchived ? (
+                            <span className="res-pill report-status-archived">Archived</span>
+                          ) : (
+                            <span className={`res-pill report-status-${getResidentDisplayStatus(report)}`}>
+                              {normalizeStatus(getResidentDisplayStatus(report))}
+                            </span>
+                          )}
                           <span className={`res-pill res-pill-cat ${getCategoryPillClass(report.category)}`}>
                             {report.category}
                           </span>
@@ -1962,6 +2082,60 @@ export default function ResidentHub({ viewMode = 'resident' }) {
                     </div>
                   ) : null}
 
+                  {/* Resident Archive / Delete Actions */}
+                  {!isResponder ? (
+                    <div className="resident-ticket-actions">
+                      {String(activeTicketReport?.status || '').toLowerCase() !== 'archived' ? (
+                        <>
+                          <button
+                            type="button"
+                            className="btn-outline resident-btn-archive"
+                            disabled={archivingReportId === activeTicketReport.id || deletingReportId === activeTicketReport.id}
+                            onClick={() => handleArchiveReport(activeTicketReport)}
+                          >
+                            <span className="material-symbols-outlined" style={{ fontSize: '1.1rem' }} aria-hidden="true">archive</span>
+                            {archivingReportId === activeTicketReport.id ? 'Archiving…' : 'Archive Report'}
+                          </button>
+                          <button
+                            type="button"
+                            className="resident-btn-delete"
+                            disabled={archivingReportId === activeTicketReport.id || deletingReportId === activeTicketReport.id}
+                            onClick={() => setConfirmDeleteReport(activeTicketReport)}
+                          >
+                            <span className="material-symbols-outlined" style={{ fontSize: '1.1rem' }} aria-hidden="true">delete</span>
+                            Delete
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            className="btn-outline resident-btn-unarchive"
+                            disabled={archivingReportId === activeTicketReport.id || deletingReportId === activeTicketReport.id}
+                            onClick={() => handleUnarchiveReport(activeTicketReport)}
+                          >
+                            <span className="material-symbols-outlined" style={{ fontSize: '1.1rem' }} aria-hidden="true">unarchive</span>
+                            {archivingReportId === activeTicketReport.id ? 'Restoring…' : 'Restore Report'}
+                          </button>
+                          <button
+                            type="button"
+                            className="resident-btn-delete"
+                            disabled={archivingReportId === activeTicketReport.id || deletingReportId === activeTicketReport.id}
+                            onClick={() => setConfirmDeleteReport(activeTicketReport)}
+                          >
+                            <span className="material-symbols-outlined" style={{ fontSize: '1.1rem' }} aria-hidden="true">delete_forever</span>
+                            Delete Permanently
+                          </button>
+                        </>
+                      )}
+                      {ticketActionError ? (
+                        <p style={{ color: 'var(--color-danger, #ef4444)', fontSize: '0.85rem', width: '100%', margin: '0.25rem 0 0' }}>
+                          {ticketActionError}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
+
                   {/* Responder action buttons */}
                   {isResponder && !isResolved && String(activeTicketReport?.status || '').toLowerCase() !== 'declined' ? (
                     <div className="resident-report-actions">
@@ -2083,6 +2257,43 @@ export default function ResidentHub({ viewMode = 'resident' }) {
                 </div>
               );
             })()}
+          </AppModal>
+        ) : null}
+
+        {confirmDeleteReport ? (
+          <AppModal
+            title="Delete Report"
+            titleId="resident-delete-modal-title"
+            size="small"
+            onClose={() => {
+              if (deletingReportId) return;
+              setConfirmDeleteReport(null);
+            }}
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <p style={{ margin: 0, color: 'var(--color-text, #0f172a)', lineHeight: 1.5 }}>
+                Are you sure you want to permanently delete <strong>&ldquo;{confirmDeleteReport.title}&rdquo;</strong>?
+                This action cannot be undone and will remove all report attachments and logs.
+              </p>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
+                <button
+                  type="button"
+                  className="btn-outline"
+                  disabled={Boolean(deletingReportId)}
+                  onClick={() => setConfirmDeleteReport(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="resident-btn-delete"
+                  disabled={Boolean(deletingReportId)}
+                  onClick={() => handleDeleteReport(confirmDeleteReport)}
+                >
+                  {deletingReportId ? 'Deleting…' : 'Delete Permanently'}
+                </button>
+              </div>
+            </div>
           </AppModal>
         ) : null}
 

@@ -90,6 +90,9 @@ export default function Dashboard() {
   const [myReports, setMyReports] = useState([]);
   const [reportsLoading, setReportsLoading] = useState(false);
   const [reportsError, setReportsError] = useState('');
+  const [archivingReportId, setArchivingReportId] = useState(null);
+  const [deletingReportId, setDeletingReportId] = useState(null);
+  const [confirmDeleteReport, setConfirmDeleteReport] = useState(null);
 
   const api = useCallback(async (url, options = {}) => {
     const idToken = await currentUser.getIdToken();
@@ -101,6 +104,62 @@ export default function Dashboard() {
       },
     });
   }, [currentUser]);
+
+  const handleArchiveReport = async (report) => {
+    if (!report?.id) return;
+    setArchivingReportId(report.id);
+    try {
+      const res = await api(`/api/reports/${report.id}/archive`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: 'Archived by resident' }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to archive report.');
+      setMyReports((prev) => prev.map((r) => (r.id === report.id ? { ...r, status: 'archived', ...data.report } : r)));
+    } catch (err) {
+      alert(err.message || 'Failed to archive report.');
+    } finally {
+      setArchivingReportId(null);
+    }
+  };
+
+  const handleUnarchiveReport = async (report) => {
+    if (!report?.id) return;
+    setArchivingReportId(report.id);
+    try {
+      const res = await api(`/api/reports/${report.id}/unarchive`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to unarchive report.');
+      const updated = data.report || { ...report, status: 'submitted' };
+      setMyReports((prev) => prev.map((r) => (r.id === report.id ? { ...r, ...updated } : r)));
+    } catch (err) {
+      alert(err.message || 'Failed to restore report.');
+    } finally {
+      setArchivingReportId(null);
+    }
+  };
+
+  const handleDeleteReport = async (report) => {
+    if (!report?.id) return;
+    setDeletingReportId(report.id);
+    try {
+      const res = await api(`/api/reports/${report.id}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to delete report.');
+      setMyReports((prev) => prev.filter((r) => r.id !== report.id));
+      setConfirmDeleteReport(null);
+    } catch (err) {
+      alert(err.message || 'Failed to delete report.');
+    } finally {
+      setDeletingReportId(null);
+    }
+  };
 
   const loadMyReports = useCallback(async () => {
     if (!isResident) return;
@@ -634,12 +693,79 @@ export default function Dashboard() {
                     {Array.isArray(report.attachments) && report.attachments.length > 0 && (
                       <p className="report-item-media-count">{report.attachments.length} media file(s)</p>
                     )}
+                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                      {String(report.status || '').toLowerCase() !== 'archived' ? (
+                        <button
+                          type="button"
+                          className="btn-outline btn-sm"
+                          disabled={archivingReportId === report.id || deletingReportId === report.id}
+                          onClick={() => handleArchiveReport(report)}
+                        >
+                          {archivingReportId === report.id ? 'Archiving…' : 'Archive'}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn-outline btn-sm"
+                          disabled={archivingReportId === report.id || deletingReportId === report.id}
+                          onClick={() => handleUnarchiveReport(report)}
+                        >
+                          {archivingReportId === report.id ? 'Restoring…' : 'Restore'}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="btn-danger btn-sm"
+                        disabled={archivingReportId === report.id || deletingReportId === report.id}
+                        onClick={() => setConfirmDeleteReport(report)}
+                        style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem', borderRadius: '4px' }}
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </article>
                 ))}
               </div>
             )}
           </section>
         )}
+
+        {confirmDeleteReport ? (
+          <AppModal
+            title="Delete Report"
+            titleId="dashboard-delete-modal-title"
+            size="small"
+            onClose={() => {
+              if (deletingReportId) return;
+              setConfirmDeleteReport(null);
+            }}
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <p style={{ margin: 0, color: 'var(--color-text, #0f172a)', lineHeight: 1.5 }}>
+                Are you sure you want to permanently delete <strong>&ldquo;{confirmDeleteReport.title}&rdquo;</strong>?
+                This action cannot be undone.
+              </p>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
+                <button
+                  type="button"
+                  className="btn-outline"
+                  disabled={Boolean(deletingReportId)}
+                  onClick={() => setConfirmDeleteReport(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn-danger"
+                  disabled={Boolean(deletingReportId)}
+                  onClick={() => handleDeleteReport(confirmDeleteReport)}
+                >
+                  {deletingReportId ? 'Deleting…' : 'Delete Permanently'}
+                </button>
+              </div>
+            </div>
+          </AppModal>
+        ) : null}
       </div>
     </main>
   );

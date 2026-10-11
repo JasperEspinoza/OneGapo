@@ -167,9 +167,9 @@ router.get('/forward-targets', verifyToken, requireStaffOrAdmin, listForwardTarg
 router.patch('/:reportId/forward', verifyToken, requireStaffOrAdmin, forwardReport);
 router.post('/:reportId/duplicate', verifyToken, requireStaffOrAdmin, markReportDuplicate);
 router.delete('/:reportId/duplicate', verifyToken, requireStaffOrAdmin, revokeReportDuplicate);
-router.patch('/:reportId/archive', verifyToken, requireStaffOrAdmin, archiveReport);
-router.patch('/:reportId/unarchive', verifyToken, requireStaffOrAdmin, unarchiveReport);
-router.delete('/:reportId', verifyToken, requireStaffOrAdmin, deleteReport);
+router.patch('/:reportId/archive', verifyToken, archiveReport);
+router.patch('/:reportId/unarchive', verifyToken, unarchiveReport);
+router.delete('/:reportId', verifyToken, deleteReport);
 router.get('/notifications', verifyToken, requireStaffOrAdmin, rateLimitNotificationsRead, listNotifications);
 router.patch('/notifications/:notificationId/read', verifyToken, requireStaffOrAdmin, markNotificationRead);
 router.post('/:reportId/rating', verifyToken, submitReportRating);
