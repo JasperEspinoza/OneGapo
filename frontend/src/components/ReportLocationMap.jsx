@@ -734,7 +734,22 @@ function MarkerDetailsSidebar({
       <div className="report-map-sidebar-header">
         <p className="report-map-sidebar-title">Report details</p>
         <button type="button" className="btn-outline report-map-sidebar-close" onClick={onClose} aria-label="Close report details">
-          X
+          <svg
+            className="report-map-modal-close-svg"
+            viewBox="0 0 24 24"
+            width="16"
+            height="16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
         </button>
       </div>
 
@@ -953,6 +968,33 @@ export default function ReportLocationMap({
     return () => observer.disconnect();
   }, []);
 
+  useEffect(() => {
+    if (showFullscreenMap) {
+      document.body.style.overflow = 'hidden';
+
+      const handleKeyDown = (event) => {
+        if (event.key === 'Escape') {
+          setShowFullscreenMap(false);
+        }
+      };
+      window.addEventListener('keydown', handleKeyDown);
+
+      return () => {
+        document.body.style.overflow = '';
+        window.removeEventListener('keydown', handleKeyDown);
+      };
+    }
+
+    document.body.style.overflow = '';
+    return undefined;
+  }, [showFullscreenMap]);
+
+  useEffect(() => {
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, []);
+
   const maximizeIconSrc = isDarkTheme ? MAXIMIZE_ICON_DARK : MAXIMIZE_ICON_LIGHT;
 
   const selectedPosition = Number.isFinite(lat) && Number.isFinite(lng)
@@ -1164,24 +1206,7 @@ export default function ReportLocationMap({
     });
   };
 
-  useEffect(() => {
-    if (!showFullscreenMap) return undefined;
 
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-
-    const handleEscape = (event) => {
-      if (event.key === 'Escape') {
-        setShowFullscreenMap(false);
-      }
-    };
-
-    document.addEventListener('keydown', handleEscape);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      document.removeEventListener('keydown', handleEscape);
-    };
-  }, [showFullscreenMap]);
 
   useEffect(() => () => {
     if (sidebarCloseTimeoutRef.current) {
@@ -1500,14 +1525,35 @@ export default function ReportLocationMap({
           <div className="report-map-modal-panel">
             <div className="report-map-modal-header">
               <div className="report-map-modal-header-row">
-                <p className="report-map-modal-title">Map view</p>
+                <div className="report-map-modal-title-wrap">
+                  <span className="material-symbols-outlined report-map-modal-title-icon" aria-hidden="true">
+                    map
+                  </span>
+                  <p className="report-map-modal-title">Map view</p>
+                </div>
                 <button
                   type="button"
-                  className="btn-outline report-map-expand-btn report-map-modal-close"
+                  className="btn-outline report-map-modal-close-btn"
                   onClick={() => setShowFullscreenMap(false)}
                   aria-label="Close full screen map"
+                  title="Close full screen map"
                 >
-                  X
+                  <svg
+                    className="report-map-modal-close-svg"
+                    viewBox="0 0 24 24"
+                    width="24"
+                    height="24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="3.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    <line x1="19" y1="5" x2="5" y2="19" />
+                    <line x1="5" y1="5" x2="19" y2="19" />
+                  </svg>
                 </button>
               </div>
               <div className="report-map-modal-controls">
@@ -1706,7 +1752,24 @@ function ZoomedImageModal({ zoomedImage, onClose, setZoomedImage }) {
     <div className="report-image-modal" role="dialog" aria-modal="true" aria-label="Expanded report image">
       <button type="button" className="report-image-modal-backdrop" onClick={onClose} aria-label="Close expanded image" />
       <div className="report-image-modal-panel">
-        <button type="button" className="btn-outline report-image-modal-close" onClick={onClose} aria-label="Close expanded image">X</button>
+        <button type="button" className="btn-outline report-image-modal-close" onClick={onClose} aria-label="Close expanded image">
+          <svg
+            className="report-map-modal-close-svg"
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
 
         <div className="report-image-modal-content">
           {images.length > 1 ? (

@@ -176,10 +176,14 @@ html {
   font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
   font-size: 16px;
   scroll-behavior: smooth;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 body {
   min-height: 100vh;
+  overflow-x: hidden;
+  overflow-y: auto;
   background:
     radial-gradient(circle at 0% 0%, var(--color-bg-gradient-a), transparent 32%),
     radial-gradient(circle at 100% 0%, var(--color-bg-gradient-b), transparent 28%),
@@ -864,6 +868,15 @@ img, svg {
   min-height: 100%;
 }
 
+.report-map {
+  width: 100%;
+  height: 19rem;
+  min-height: 14rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.6rem;
+  overflow: hidden;
+}
+
 .report-map-layout-with-sidebar .report-map {
   height: 100%;
   min-height: 19rem;
@@ -1046,7 +1059,7 @@ img, svg {
 .report-map-modal {
   position: fixed;
   inset: 0;
-  z-index: 6000;
+  z-index: 25000;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1056,7 +1069,7 @@ img, svg {
 .report-map-modal-backdrop {
   position: absolute;
   inset: 0;
-  background-color: rgba(0, 0, 0, 0.34);
+  background-color: rgba(0, 0, 0, 0.45);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
 }
@@ -1082,6 +1095,65 @@ img, svg {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
+  width: 100%;
+}
+
+.report-map-modal-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.report-map-modal-title-icon {
+  font-size: 1.25rem;
+  color: var(--color-primary, #2563eb);
+}
+
+.report-map-modal-close-btn {
+  width: var(--report-map-button-height, 2.5rem);
+  min-width: var(--report-map-button-height, 2.5rem);
+  height: var(--report-map-button-height, 2.5rem);
+  min-height: var(--report-map-button-height, 2.5rem);
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 0.5rem;
+  background-color: var(--color-surface, #ffffff);
+  border: 1px solid var(--color-border-strong, #cbd5e1);
+  color: var(--color-text, #0f172a);
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.1s ease, color 0.15s ease;
+}
+
+.report-map-modal-close-btn:hover {
+  background-color: var(--color-surface-muted, #f1f5f9);
+  border-color: var(--color-border-strong, #94a3b8);
+  color: var(--color-text, #0f172a);
+}
+
+.report-map-modal-close-btn:active {
+  transform: scale(0.92);
+}
+
+.report-map-modal-close-btn:focus-visible {
+  outline: 2px solid var(--color-primary, #2563eb);
+  outline-offset: 2px;
+}
+
+.report-map-modal-close-svg {
+  width: 1.5rem;
+  height: 1.5rem;
+  display: block;
+  stroke: currentColor;
+  stroke-width: 3.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex-shrink: 0;
+  pointer-events: none;
 }
 
 .report-map-modal-close {
@@ -1177,37 +1249,171 @@ img, svg {
   }
 }
 
-@media (max-width: 640px) {
-  .report-map-modal-header-row {
-    align-items: flex-start;
+@media (max-width: 768px) {
+  .report-map-modal {
+    padding: 0 !important;
+    z-index: 25000 !important;
+  }
+
+  .report-map-modal-panel {
+    width: 100% !important;
+    width: 100vw !important;
+    width: 100dvw !important;
+    height: 100% !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    border-radius: 0 !important;
+    border: none !important;
+    padding: 0 !important;
+    gap: 0 !important;
+    box-shadow: none !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
   }
 
   .report-map-modal-header {
-    align-items: stretch;
+    position: relative !important;
+    z-index: 50 !important;
+    background: var(--color-surface) !important;
+    border-bottom: 1px solid var(--color-border) !important;
+    padding: max(0.55rem, env(safe-area-inset-top, 0px)) 0.75rem 0.55rem 0.75rem !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08) !important;
+    gap: 0.45rem !important;
+    flex-shrink: 0 !important;
+  }
+
+  .report-map-modal-header-row {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 0.5rem !important;
+    width: 100% !important;
+  }
+
+  .report-map-modal-title {
+    font-size: 1rem !important;
+    font-weight: 800 !important;
+    margin: 0 !important;
+    color: var(--color-text) !important;
+    letter-spacing: -0.01em !important;
+  }
+
+  .report-map-modal-close-btn {
+    width: 2.65rem !important;
+    height: 2.65rem !important;
+    min-width: 2.65rem !important;
+    min-height: 2.65rem !important;
+    border-radius: 0.5rem !important;
+    flex-shrink: 0 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    background: var(--color-surface, #ffffff) !important;
+    border: 1px solid var(--color-border-strong, #94a3b8) !important;
+    color: var(--color-text, #0f172a) !important;
+  }
+
+  .report-map-modal-close-svg {
+    width: 1.6rem !important;
+    height: 1.6rem !important;
+    stroke-width: 3.2 !important;
   }
 
   .report-map-modal-controls {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0.55rem;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 0.4rem !important;
+    width: 100% !important;
+    min-width: 0 !important;
   }
 
   .report-map-modal-filters {
-    width: 100%;
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    gap: 0.4rem !important;
+    width: 100% !important;
+    padding-bottom: 2px !important;
+    scrollbar-width: none !important;
+  }
+
+  .report-map-modal-filters::-webkit-scrollbar {
+    display: none;
   }
 
   .report-map-filter-group {
-    flex: 1;
-    min-width: 9rem;
+    flex-shrink: 0 !important;
+    min-width: auto !important;
   }
 
   .report-map-filter-select {
-    width: 100%;
+    width: auto !important;
+    min-width: 8.5rem !important;
+    max-width: 12rem !important;
+    height: 2.2rem !important;
+    min-height: 2.2rem !important;
+    font-size: 0.78rem !important;
+    padding: 0.2rem 0.55rem !important;
+    border-radius: 0.45rem !important;
   }
 
   .report-map-modal-actions {
-    width: 100%;
-    justify-content: flex-end;
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    gap: 0.35rem !important;
+    width: 100% !important;
+    scrollbar-width: none !important;
+    margin-left: 0 !important;
+    justify-content: flex-start !important;
+  }
+
+  .report-map-modal-actions::-webkit-scrollbar {
+    display: none;
+  }
+
+  .report-map-modal-actions .report-map-expand-btn {
+    height: 2.15rem !important;
+    min-height: 2.15rem !important;
+    font-size: 0.75rem !important;
+    padding: 0.2rem 0.55rem !important;
+    flex-shrink: 0 !important;
+    white-space: nowrap !important;
+    border-radius: 0.45rem !important;
+  }
+
+  .report-map-modal-content {
+    flex: 1 !important;
+    min-height: 0 !important;
+    position: relative !important;
+    width: 100% !important;
+    height: 100% !important;
+  }
+
+  .report-map-modal-panel .report-map {
+    height: 100% !important;
+    min-height: 0 !important;
+    border-radius: 0 !important;
+  }
+
+  .report-map-fullscreen-legend {
+    bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px)) !important;
+    left: 0.75rem !important;
+    max-width: calc(100% - 1.5rem) !important;
+  }
+
+  .report-map-modal-sidebar-shell {
+    left: 0.5rem !important;
+    right: 0.5rem !important;
+    bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px)) !important;
+    width: auto !important;
+    height: min(50%, 20rem) !important;
   }
 }
 
@@ -1465,7 +1671,7 @@ img, svg {
 .report-image-modal {
   position: fixed;
   inset: 0;
-  z-index: 6200;
+  z-index: 26000;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1911,6 +2117,18 @@ img, svg {
 
 .theme-dark .report-map-modal-panel {
   background-color: var(--color-surface);
+}
+
+.theme-dark .report-map-modal-close-btn {
+  background-color: #1e293b !important;
+  border-color: #475569 !important;
+  color: #f8fafc !important;
+}
+
+.theme-dark .report-map-modal-close-btn:hover {
+  background-color: #334155 !important;
+  border-color: #64748b !important;
+  color: #ffffff !important;
 }
 
 .theme-dark .report-map-modal-title,

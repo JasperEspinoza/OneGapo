@@ -490,8 +490,8 @@ export default function ResidentHub({ viewMode = 'resident' }) {
     body.style.touchAction = 'none';
 
     return () => {
-      body.style.overflow = previousOverflow;
-      body.style.touchAction = previousTouchAction;
+      body.style.overflow = previousOverflow === 'hidden' ? '' : (previousOverflow || '');
+      body.style.touchAction = previousTouchAction === 'none' ? '' : (previousTouchAction || '');
     };
   }, [cameraModalOpen]);
 
