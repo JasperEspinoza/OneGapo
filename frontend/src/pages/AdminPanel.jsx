@@ -867,8 +867,14 @@ export default function AdminPanel() {
 
   useEffect(() => { loadBranches(); loadRoles(); }, [loadBranches, loadRoles]);
 
+  const currentUid = currentUser?.uid;
+  const currentUserRef = useRef(currentUser);
   useEffect(() => {
-    if (!currentUser || !canAccessReports) {
+    currentUserRef.current = currentUser;
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (!currentUid || !canAccessReports) {
       setNotifications([]);
       setNotifLoading(false);
       setNotifError('');
@@ -883,7 +889,7 @@ export default function AdminPanel() {
       setNotifError('');
 
       try {
-        const idToken = await currentUser.getIdToken();
+        const idToken = await currentUserRef.current?.getIdToken();
         if (!active) return;
 
         const socketUrl = getSocketServerUrl();
@@ -896,7 +902,16 @@ export default function AdminPanel() {
         socket = io(socketUrl, {
           path: '/socket.io',
           transports: ['websocket', 'polling'],
-          auth: { token: idToken },
+          auth: (cb) => {
+            currentUserRef.current?.getIdToken()
+              .then((token) => cb({ token }))
+              .catch(() => cb({ token: idToken || '' }));
+          },
+          reconnection: true,
+          reconnectionAttempts: Infinity,
+          reconnectionDelay: 1000,
+          reconnectionDelayMax: 5000,
+          timeout: 45000,
         });
 
         socket.on('connect', () => {
@@ -977,15 +992,17 @@ export default function AdminPanel() {
         socket.on('connect_error', (err) => {
           if (!active) return;
           // eslint-disable-next-line no-console
-          console.warn('[client][admin] socket connect_error', err && err.message ? err.message : err);
+          console.warn('[client][admin] socket connect_error:', err && err.message ? err.message : err);
           setNotifLoading(false);
           setNotifError('Realtime notifications unavailable.');
         });
 
         socket.on('disconnect', (reason) => {
-          if (!active) return;
           // eslint-disable-next-line no-console
-          console.info('[client][admin] socket disconnected', { reason });
+          console.info('[client][admin] socket disconnected. Reason:', reason);
+          if (reason === 'io server disconnect' && active && socket) {
+            socket.connect();
+          }
         });
       } catch {
         if (!active) return;
@@ -1002,7 +1019,7 @@ export default function AdminPanel() {
         socket.disconnect();
       }
     };
-  }, [canAccessReports, currentUser]);
+  }, [canAccessReports, currentUid]);
 
   const visibleNavItems = useMemo(
     () => NAV_ITEMS.filter((item) => canAccessSection(item.id)),

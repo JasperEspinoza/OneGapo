@@ -801,9 +801,15 @@ export default function ResidentHub({ viewMode = 'resident' }) {
     return () => clearInterval(interval);
   }, [submitSuccess]);
 
+  const currentUid = currentUser?.uid;
+  const currentUserRef = useRef(currentUser);
+  useEffect(() => {
+    currentUserRef.current = currentUser;
+  }, [currentUser]);
+
   useEffect(() => {
     if (isResponder) return undefined;
-    if (!currentUser) {
+    if (!currentUid) {
       return undefined;
     }
 
@@ -812,7 +818,7 @@ export default function ResidentHub({ viewMode = 'resident' }) {
 
     const connectRealtimeReports = async () => {
       try {
-        const idToken = await currentUser.getIdToken();
+        const idToken = await currentUserRef.current?.getIdToken();
         if (!active) return;
 
         const socketUrl = getSocketServerUrl();
@@ -824,7 +830,16 @@ export default function ResidentHub({ viewMode = 'resident' }) {
         socket = io(socketUrl, {
           path: '/socket.io',
           transports: ['websocket', 'polling'],
-          auth: { token: idToken },
+          auth: (cb) => {
+            currentUserRef.current?.getIdToken()
+              .then((token) => cb({ token }))
+              .catch(() => cb({ token: idToken || '' }));
+          },
+          reconnection: true,
+          reconnectionAttempts: Infinity,
+          reconnectionDelay: 1000,
+          reconnectionDelayMax: 5000,
+          timeout: 45000,
         });
         residentSocketRef.current = socket;
 
@@ -877,15 +892,17 @@ export default function ResidentHub({ viewMode = 'resident' }) {
         socket.on('connect_error', (err) => {
           if (!active) return;
           // eslint-disable-next-line no-console
-          console.warn('[client][resident] socket connect_error', err && err.message ? err.message : err);
+          console.warn('[client][resident] socket connect_error:', err && err.message ? err.message : err);
           // Fall back to HTTP fetch when socket connection is unavailable.
           refreshResidentReports();
         });
 
         socket.on('disconnect', (reason) => {
-          if (!active) return;
           // eslint-disable-next-line no-console
-          console.info('[client][resident] socket disconnected', { reason });
+          console.info('[client][resident] socket disconnected. Reason:', reason);
+          if (reason === 'io server disconnect' && active && socket) {
+            socket.connect();
+          }
         });
       } catch {
         if (!active) return;
@@ -904,7 +921,7 @@ export default function ResidentHub({ viewMode = 'resident' }) {
         residentSocketRef.current = null;
       }
     };
-  }, [applyReportsSnapshot, currentUser, isResponder, loadMyReports, refreshResidentReports]);
+  }, [applyReportsSnapshot, currentUid, isResponder, loadMyReports, refreshResidentReports]);
 
   useEffect(() => {
     if (isResponder || !currentUser) return undefined;

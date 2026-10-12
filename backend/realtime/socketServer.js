@@ -270,15 +270,8 @@ function startReportStreamForUser(io, user) {
       try {
         const changes = snapshot.docChanges();
 
-        // On first snapshot (initial data), emit the full set as reports:data
+        // On first snapshot (initial data), skip emitting since fetchReportsForUser already emitted initial data directly to socket
         if (changes.length > 0 && snapshot.docs.length === changes.length) {
-          let reports = snapshot.docs.map(reportDto);
-          if (role !== 'resident') {
-            reports = reports.filter((report) => canUserAccessReport(report, user));
-          }
-          // eslint-disable-next-line no-console
-          console.debug(`[realtime] initial snapshot -> emitting reports:data to ${room} (${Array.isArray(reports) ? reports.length : 0})`);
-          io.to(room).emit('reports:data', reports);
           return;
         }
 
@@ -370,6 +363,10 @@ function initSocketServer(httpServer, { allowedOrigin }) {
       allowedHeaders: ['Authorization'],
     },
     transports: ['websocket', 'polling'],
+    maxHttpBufferSize: 1e8, // 100 MB buffer limit (prevents connection drops on large payloads)
+    pingTimeout: 60000,     // 60 seconds (prevents premature ping timeouts)
+    pingInterval: 25000,    // 25 seconds heartbeat
+    connectTimeout: 45000,  // 45 seconds connection timeout
   });
 
   // make the io instance available to other modules (controllers)
@@ -512,8 +509,19 @@ function initSocketServer(httpServer, { allowedOrigin }) {
     // eslint-disable-next-line no-console
     console.info(`[realtime] socket connected: uid=${uid}, email=${user?.email}, role=${role}, customRole=${customRole}, branchId=${user?.branchId}, branchName=${user?.branchName}, rooms=${Array.from(socket.rooms).join(',')}`);
 
-    startNotificationStreamForUser(io, uid);
-    startReportStreamForUser(io, user);
+    try {
+      startNotificationStreamForUser(io, uid);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[realtime] startNotificationStreamForUser failed:', err?.message || err);
+    }
+
+    try {
+      startReportStreamForUser(io, user);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[realtime] startReportStreamForUser failed:', err?.message || err);
+    }
 
     try {
       const initialNotifications = await fetchNotificationsForUser(uid);
