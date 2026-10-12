@@ -551,7 +551,6 @@ export default function StaffPanel() {
             };
             return [normalized, ...prev];
           });
-          loadReportsRef.current?.({ silent: true });
         });
 
         socket.on('reports:modified', (report) => {
@@ -566,7 +565,6 @@ export default function StaffPanel() {
             };
             return prev.map((r) => (r.id === report.id ? { ...r, ...normalized } : r));
           });
-          loadReportsRef.current?.({ silent: true });
         });
 
         socket.on('reports:deleted', ({ id } = {}) => {
@@ -575,7 +573,6 @@ export default function StaffPanel() {
           console.debug('[client][staff] reports:deleted', { id });
           if (!id) return;
           setReports((prev) => prev.filter((r) => r.id !== id));
-          loadReportsRef.current?.({ silent: true });
         });
 
         socket.on('reports:refresh', () => {

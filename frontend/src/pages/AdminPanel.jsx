@@ -943,8 +943,6 @@ export default function AdminPanel() {
             };
             return [normalized, ...prev];
           });
-          loadPerformanceRef.current?.();
-          loadReportsRef.current?.({ silent: true });
         });
 
         socket.on('reports:modified', (report) => {
@@ -959,8 +957,6 @@ export default function AdminPanel() {
             };
             return prev.map((r) => (r.id === report.id ? { ...r, ...normalized } : r));
           });
-          loadPerformanceRef.current?.();
-          loadReportsRef.current?.({ silent: true });
         });
 
         socket.on('reports:deleted', ({ id } = {}) => {
@@ -969,8 +965,6 @@ export default function AdminPanel() {
           console.debug('[client][admin] reports:deleted', { id });
           if (!id) return;
           setReports((prev) => prev.filter((r) => r.id !== id));
-          loadPerformanceRef.current?.();
-          loadReportsRef.current?.({ silent: true });
         });
 
         socket.on('reports:refresh', () => {

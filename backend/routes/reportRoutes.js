@@ -26,28 +26,28 @@ const router = Router();
 
 const rateLimitResidentReportsRead = createUserScopedRateLimiter({
   windowMs: 60 * 1000,
-  maxRequests: 20,
+  maxRequests: 60,
   keyPrefix: 'reports-me',
   message: 'Rate limit reached for reports. Please retry shortly.',
 });
 
 const rateLimitOperatorReportsRead = createUserScopedRateLimiter({
   windowMs: 60 * 1000,
-  maxRequests: 16,
+  maxRequests: 60,
   keyPrefix: 'reports-operators',
   message: 'Rate limit reached for operator reports. Please retry shortly.',
 });
 
 const rateLimitPerformanceRead = createUserScopedRateLimiter({
   windowMs: 60 * 1000,
-  maxRequests: 8,
+  maxRequests: 60,
   keyPrefix: 'reports-performance',
   message: 'Rate limit reached for performance metrics. Please retry shortly.',
 });
 
 const rateLimitNotificationsRead = createUserScopedRateLimiter({
   windowMs: 60 * 1000,
-  maxRequests: 10,
+  maxRequests: 60,
   keyPrefix: 'reports-notifications',
   message: 'Rate limit reached for notifications. Please retry shortly.',
 });
