@@ -1,6 +1,10 @@
 const { Server } = require('socket.io');
 const admin = require('../config/firebaseAdmin');
 const socketInstance = require('./socketInstance');
+const {
+  canStaffAccessReport,
+  normalizeReportRecord,
+} = require('../controllers/reportController');
 
 const notificationStreams = new Map();
 const reportStreams = new Map();
@@ -36,10 +40,8 @@ function serializeValue(value) {
 }
 
 function reportDto(doc) {
-  return {
-    id: doc.id,
-    ...serializeValue(doc.data() || {}),
-  };
+  const data = doc.data() || {};
+  return normalizeReportRecord(data, doc.id);
 }
 
 function notificationDto(doc) {
@@ -142,8 +144,15 @@ function stopNotificationStreamForUser(uid) {
 }
 
 function canUserAccessReport(report, user) {
-  const role = String(user?.role || '').toLowerCase();
+  const role = String(user?.roleKey || user?.role || '').toLowerCase();
   if (role === 'admin') return true;
+
+  if (role === 'responder') {
+    const requesterUid = String(user?.uid || '').trim();
+    const assignedResponderUid = String(report?.assignedResponder?.uid || '').trim();
+    const reportStatus = String(report?.status || '').toLowerCase();
+    return Boolean(assignedResponderUid && requesterUid && assignedResponderUid === requesterUid) && reportStatus !== 'archived';
+  }
 
   const permissions = Array.isArray(user?.permissions) ? user.permissions : [];
   const canViewReports = permissions.includes('view_reports')
@@ -153,27 +162,19 @@ function canUserAccessReport(report, user) {
 
   if (role !== 'staff' || !canViewReports) return false;
 
-  const staffLocation = String(user?.location || '').trim().toLowerCase();
-  if (!staffLocation) return false;
+  const staffUser = {
+    ...user,
+    location: user?.location || user?.branchName || '',
+    branchName: user?.branchName || user?.location || '',
+  };
 
-  const reportBranch = String(report?.forwarding?.to?.branchName || '').trim().toLowerCase();
-  if (reportBranch && reportBranch === staffLocation) return true;
-
-  const reportBarangay = String(report?.location?.barangay || '').trim().toLowerCase();
-  if (reportBarangay && reportBarangay === staffLocation) return true;
-
-  const reportCoverage = Array.isArray(report?.coverage)
-    ? report.coverage.map((item) => String(item || '').trim().toLowerCase())
-    : [];
-  if (reportCoverage.includes(staffLocation)) return true;
-
-  return false;
+  return canStaffAccessReport(report, staffUser);
 }
 
 async function fetchReportsForUser(user) {
   const db = admin.firestore();
   const uid = String(user?.uid || '').trim();
-  const role = String(user?.role || '').toLowerCase();
+  const role = String(user?.roleKey || user?.role || '').toLowerCase();
 
   if (!uid) return [];
 
@@ -214,8 +215,8 @@ async function fetchReportsForUser(user) {
 
 function reportStreamKey(user) {
   const uid = String(user?.uid || '').trim();
-  const role = String(user?.role || '').trim();
-  const location = String(user?.location || '').trim();
+  const role = String(user?.roleKey || user?.role || '').trim();
+  const location = String(user?.location || user?.branchName || '').trim();
   return `${uid}|${role}|${location}`;
 }
 
@@ -372,7 +373,33 @@ function initSocketServer(httpServer, { allowedOrigin }) {
       }
 
       const decoded = await admin.auth().verifyIdToken(token);
-      socket.data.user = decoded;
+      let user = { ...decoded };
+
+      if (decoded.uid) {
+        try {
+          const userSnap = await admin.firestore().collection('users').doc(decoded.uid).get();
+          if (userSnap.exists) {
+            const userData = userSnap.data() || {};
+            user = {
+              ...user,
+              fullName: userData.fullName || decoded.fullName || '',
+              branchId: userData.branchId || decoded.branchId || null,
+              branchName: userData.branchName || userData.location || decoded.branchName || decoded.location || null,
+              location: userData.location || userData.branchName || decoded.location || decoded.branchName || null,
+              entityType: userData.entityType || decoded.entityType || null,
+              customRoleId: userData.customRoleId || decoded.customRoleId || null,
+              customRoleName: userData.customRoleName || decoded.customRoleName || null,
+              permissions: Array.isArray(userData.permissions)
+                ? userData.permissions
+                : (Array.isArray(decoded.permissions) ? decoded.permissions : []),
+            };
+          }
+        } catch {
+          // Continue with decoded token if Firestore lookup fails
+        }
+      }
+
+      socket.data.user = user;
       return next();
     } catch {
       return next(new Error('Unauthorized: Invalid token.'));

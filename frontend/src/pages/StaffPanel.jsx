@@ -525,7 +525,10 @@ export default function StaffPanel() {
           if (!active) return;
           // eslint-disable-next-line no-console
           console.debug('[client][staff] reports:data', { count: Array.isArray(payload) ? payload.length : 0 });
-          setReports(Array.isArray(payload) ? payload : []);
+          setReports(Array.isArray(payload) ? payload.map((report) => ({
+            ...report,
+            status: normalizeReportStatusKey(report?.status),
+          })) : []);
           setReportsError('');
         });
 
@@ -537,7 +540,11 @@ export default function StaffPanel() {
             if (!report || !report.id) return prev;
             // prevent duplicate
             if (prev.some((r) => r.id === report.id)) return prev;
-            return [report, ...prev];
+            const normalized = {
+              ...report,
+              status: normalizeReportStatusKey(report?.status),
+            };
+            return [normalized, ...prev];
           });
         });
 
@@ -547,7 +554,11 @@ export default function StaffPanel() {
           console.debug('[client][staff] reports:modified', { id: report?.id });
           setReports((prev) => {
             if (!report || !report.id) return prev;
-            return prev.map((r) => (r.id === report.id ? { ...r, ...report } : r));
+            const normalized = {
+              ...report,
+              status: normalizeReportStatusKey(report?.status),
+            };
+            return prev.map((r) => (r.id === report.id ? { ...r, ...normalized } : r));
           });
         });
 

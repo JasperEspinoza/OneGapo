@@ -162,6 +162,7 @@ async function createStaff(req, res, next) {
       role,
       branchId:       branchId || null,
       branchName:     branch ? branch.name : null,
+      location:       branch ? branch.name : null,
       entityType:     branch ? branch.type : null,
       customRoleId:   customRoleId || null,
       customRoleName: customRoleName || null,
@@ -315,6 +316,7 @@ async function updateStaff(req, res, next) {
       const branch = branchSnap.data();
       firestoreUpdates.branchId   = branchId;
       firestoreUpdates.branchName = branch.name;
+      firestoreUpdates.location   = branch.name;
       firestoreUpdates.entityType = branch.type;
       claimUpdates.branchId   = branchId;
       claimUpdates.location   = branch.name;
