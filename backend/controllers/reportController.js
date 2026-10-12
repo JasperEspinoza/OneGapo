@@ -607,9 +607,13 @@ function normalizeReportRecord(data, id) {
     location.address = normalizeReportAddress(location.address);
   }
 
+  const rawStatus = String(data?.status || '').trim().toLowerCase().replace(/[-\s]+/g, '_');
+  const normalizedStatus = REPORT_STATUS_ALIASES.get(rawStatus) || (REPORT_STATUSES.includes(rawStatus) ? rawStatus : (data?.status || 'submitted'));
+
   return {
     id: data?.id || id,
     ...data,
+    status: normalizedStatus,
     location,
     ...(canonicalBarangay ? { routingBarangay: canonicalBarangay } : {}),
     createdAt: toIso(data?.createdAt),
@@ -968,6 +972,119 @@ function emitReportsRefresh(reportId) {
     }
   } catch {
     // no-op
+  }
+}
+
+function emitReportCreated(report) {
+  try {
+    const socketInstance = require('../realtime/socketInstance');
+    const io = socketInstance.get && socketInstance.get();
+    if (!io) return;
+
+    const normalized = normalizeReportRecord(report, report?.id);
+
+    // 1. Instantly push to all connected Admins
+    io.to('role:admin').emit('reports:created', normalized);
+
+    // 2. Instantly push to the submitting resident
+    if (normalized?.reporter?.uid) {
+      io.to(`user:${normalized.reporter.uid}`).emit('reports:created', normalized);
+    }
+
+    // 3. Instantly push to relevant staff operators
+    if (io.sockets?.sockets) {
+      io.sockets.sockets.forEach((sock) => {
+        const user = sock.data?.user;
+        if (!user) return;
+        const role = String(user?.roleKey || user?.role || '').toLowerCase();
+        const isPrimaryAdmin = String(user?.email || '').toLowerCase() === 'onegapo2026@gmail.com';
+        if (role === 'admin' || isPrimaryAdmin) return; // already sent via role:admin
+
+        if (role === 'staff') {
+          const staffUser = {
+            ...user,
+            location: user?.location || user?.branchName || '',
+            branchName: user?.branchName || user?.location || '',
+          };
+          if (canStaffAccessReport(normalized, staffUser)) {
+            sock.emit('reports:created', normalized);
+          }
+        }
+      });
+    }
+
+    // 4. Also broadcast reports:refresh for components tracking aggregate counts
+    io.emit('reports:refresh', { reportId: normalized.id });
+  } catch (err) {
+    console.warn('[emitReportCreated] Error broadcasting realtime report:', err.message || err);
+  }
+}
+
+function emitReportModified(report) {
+  try {
+    const socketInstance = require('../realtime/socketInstance');
+    const io = socketInstance.get && socketInstance.get();
+    if (!io) return;
+
+    const normalized = normalizeReportRecord(report, report?.id);
+
+    // 1. Instantly push to all connected Admins
+    io.to('role:admin').emit('reports:modified', normalized);
+
+    // 2. Instantly push to the resident
+    if (normalized?.reporter?.uid) {
+      io.to(`user:${normalized.reporter.uid}`).emit('reports:modified', normalized);
+    }
+
+    // 3. Instantly push to relevant staff and responders
+    if (io.sockets?.sockets) {
+      io.sockets.sockets.forEach((sock) => {
+        const user = sock.data?.user;
+        if (!user) return;
+        const role = String(user?.roleKey || user?.role || '').toLowerCase();
+        const isPrimaryAdmin = String(user?.email || '').toLowerCase() === 'onegapo2026@gmail.com';
+        if (role === 'admin' || isPrimaryAdmin) return; // already sent via role:admin
+
+        if (role === 'staff') {
+          const staffUser = {
+            ...user,
+            location: user?.location || user?.branchName || '',
+            branchName: user?.branchName || user?.location || '',
+          };
+          if (canStaffAccessReport(normalized, staffUser)) {
+            sock.emit('reports:modified', normalized);
+          } else {
+            sock.emit('reports:deleted', { id: normalized.id });
+          }
+        }
+
+        if (role === 'responder') {
+          const responderUid = String(user?.uid || '').trim();
+          const assignedUid = String(normalized?.assignedResponder?.uid || '').trim();
+          if (assignedUid && assignedUid === responderUid) {
+            sock.emit('reports:modified', normalized);
+          }
+        }
+      });
+    }
+
+    // 4. Broadcast reports:refresh
+    io.emit('reports:refresh', { reportId: normalized.id });
+  } catch (err) {
+    console.warn('[emitReportModified] Error broadcasting realtime report update:', err.message || err);
+  }
+}
+
+function emitReportDeleted(reportId) {
+  try {
+    const socketInstance = require('../realtime/socketInstance');
+    const io = socketInstance.get && socketInstance.get();
+    if (!io) return;
+
+    io.emit('reports:deleted', { id: reportId });
+    io.emit('reports:refresh', { reportId });
+  } catch (err) {
+    console.warn('[emitReportDeleted] Error broadcasting realtime report deletion:', err.message || err);
   }
 }
 
@@ -1394,15 +1511,17 @@ async function createReport(req, res, next) {
 
     await reportRef.set(payload);
 
-    emitReportsRefresh(reportRef.id);
+    const createdReport = {
+      ...payload,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    emitReportCreated(createdReport);
 
     return res.status(201).json({
       message: 'Report submitted successfully.',
-      report: {
-        ...payload,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
+      report: createdReport,
     });
   } catch (err) {
     return next(err);
@@ -1805,7 +1924,7 @@ async function updateReportStatus(req, res, next) {
       excludeIds: [refreshedTarget.id],
     });
 
-    emitReportsRefresh(updateRef.id);
+    emitReportModified(refreshedTarget);
 
     const responseRef = linkedMotherReportId ? ref : updateRef;
     const updatedSnap = await responseRef.get();
@@ -1945,10 +2064,11 @@ async function updateReportAssignment(req, res, next) {
       auditTrail: admin.firestore.FieldValue.arrayUnion(auditEntry),
     });
 
-    emitReportsRefresh(reportId);
-
     const updatedSnap = await ref.get();
     const data = updatedSnap.data() || {};
+    const updatedRecord = normalizeReportRecord(data, updatedSnap.id);
+    emitReportModified(updatedRecord);
+
     return res.json({
       message: assignedResponder ? 'Responder assigned.' : 'Responder assignment cleared.',
       report: {
@@ -2050,10 +2170,10 @@ async function archiveReport(req, res, next) {
       auditTrail: admin.firestore.FieldValue.arrayUnion(auditEntry),
     });
 
-    emitReportsRefresh(reportId);
-
     const updatedSnap = await ref.get();
     const data = updatedSnap.data() || {};
+    const updatedRecord = normalizeReportRecord(data, updatedSnap.id);
+    emitReportModified(updatedRecord);
 
     return res.json({
       message: 'Report archived successfully.',
@@ -2149,10 +2269,10 @@ async function unarchiveReport(req, res, next) {
       auditTrail: admin.firestore.FieldValue.arrayUnion(auditEntry),
     });
 
-    emitReportsRefresh(reportId);
-
     const updatedSnap = await ref.get();
     const data = updatedSnap.data() || {};
+    const updatedRecord = normalizeReportRecord(data, updatedSnap.id);
+    emitReportModified(updatedRecord);
 
     return res.json({
       message: 'Report unarchived successfully.',
@@ -2239,7 +2359,7 @@ async function deleteReport(req, res, next) {
 
     await ref.delete();
 
-    emitReportsRefresh(reportId);
+    emitReportDeleted(reportId);
 
     return res.json({
       message: 'Report deleted successfully.',
@@ -2361,7 +2481,10 @@ async function forwardReport(req, res, next) {
       auditTrail: admin.firestore.FieldValue.arrayUnion(auditEntry),
     });
 
-    emitReportsRefresh(reportId);
+    const updatedSnap = await reportRef.get();
+    const data = updatedSnap.data() || {};
+    const updatedRecord = normalizeReportRecord(data, updatedSnap.id);
+    emitReportModified(updatedRecord);
 
     const staffSnap = await db.collection('users').where('branchId', '==', targetBranch.id).get();
     const staffRecipients = staffSnap.docs
@@ -2392,15 +2515,9 @@ async function forwardReport(req, res, next) {
       note,
     });
 
-    const updatedSnap = await reportRef.get();
-    const updated = updatedSnap.data();
     return res.json({
       message: 'Report forwarded successfully.',
-      report: {
-        ...updated,
-        createdAt: toIso(updated.createdAt),
-        updatedAt: toIso(updated.updatedAt),
-      },
+      report: updatedRecord,
     });
   } catch (err) {
     return next(err);
@@ -2769,4 +2886,9 @@ module.exports = {
   listNotifications,
   markNotificationRead,
   submitReportRating,
+  emitReportCreated,
+  emitReportModified,
+  emitReportDeleted,
+  emitReportsRefresh,
 };
+

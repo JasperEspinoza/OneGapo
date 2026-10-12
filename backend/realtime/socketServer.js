@@ -417,9 +417,24 @@ function initSocketServer(httpServer, { allowedOrigin }) {
     const room = `user:${uid}`;
     socket.join(room);
 
+    const role = String(user?.roleKey || user?.role || '').toLowerCase();
+    const isPrimaryAdmin = String(user?.email || '').toLowerCase() === 'onegapo2026@gmail.com';
+    if (role === 'admin' || isPrimaryAdmin) {
+      socket.join('role:admin');
+    }
+    if (role === 'staff') {
+      socket.join('role:staff');
+      if (user?.branchId) {
+        socket.join(`branch:${user.branchId}`);
+      }
+    }
+    if (role === 'responder') {
+      socket.join('role:responder');
+    }
+
     // Debug log: new connection
     // eslint-disable-next-line no-console
-    console.info(`[realtime] socket connected: uid=${uid}, socketId=${socket.id}, room=${room}`);
+    console.info(`[realtime] socket connected: uid=${uid}, role=${role}, socketId=${socket.id}, room=${room}`);
 
     startNotificationStreamForUser(io, uid);
     startReportStreamForUser(io, user);

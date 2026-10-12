@@ -810,7 +810,13 @@ export default function AdminPanel() {
       const res = await api('/api/reports');
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to load reports.');
-      setReports(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data)
+        ? data.map((r) => ({
+            ...r,
+            status: getReportStatusKey(r?.status),
+          }))
+        : [];
+      setReports(list);
     } catch (err) {
       setReportsError(err.message);
     } finally {
@@ -851,6 +857,13 @@ export default function AdminPanel() {
       setPerformanceLoading(false);
     }
   }, [api, canAccessAnalytics]);
+
+  const loadReportsRef = useRef(loadReports);
+  const loadPerformanceRef = useRef(loadPerformance);
+  useEffect(() => {
+    loadReportsRef.current = loadReports;
+    loadPerformanceRef.current = loadPerformance;
+  }, [loadReports, loadPerformance]);
 
   useEffect(() => { loadBranches(); loadRoles(); }, [loadBranches, loadRoles]);
 
@@ -907,7 +920,13 @@ export default function AdminPanel() {
           if (!active) return;
           // eslint-disable-next-line no-console
           console.debug('[client][admin] reports:data', { count: Array.isArray(payload) ? payload.length : 0 });
-          setReports(Array.isArray(payload) ? payload : []);
+          const raw = Array.isArray(payload) ? payload : [];
+          setReports(
+            raw.map((r) => ({
+              ...r,
+              status: getReportStatusKey(r?.status),
+            }))
+          );
           setReportsError('');
         });
 
@@ -918,8 +937,13 @@ export default function AdminPanel() {
           setReports((prev) => {
             if (!report || !report.id) return prev;
             if (prev.some((r) => r.id === report.id)) return prev;
-            return [report, ...prev];
+            const normalized = {
+              ...report,
+              status: getReportStatusKey(report?.status),
+            };
+            return [normalized, ...prev];
           });
+          loadPerformanceRef.current?.();
         });
 
         socket.on('reports:modified', (report) => {
@@ -928,8 +952,13 @@ export default function AdminPanel() {
           console.debug('[client][admin] reports:modified', { id: report?.id });
           setReports((prev) => {
             if (!report || !report.id) return prev;
-            return prev.map((r) => (r.id === report.id ? { ...r, ...report } : r));
+            const normalized = {
+              ...report,
+              status: getReportStatusKey(report?.status),
+            };
+            return prev.map((r) => (r.id === report.id ? { ...r, ...normalized } : r));
           });
+          loadPerformanceRef.current?.();
         });
 
         socket.on('reports:deleted', ({ id } = {}) => {
@@ -938,13 +967,14 @@ export default function AdminPanel() {
           console.debug('[client][admin] reports:deleted', { id });
           if (!id) return;
           setReports((prev) => prev.filter((r) => r.id !== id));
+          loadPerformanceRef.current?.();
         });
 
         socket.on('reports:refresh', () => {
           if (!active) return;
           // eslint-disable-next-line no-console
           console.debug('[client][admin] reports:refresh');
-          loadReports({ silent: true });
+          loadReportsRef.current?.({ silent: true });
         });
 
         socket.on('connect_error', (err) => {
