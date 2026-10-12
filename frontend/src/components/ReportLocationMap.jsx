@@ -6,7 +6,7 @@ import 'leaflet/dist/leaflet.css';
 import 'leaflet.heat';
 import InfoTooltip from './InfoTooltip';
 import { getKnownBarangayName, getBarangayColor, normalizeBarangayToken } from '../constants/barangays';
-import { getClientBoundaries } from '../utils/barangayLookupClient';
+import { getClientBoundaries, getCachedBoundaries, findBarangayFromGeoJson } from '../utils/barangayLookupClient';
 
 const defaultCenter = [14.8386, 120.2842];
 
@@ -320,32 +320,15 @@ function extractBarangayFromMarker(marker) {
     return getKnownBarangayName(cleaned) || toTitleCase(cleaned);
   }
 
-  const address = String(marker?.address || marker?.location?.address || '').trim();
-  if (!address) return '';
-
-  const fromPrefixMatch = address.match(/(?:^|,|\s)(?:brgy\.?|barangay)\s+([^,;]+)/i);
-  if (fromPrefixMatch?.[1]) {
-    const cleaned = fromPrefixMatch[1].trim();
-    return getKnownBarangayName(cleaned) || toTitleCase(cleaned);
+  const lat = Number(marker?.lat ?? marker?.latitude ?? marker?.location?.latitude);
+  const lng = Number(marker?.lng ?? marker?.longitude ?? marker?.location?.longitude);
+  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+    const cached = getCachedBoundaries();
+    if (cached) {
+      const detected = findBarangayFromGeoJson(lat, lng, cached);
+      if (detected) return detected;
+    }
   }
-
-  const addressSegments = address
-    .split(',')
-    .map((segment) => segment.trim())
-    .filter(Boolean);
-
-  for (const segment of addressSegments) {
-    const cleaned = segment
-      .replace(/\b(city of olongapo|olongapo city|olongapo|zambales|philippines)\b/gi, '')
-      .replace(/^(?:brgy\.?|barangay)\s+/i, '')
-      .trim();
-
-    const known = getKnownBarangayName(cleaned);
-    if (known) return known;
-  }
-
-  const knownFromWholeAddress = getKnownBarangayName(address);
-  if (knownFromWholeAddress) return knownFromWholeAddress;
 
   return '';
 }

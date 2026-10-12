@@ -141,7 +141,7 @@ router.get('/reverse-geocode', async (req, res) => {
         success: true,
         displayName: data?.display_name || '',
         address: data?.address || {},
-        barangay: localBarangay?.name || data?.address?.barangay || data?.address?.quarter || '',
+        barangay: localBarangay?.name || '',
       };
       geocodeCache.set(cacheKey, { timestamp: Date.now(), data: payload });
       return res.json(payload);

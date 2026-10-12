@@ -470,6 +470,19 @@ function normalizeReportAddress(address) {
 }
 
 function getReportCoverage(report) {
+  const lat = Number(report?.location?.latitude ?? report?.latitude);
+  const lng = Number(report?.location?.longitude ?? report?.longitude);
+  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+    try {
+      const poly = findBarangayByCoordinates(lat, lng);
+      if (poly?.name) {
+        return canonicalCoverageName(poly.name) || poly.name;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   const directValues = [
     report?.routingBarangay,
     report?.location?.barangay,
@@ -484,7 +497,7 @@ function getReportCoverage(report) {
     if (directBarangay) return directBarangay;
   }
 
-  return extractCoverageFromAddress(report?.location?.address || '');
+  return '';
 }
 
 function buildCoverageTokens(value) {
@@ -505,10 +518,7 @@ function buildCoverageTokens(value) {
 function isReportInCoverage(report, coverageName) {
   const scopeTokens = buildCoverageTokens(coverageName);
   const reportCoverage = getReportCoverage(report);
-  const reportTokens = new Set([
-    ...buildCoverageTokens(reportCoverage),
-    ...buildCoverageTokens(report?.location?.address || ''),
-  ]);
+  const reportTokens = buildCoverageTokens(reportCoverage);
 
   if (scopeTokens.size === 0 || reportTokens.size === 0) {
     return false;
@@ -565,7 +575,23 @@ function normalizeReportRecord(data, id) {
   const location = data?.location && typeof data.location === 'object'
     ? { ...data.location }
     : {};
-  const canonicalBarangay = [
+
+  const lat = Number(location.latitude ?? data?.latitude);
+  const lng = Number(location.longitude ?? data?.longitude);
+
+  let boundaryBarangay = '';
+  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+    try {
+      const poly = findBarangayByCoordinates(lat, lng);
+      if (poly?.name) {
+        boundaryBarangay = canonicalCoverageName(poly.name) || poly.name;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  const canonicalBarangay = boundaryBarangay || [
     data?.routingBarangay,
     location.barangay,
     data?.barangay,
@@ -779,6 +805,26 @@ function canStaffAccessReport(report, reqUser) {
     return true;
   }
 
+  const staffCoverage = String(reqUser?.location || reqUser?.branchName || '').trim();
+  const staffCoverageCanonical = canonicalCoverageName(staffCoverage);
+
+  // Authoritative coordinate boundary check
+  const lat = Number(report?.location?.latitude ?? report?.latitude);
+  const lng = Number(report?.location?.longitude ?? report?.longitude);
+  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+    try {
+      const poly = findBarangayByCoordinates(lat, lng);
+      if (poly?.name) {
+        const polyCanonical = canonicalCoverageName(poly.name) || poly.name;
+        if (staffCoverageCanonical && polyCanonical === staffCoverageCanonical) {
+          return true;
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   const staffBranchId = String(reqUser?.branchId || '').trim();
   const reportBranchIds = [
     report?.routingBranchId,
@@ -794,13 +840,11 @@ function canStaffAccessReport(report, reqUser) {
   // If the report was routed to a specific branch by ID, also check by name
   // in case the staff's branchId and the report's routingBranchId reference
   // different Firestore documents for the same barangay (e.g. created twice).
-  const staffCoverage = String(reqUser?.location || reqUser?.branchName || '').trim();
   if (staffCoverage) {
     // Check routingBarangay / routingBranchName by canonical name
     const routingBarangayCanonical = canonicalCoverageName(
-      report?.routingBarangay || report?.routingBranchName || ''
+      report?.routingBarangay || report?.routingBranchName || report?.location?.barangay || ''
     );
-    const staffCoverageCanonical = canonicalCoverageName(staffCoverage);
     if (routingBarangayCanonical && staffCoverageCanonical && routingBarangayCanonical === staffCoverageCanonical) {
       return true;
     }
@@ -1227,45 +1271,39 @@ async function createReport(req, res, next) {
     validateLatLng(lat, lng);
     validateInsideOlongapo(lat, lng);
 
-    // ── Barangay detection ──────────────────────────────────────────────────
-    // Priority:
-    //   1. User's explicit dropdown selection (most trusted — user knows their location)
-    //   2. Point-in-polygon from submitted coordinates (authoritative, no name collisions)
-    //   3. Name extraction from the address string (legacy fallback)
+    // ── Barangay detection: authoritative point-in-polygon boundary lookup ──
+    // Determine barangay strictly by what boundary polygon the report is inside of.
+    // Never depend on the naming of the address from the map or reverse-geocoding.
+    let boundaryBarangay = '';
+    try {
+      const polygonResult = findBarangayByCoordinates(lat, lng);
+      if (polygonResult?.name) {
+        boundaryBarangay = canonicalCoverageName(polygonResult.name) || polygonResult.name;
+        console.debug('[createReport] boundary polygon lookup:', polygonResult);
+      } else if (hasBoundaryData()) {
+        console.warn('[createReport] Coordinates not inside any known barangay polygon:', { lat, lng });
+      }
+    } catch (polyErr) {
+      console.warn('[createReport] Point-in-polygon lookup failed:', polyErr.message);
+    }
+
     const selectedBarangayInput = String(req.body?.barangay || '').trim();
     const selectedBarangay = selectedBarangayInput
       ? canonicalCoverageName(selectedBarangayInput)
       : '';
-    if (selectedBarangayInput && !selectedBarangay) {
+
+    // Authoritative priority: boundary polygon is primary truth.
+    // Fall back to user selection ONLY if coordinates were on unmapped edge.
+    const routingBarangay = boundaryBarangay || selectedBarangay;
+    if (!routingBarangay) {
       return res.status(400).json({
-        error: 'Please select a valid barangay within Olongapo City.',
+        error: 'Please select a valid location inside Olongapo City boundaries.',
       });
     }
 
-    // Point-in-polygon lookup (only used when user didn't manually select)
-    let polygonBarangay = '';
-    if (!selectedBarangay) {
-      try {
-        const polygonResult = findBarangayByCoordinates(lat, lng);
-        if (polygonResult) {
-          polygonBarangay = polygonResult.name;
-          console.debug('[createReport] polygon lookup:', polygonResult);
-        } else if (hasBoundaryData()) {
-          // Boundary data is loaded but point didn't land in any polygon
-          console.warn('[createReport] Coordinates not inside any known barangay polygon:', { lat, lng });
-        }
-      } catch (polyErr) {
-        console.warn('[createReport] Point-in-polygon lookup failed:', polyErr.message);
-      }
-    }
-
-    const inferredBarangay = polygonBarangay || extractCoverageFromAddress(address);
-    const routingBarangay = selectedBarangay || inferredBarangay;
-
     console.debug('[createReport] barangay resolution:', {
+      boundaryBarangay,
       selectedBarangay,
-      polygonBarangay,
-      inferredBarangay,
       routingBarangay,
     });
 

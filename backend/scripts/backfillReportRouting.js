@@ -65,10 +65,10 @@ async function backfill() {
 
   for (const doc of reportsSnap.docs) {
     const report = doc.data();
-    const lat = Number(report.location?.latitude);
-    const lng = Number(report.location?.longitude);
+    const lat = Number(report.location?.latitude ?? report.latitude);
+    const lng = Number(report.location?.longitude ?? report.longitude);
 
-    let resolvedBarangay = report.routingBarangay || '';
+    let resolvedBarangay = '';
 
     // If coordinates exist, point-in-polygon is the most authoritative truth
     if (Number.isFinite(lat) && Number.isFinite(lng)) {

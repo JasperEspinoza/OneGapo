@@ -3,6 +3,10 @@ import { getKnownBarangayName } from '../constants/barangays';
 let cachedBoundaries = null;
 let loadPromise = null;
 
+export function getCachedBoundaries() {
+  return cachedBoundaries;
+}
+
 export async function getClientBoundaries() {
   if (cachedBoundaries) return cachedBoundaries;
   if (!loadPromise) {

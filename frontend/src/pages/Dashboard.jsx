@@ -237,19 +237,12 @@ export default function Dashboard() {
       const geoRes = await api(`/api/reports/reverse-geocode?lat=${lat}&lng=${lng}`);
       if (geoRes.ok) {
         const geoData = await geoRes.json();
-        const fallbackBarangay = detectedBarangay || getKnownBarangayName(
-          geoData?.barangay
-            || geoData?.address?.barangay
-            || geoData?.address?.quarter
-            || geoData?.address?.suburb
-            || geoData?.displayName
-            || ''
-        );
+        const boundaryBarangay = detectedBarangay || geoData?.barangay || '';
 
         setForm((prev) => ({
           ...prev,
           ...(geoData?.displayName ? { address: normalizeReportAddress(geoData.displayName) } : {}),
-          ...(manuallySelectedBarangayRef.current ? {} : (fallbackBarangay ? { barangay: fallbackBarangay } : {})),
+          ...(manuallySelectedBarangayRef.current ? {} : (boundaryBarangay ? { barangay: boundaryBarangay } : {})),
         }));
       }
     } catch {
