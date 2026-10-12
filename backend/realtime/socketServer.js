@@ -5,6 +5,8 @@ const {
   canStaffAccessReport,
   normalizeReportRecord,
   canonicalCoverageName,
+  OLONGAPO_BRANCH_MAPPINGS,
+  OLONGAPO_BRANCH_ID_TO_NAME,
 } = require('../controllers/reportController');
 
 const notificationStreams = new Map();
@@ -412,6 +414,11 @@ function initSocketServer(httpServer, { allowedOrigin }) {
               }
             }
 
+            const userBranchId = userData.branchId || decoded.branchId || null;
+            const knownBranch = userBranchId ? OLONGAPO_BRANCH_ID_TO_NAME[userBranchId] : null;
+            const resolvedBranchName = userData.branchName || userData.location || knownBranch || decoded.branchName || decoded.location || null;
+            const resolvedLocation = userData.location || userData.branchName || knownBranch || decoded.location || decoded.branchName || null;
+
             user = {
               ...user,
               uid: decoded.uid,
@@ -419,9 +426,9 @@ function initSocketServer(httpServer, { allowedOrigin }) {
               fullName: userData.fullName || decoded.fullName || '',
               role: userData.role || decoded.role || '',
               roleKey: userData.role || decoded.role || '',
-              branchId: userData.branchId || decoded.branchId || null,
-              branchName: userData.branchName || userData.location || decoded.branchName || decoded.location || null,
-              location: userData.location || userData.branchName || decoded.location || decoded.branchName || null,
+              branchId: userBranchId,
+              branchName: resolvedBranchName,
+              location: resolvedLocation,
               entityType: userData.entityType || decoded.entityType || null,
               customRoleId: userData.customRoleId || decoded.customRoleId || null,
               customRoleName: userData.customRoleName || decoded.customRoleName || null,
@@ -461,16 +468,39 @@ function initSocketServer(httpServer, { allowedOrigin }) {
 
     if (role === 'staff' || role.includes('admin') || customRole.includes('admin') || user?.branchId) {
       socket.join('role:staff');
+      socket.join('role:operators');
+
+      if (customRole.includes('admin') || role.includes('admin')) {
+        socket.join('role:branch_admin');
+      }
+
       if (user?.branchId) {
         socket.join(`branch:${user.branchId}`);
+        const knownBranch = OLONGAPO_BRANCH_ID_TO_NAME[user.branchId];
+        if (knownBranch) {
+          socket.join(`branchName:${knownBranch.toLowerCase()}`);
+          socket.join(`location:${knownBranch.toLowerCase()}`);
+        }
       }
+
       if (user?.branchName) {
         const canonical = canonicalCoverageName(user.branchName);
-        if (canonical) socket.join(`branchName:${canonical.toLowerCase()}`);
+        if (canonical) {
+          socket.join(`branchName:${canonical.toLowerCase()}`);
+          socket.join(`location:${canonical.toLowerCase()}`);
+        }
+        socket.join(`branchName:${user.branchName.toLowerCase()}`);
+        socket.join(`location:${user.branchName.toLowerCase()}`);
       }
+
       if (user?.location) {
         const canonical = canonicalCoverageName(user.location);
-        if (canonical) socket.join(`location:${canonical.toLowerCase()}`);
+        if (canonical) {
+          socket.join(`location:${canonical.toLowerCase()}`);
+          socket.join(`branchName:${canonical.toLowerCase()}`);
+        }
+        socket.join(`location:${user.location.toLowerCase()}`);
+        socket.join(`branchName:${user.location.toLowerCase()}`);
       }
     }
 
@@ -480,7 +510,7 @@ function initSocketServer(httpServer, { allowedOrigin }) {
 
     // Debug log: new connection
     // eslint-disable-next-line no-console
-    console.info(`[realtime] socket connected: uid=${uid}, role=${role}, socketId=${socket.id}, room=${room}`);
+    console.info(`[realtime] socket connected: uid=${uid}, email=${user?.email}, role=${role}, customRole=${customRole}, branchId=${user?.branchId}, branchName=${user?.branchName}, rooms=${Array.from(socket.rooms).join(',')}`);
 
     startNotificationStreamForUser(io, uid);
     startReportStreamForUser(io, user);

@@ -422,7 +422,7 @@ function toTitleCase(value) {
 
 function extractBarangayFromReport(report) {
   const directBarangay = String(
-    report?.location?.barangay || report?.barangay || ''
+    report?.location?.barangay || report?.routingBarangay || report?.barangay || ''
   ).trim();
 
   if (directBarangay) {
@@ -944,6 +944,7 @@ export default function AdminPanel() {
             return [normalized, ...prev];
           });
           loadPerformanceRef.current?.();
+          loadReportsRef.current?.({ silent: true });
         });
 
         socket.on('reports:modified', (report) => {
@@ -959,6 +960,7 @@ export default function AdminPanel() {
             return prev.map((r) => (r.id === report.id ? { ...r, ...normalized } : r));
           });
           loadPerformanceRef.current?.();
+          loadReportsRef.current?.({ silent: true });
         });
 
         socket.on('reports:deleted', ({ id } = {}) => {
@@ -968,6 +970,7 @@ export default function AdminPanel() {
           if (!id) return;
           setReports((prev) => prev.filter((r) => r.id !== id));
           loadPerformanceRef.current?.();
+          loadReportsRef.current?.({ silent: true });
         });
 
         socket.on('reports:refresh', () => {

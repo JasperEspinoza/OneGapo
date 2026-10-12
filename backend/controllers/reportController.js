@@ -571,6 +571,31 @@ function safeDocData(doc) {
   }
 }
 
+const OLONGAPO_BRANCH_MAPPINGS = {
+  'asinan': 'b2nA8IZ0yBFFPnL6WfzW',
+  'banicain': 'txZFTxS9wb1VU83EiVFj',
+  'barretto': 'YxhnG1kU8soOBXgsYldW',
+  'east bajac-bajac': 'XrTBCzf4ArffqBvz1he9',
+  'east tapinac': 'JhWyQQ2C8M0ABtKU7fnh',
+  'gordon heights': 'eDVWNOo4jQLDNa53JuQn',
+  'kalaklan': '5GZobBcX1khox8gIeBJR',
+  'kalalake': 'BGcDeCBDN7ccqQa8P51o',
+  'mabayuan': 'lmXJ3Jzg7WreON3ptb35',
+  'new cabalan': 'YG1gHpCOjpPpazaaiIkE',
+  'new ilalim': 'kiqdKuIYmtSWE1oMIUWf',
+  'new kababae': '11VJBgqQqzVkbFXDhXvV',
+  'new kalalake': 'o0AFqXn1dnLfyJbmcvrf',
+  'old cabalan': 'UP5raKOCqXVvn7f5STfU',
+  'pag-asa': 'R8BrwNEarMcldZKa0vNq',
+  'sta. rita': 'C8dg3QMP0QXUpJifeBFb',
+  'west bajac-bajac': 'x81im07nSYgRNsoQHSnJ',
+  'west tapinac': 'QsohgzRM8or4eT4S1U7C',
+};
+
+const OLONGAPO_BRANCH_ID_TO_NAME = Object.fromEntries(
+  Object.entries(OLONGAPO_BRANCH_MAPPINGS).map(([name, id]) => [id, canonicalCoverageName(name)])
+);
+
 function normalizeReportRecord(data, id) {
   const location = data?.location && typeof data.location === 'object'
     ? { ...data.location }
@@ -610,12 +635,19 @@ function normalizeReportRecord(data, id) {
   const rawStatus = String(data?.status || '').trim().toLowerCase().replace(/[-\s]+/g, '_');
   const normalizedStatus = REPORT_STATUS_ALIASES.get(rawStatus) || (REPORT_STATUSES.includes(rawStatus) ? rawStatus : (data?.status || 'submitted'));
 
+  const routingBranchId = data?.routingBranchId
+    || (canonicalBarangay ? OLONGAPO_BRANCH_MAPPINGS[canonicalBarangay.toLowerCase()] : null)
+    || null;
+  const routingBranchName = data?.routingBranchName || canonicalBarangay || null;
+
   return {
     id: data?.id || id,
     ...data,
     status: normalizedStatus,
     location,
     ...(canonicalBarangay ? { routingBarangay: canonicalBarangay } : {}),
+    ...(routingBranchId ? { routingBranchId } : {}),
+    ...(routingBranchName ? { routingBranchName } : {}),
     createdAt: toIso(data?.createdAt),
     updatedAt: toIso(data?.updatedAt),
   };
@@ -809,10 +841,14 @@ function canStaffAccessReport(report, reqUser) {
     return true;
   }
 
+  const staffBranchId = String(reqUser?.branchId || '').trim();
+  const knownBranchName = staffBranchId ? OLONGAPO_BRANCH_ID_TO_NAME[staffBranchId] : null;
+
   const staffCoverages = new Set(
     [
       canonicalCoverageName(reqUser?.location),
       canonicalCoverageName(reqUser?.branchName),
+      knownBranchName,
       reqUser?.location ? String(reqUser.location).trim() : null,
       reqUser?.branchName ? String(reqUser.branchName).trim() : null,
     ].filter(Boolean)
@@ -831,13 +867,16 @@ function canStaffAccessReport(report, reqUser) {
             return true;
           }
         }
+        const polyBranchId = OLONGAPO_BRANCH_MAPPINGS[poly.name.toLowerCase()];
+        if (polyBranchId && staffBranchId && polyBranchId === staffBranchId) {
+          return true;
+        }
       }
     } catch {
       // ignore
     }
   }
 
-  const staffBranchId = String(reqUser?.branchId || '').trim();
   const reportBranchIds = [
     report?.routingBranchId,
     report?.forwarding?.to?.branchId,
@@ -862,6 +901,10 @@ function canStaffAccessReport(report, reqUser) {
       if (canonicalCoverageName(coverage) === reportCanonical || coverage.toLowerCase() === String(reportName).toLowerCase()) {
         return true;
       }
+    }
+    const branchIdForName = OLONGAPO_BRANCH_MAPPINGS[String(reportName).toLowerCase()];
+    if (branchIdForName && staffBranchId && branchIdForName === staffBranchId) {
+      return true;
     }
   }
 
@@ -996,6 +1039,13 @@ function emitReportCreated(report) {
 
     const normalized = normalizeReportRecord(report, report?.id);
 
+    // Ensure routingBranchId is populated if available from mappings
+    if (!normalized.routingBranchId && normalized.routingBarangay) {
+      normalized.routingBranchId = OLONGAPO_BRANCH_MAPPINGS[normalized.routingBarangay.toLowerCase()] || null;
+    }
+
+    console.info(`[emitReportCreated] broadcasting report ${normalized.id} (barangay: ${normalized.routingBarangay}, branchId: ${normalized.routingBranchId})`);
+
     // 1. Instantly push to all connected Admins
     io.to('role:admin').emit('reports:created', normalized);
 
@@ -1004,29 +1054,30 @@ function emitReportCreated(report) {
       io.to(`user:${normalized.reporter.uid}`).emit('reports:created', normalized);
     }
 
-    // 3. Instantly push to the specific branch room if available
+    // 3. Instantly push to the specific branch room
     if (normalized?.routingBranchId) {
       io.to(`branch:${normalized.routingBranchId}`).emit('reports:created', normalized);
     }
 
     // 4. Instantly push to branchName and location rooms
     if (normalized?.routingBarangay) {
-      const canonicalBarangay = canonicalCoverageName(normalized.routingBarangay);
-      if (canonicalBarangay) {
-        io.to(`branchName:${canonicalBarangay.toLowerCase()}`).emit('reports:created', normalized);
-        io.to(`location:${canonicalBarangay.toLowerCase()}`).emit('reports:created', normalized);
-      }
+      const canonicalBarangay = canonicalCoverageName(normalized.routingBarangay) || normalized.routingBarangay;
+      io.to(`branchName:${canonicalBarangay.toLowerCase()}`).emit('reports:created', normalized);
+      io.to(`location:${canonicalBarangay.toLowerCase()}`).emit('reports:created', normalized);
+      io.to(`branchName:${normalized.routingBarangay.toLowerCase()}`).emit('reports:created', normalized);
+      io.to(`location:${normalized.routingBarangay.toLowerCase()}`).emit('reports:created', normalized);
     }
 
-    // 5. Instantly push to relevant staff and branch admin operators
-    if (io.sockets?.sockets) {
-      io.sockets.sockets.forEach((sock) => {
+    // 5. Instantly push to relevant staff and branch admin operators across all connected sockets
+    const sockets = io.sockets?.sockets || (io.of && io.of('/').sockets);
+    if (sockets) {
+      sockets.forEach((sock) => {
         const user = sock.data?.user;
         if (!user) return;
         const role = String(user?.roleKey || user?.role || '').toLowerCase();
         const customRole = String(user?.customRoleName || '').toLowerCase();
         const isPrimaryAdmin = String(user?.email || '').toLowerCase() === 'onegapo2026@gmail.com';
-        if (isPrimaryAdmin || (role === 'admin' && !user?.branchId)) return; // already sent via role:admin
+        if (isPrimaryAdmin || (role === 'admin' && !user?.branchId)) return; // already received via role:admin
 
         const isOperator =
           role === 'staff' ||
@@ -1044,12 +1095,15 @@ function emitReportCreated(report) {
           };
           if (canStaffAccessReport(normalized, staffUser)) {
             sock.emit('reports:created', normalized);
+            if (user?.uid) {
+              io.to(`user:${user.uid}`).emit('reports:created', normalized);
+            }
           }
         }
       });
     }
 
-    // 6. Also broadcast reports:refresh for components tracking aggregate counts
+    // 6. Broadcast reports:refresh for all clients to silently reconcile
     io.emit('reports:refresh', { reportId: normalized.id });
   } catch (err) {
     console.warn('[emitReportCreated] Error broadcasting realtime report:', err.message || err);
@@ -1063,6 +1117,12 @@ function emitReportModified(report) {
     if (!io) return;
 
     const normalized = normalizeReportRecord(report, report?.id);
+
+    if (!normalized.routingBranchId && normalized.routingBarangay) {
+      normalized.routingBranchId = OLONGAPO_BRANCH_MAPPINGS[normalized.routingBarangay.toLowerCase()] || null;
+    }
+
+    console.info(`[emitReportModified] broadcasting report update ${normalized.id} (barangay: ${normalized.routingBarangay})`);
 
     // 1. Instantly push to all connected Admins
     io.to('role:admin').emit('reports:modified', normalized);
@@ -1079,16 +1139,17 @@ function emitReportModified(report) {
 
     // 4. Instantly push to branchName and location rooms
     if (normalized?.routingBarangay) {
-      const canonicalBarangay = canonicalCoverageName(normalized.routingBarangay);
-      if (canonicalBarangay) {
-        io.to(`branchName:${canonicalBarangay.toLowerCase()}`).emit('reports:modified', normalized);
-        io.to(`location:${canonicalBarangay.toLowerCase()}`).emit('reports:modified', normalized);
-      }
+      const canonicalBarangay = canonicalCoverageName(normalized.routingBarangay) || normalized.routingBarangay;
+      io.to(`branchName:${canonicalBarangay.toLowerCase()}`).emit('reports:modified', normalized);
+      io.to(`location:${canonicalBarangay.toLowerCase()}`).emit('reports:modified', normalized);
+      io.to(`branchName:${normalized.routingBarangay.toLowerCase()}`).emit('reports:modified', normalized);
+      io.to(`location:${normalized.routingBarangay.toLowerCase()}`).emit('reports:modified', normalized);
     }
 
     // 5. Instantly push to relevant staff, branch admins, and responders
-    if (io.sockets?.sockets) {
-      io.sockets.sockets.forEach((sock) => {
+    const sockets = io.sockets?.sockets || (io.of && io.of('/').sockets);
+    if (sockets) {
+      sockets.forEach((sock) => {
         const user = sock.data?.user;
         if (!user) return;
         const role = String(user?.roleKey || user?.role || '').toLowerCase();
@@ -1112,6 +1173,9 @@ function emitReportModified(report) {
           };
           if (canStaffAccessReport(normalized, staffUser)) {
             sock.emit('reports:modified', normalized);
+            if (user?.uid) {
+              io.to(`user:${user.uid}`).emit('reports:modified', normalized);
+            }
           } else {
             sock.emit('reports:deleted', { id: normalized.id });
           }
@@ -2960,5 +3024,7 @@ module.exports = {
   emitReportModified,
   emitReportDeleted,
   emitReportsRefresh,
+  OLONGAPO_BRANCH_MAPPINGS,
+  OLONGAPO_BRANCH_ID_TO_NAME,
 };
 

@@ -472,6 +472,11 @@ export default function StaffPanel() {
     loadForwardTargets();
   }, [loadBranchStaff, loadRoles, loadForwardTargets]);
 
+  const loadReportsRef = useRef(loadReports);
+  useEffect(() => {
+    loadReportsRef.current = loadReports;
+  }, [loadReports]);
+
   useEffect(() => {
     if (!currentUser || !canViewReports) {
       setNotifications([]);
@@ -546,6 +551,7 @@ export default function StaffPanel() {
             };
             return [normalized, ...prev];
           });
+          loadReportsRef.current?.({ silent: true });
         });
 
         socket.on('reports:modified', (report) => {
@@ -560,6 +566,7 @@ export default function StaffPanel() {
             };
             return prev.map((r) => (r.id === report.id ? { ...r, ...normalized } : r));
           });
+          loadReportsRef.current?.({ silent: true });
         });
 
         socket.on('reports:deleted', ({ id } = {}) => {
@@ -568,13 +575,14 @@ export default function StaffPanel() {
           console.debug('[client][staff] reports:deleted', { id });
           if (!id) return;
           setReports((prev) => prev.filter((r) => r.id !== id));
+          loadReportsRef.current?.({ silent: true });
         });
 
         socket.on('reports:refresh', () => {
           if (!active) return;
           // eslint-disable-next-line no-console
           console.debug('[client][staff] reports:refresh');
-          loadReports({ silent: true });
+          loadReportsRef.current?.({ silent: true });
         });
 
         socket.on('connect_error', (err) => {
