@@ -106,8 +106,51 @@ function pointInGeometry(point, geometry) {
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
+function distanceToSegmentSquared(px, py, x1, y1, x2, y2) {
+  const l2 = (x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1);
+  if (l2 === 0) return (px - x1) * (px - x1) + (py - y1) * (py - y1);
+  let t = ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / l2;
+  t = Math.max(0, Math.min(1, t));
+  const dx = px - (x1 + t * (x2 - x1));
+  const dy = py - (y1 + t * (y2 - y1));
+  return dx * dx + dy * dy;
+}
+
+function findNearestBarangayFeature(lat, lng, features) {
+  let minDistanceSq = Infinity;
+  let closestFeature = null;
+
+  for (const feature of features) {
+    if (!feature.geometry || !feature.properties) continue;
+    const geom = feature.geometry;
+    let ringsList = [];
+    if (geom.type === 'Polygon') {
+      ringsList = geom.coordinates;
+    } else if (geom.type === 'MultiPolygon') {
+      ringsList = geom.coordinates.flatMap((poly) => poly);
+    }
+
+    for (const ring of ringsList) {
+      if (!Array.isArray(ring) || ring.length < 2) continue;
+      for (let i = 0; i < ring.length - 1; i++) {
+        const [x1, y1] = ring[i];
+        const [x2, y2] = ring[i + 1];
+        const distSq = distanceToSegmentSquared(lng, lat, x1, y1, x2, y2);
+        if (distSq < minDistanceSq) {
+          minDistanceSq = distSq;
+          closestFeature = feature;
+        }
+      }
+    }
+  }
+
+  return closestFeature;
+}
+
 /**
  * Given a latitude and longitude, find which Olongapo barangay polygon contains it.
+ * If the point is on an edge, coastline, or boundary seam, it resolves to the nearest
+ * barangay boundary.
  *
  * @param {number} lat
  * @param {number} lng
@@ -122,6 +165,7 @@ function findBarangayByCoordinates(lat, lng) {
   // GeoJSON uses [lng, lat] order
   const point = [lng, lat];
 
+  // 1. Exact point-in-polygon test
   for (const feature of features) {
     if (!feature.geometry || !feature.properties) continue;
     if (pointInGeometry(point, feature.geometry)) {
@@ -132,7 +176,16 @@ function findBarangayByCoordinates(lat, lng) {
     }
   }
 
-  return null; // Point is outside all barangay polygons
+  // 2. Fallback to nearest boundary line for points on seams/roads/edges
+  const nearest = findNearestBarangayFeature(lat, lng, features);
+  if (nearest && nearest.properties) {
+    return {
+      name: nearest.properties.name,
+      psgc: nearest.properties.psgc || null,
+    };
+  }
+
+  return null;
 }
 
 /**

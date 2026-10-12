@@ -4,6 +4,7 @@ const socketInstance = require('./socketInstance');
 const {
   canStaffAccessReport,
   normalizeReportRecord,
+  canonicalCoverageName,
 } = require('../controllers/reportController');
 
 const notificationStreams = new Map();
@@ -145,22 +146,35 @@ function stopNotificationStreamForUser(uid) {
 
 function canUserAccessReport(report, user) {
   const role = String(user?.roleKey || user?.role || '').toLowerCase();
-  if (role === 'admin') return true;
+  const customRole = String(user?.customRoleName || '').toLowerCase();
+  const isPrimaryAdmin = String(user?.email || '').toLowerCase() === 'onegapo2026@gmail.com';
 
-  if (role === 'responder') {
+  // Primary superadmin gets all reports
+  if (isPrimaryAdmin || (role === 'admin' && !user?.branchId)) return true;
+
+  if (role === 'responder' || customRole === 'responder') {
     const requesterUid = String(user?.uid || '').trim();
     const assignedResponderUid = String(report?.assignedResponder?.uid || '').trim();
     const reportStatus = String(report?.status || '').toLowerCase();
     return Boolean(assignedResponderUid && requesterUid && assignedResponderUid === requesterUid) && reportStatus !== 'archived';
   }
 
-  const permissions = Array.isArray(user?.permissions) ? user.permissions : [];
-  const canViewReports = permissions.includes('view_reports')
-    || permissions.includes('update_reports')
-    || permissions.includes('close_reports')
-    || permissions.includes('archive_reports');
+  // Resident role only accesses their own reports
+  if (role === 'resident') {
+    const requesterUid = String(user?.uid || '').trim();
+    return String(report?.reporter?.uid || '').trim() === requesterUid;
+  }
 
-  if (role !== 'staff' || !canViewReports) return false;
+  // Any operational staff, branch admin, or user with report view permissions
+  const permissions = Array.isArray(user?.permissions) ? user.permissions : [];
+  const canViewReports =
+    permissions.length === 0 || // default branch access if permissions array not explicitly restricted
+    permissions.includes('view_reports') ||
+    permissions.includes('update_reports') ||
+    permissions.includes('close_reports') ||
+    permissions.includes('archive_reports');
+
+  if (!canViewReports) return false;
 
   const staffUser = {
     ...user,
@@ -380,18 +394,38 @@ function initSocketServer(httpServer, { allowedOrigin }) {
           const userSnap = await admin.firestore().collection('users').doc(decoded.uid).get();
           if (userSnap.exists) {
             const userData = userSnap.data() || {};
+            let permissions = Array.isArray(userData.permissions)
+              ? userData.permissions
+              : (Array.isArray(decoded.permissions) ? decoded.permissions : []);
+
+            if (permissions.length === 0 && userData.customRoleId) {
+              try {
+                const roleSnap = await admin.firestore().collection('roles').doc(userData.customRoleId).get();
+                if (roleSnap.exists) {
+                  const roleData = roleSnap.data() || {};
+                  if (Array.isArray(roleData.permissions)) {
+                    permissions = roleData.permissions;
+                  }
+                }
+              } catch {
+                // ignore
+              }
+            }
+
             user = {
               ...user,
+              uid: decoded.uid,
+              email: userData.email || decoded.email || '',
               fullName: userData.fullName || decoded.fullName || '',
+              role: userData.role || decoded.role || '',
+              roleKey: userData.role || decoded.role || '',
               branchId: userData.branchId || decoded.branchId || null,
               branchName: userData.branchName || userData.location || decoded.branchName || decoded.location || null,
               location: userData.location || userData.branchName || decoded.location || decoded.branchName || null,
               entityType: userData.entityType || decoded.entityType || null,
               customRoleId: userData.customRoleId || decoded.customRoleId || null,
               customRoleName: userData.customRoleName || decoded.customRoleName || null,
-              permissions: Array.isArray(userData.permissions)
-                ? userData.permissions
-                : (Array.isArray(decoded.permissions) ? decoded.permissions : []),
+              permissions,
             };
           }
         } catch {
@@ -418,17 +452,29 @@ function initSocketServer(httpServer, { allowedOrigin }) {
     socket.join(room);
 
     const role = String(user?.roleKey || user?.role || '').toLowerCase();
+    const customRole = String(user?.customRoleName || '').toLowerCase();
     const isPrimaryAdmin = String(user?.email || '').toLowerCase() === 'onegapo2026@gmail.com';
-    if (role === 'admin' || isPrimaryAdmin) {
+
+    if (isPrimaryAdmin || (role === 'admin' && !user?.branchId)) {
       socket.join('role:admin');
     }
-    if (role === 'staff') {
+
+    if (role === 'staff' || role.includes('admin') || customRole.includes('admin') || user?.branchId) {
       socket.join('role:staff');
       if (user?.branchId) {
         socket.join(`branch:${user.branchId}`);
       }
+      if (user?.branchName) {
+        const canonical = canonicalCoverageName(user.branchName);
+        if (canonical) socket.join(`branchName:${canonical.toLowerCase()}`);
+      }
+      if (user?.location) {
+        const canonical = canonicalCoverageName(user.location);
+        if (canonical) socket.join(`location:${canonical.toLowerCase()}`);
+      }
     }
-    if (role === 'responder') {
+
+    if (role === 'responder' || customRole === 'responder') {
       socket.join('role:responder');
     }
 

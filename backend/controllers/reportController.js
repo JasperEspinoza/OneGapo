@@ -809,10 +809,16 @@ function canStaffAccessReport(report, reqUser) {
     return true;
   }
 
-  const staffCoverage = String(reqUser?.location || reqUser?.branchName || '').trim();
-  const staffCoverageCanonical = canonicalCoverageName(staffCoverage);
+  const staffCoverages = new Set(
+    [
+      canonicalCoverageName(reqUser?.location),
+      canonicalCoverageName(reqUser?.branchName),
+      reqUser?.location ? String(reqUser.location).trim() : null,
+      reqUser?.branchName ? String(reqUser.branchName).trim() : null,
+    ].filter(Boolean)
+  );
 
-  // Authoritative coordinate boundary check
+  // Authoritative coordinate boundary check based on pin location
   const lat = Number(report?.location?.latitude ?? report?.latitude);
   const lng = Number(report?.location?.longitude ?? report?.longitude);
   if (Number.isFinite(lat) && Number.isFinite(lng)) {
@@ -820,8 +826,10 @@ function canStaffAccessReport(report, reqUser) {
       const poly = findBarangayByCoordinates(lat, lng);
       if (poly?.name) {
         const polyCanonical = canonicalCoverageName(poly.name) || poly.name;
-        if (staffCoverageCanonical && polyCanonical === staffCoverageCanonical) {
-          return true;
+        for (const coverage of staffCoverages) {
+          if (canonicalCoverageName(coverage) === polyCanonical || coverage.toLowerCase() === poly.name.toLowerCase()) {
+            return true;
+          }
         }
       }
     } catch {
@@ -836,21 +844,24 @@ function canStaffAccessReport(report, reqUser) {
   ]
     .map((value) => String(value || '').trim())
     .filter(Boolean);
-  console.debug('[canStaffAccessReport] checking report', report?.id, '| staffBranchId:', staffBranchId, '| reportBranchIds:', reportBranchIds, '| location:', reqUser?.location, '| routingBarangay:', report?.routingBarangay, '| routingBranchId:', report?.routingBranchId);
+
   if (staffBranchId && reportBranchIds.includes(staffBranchId)) {
     return true;
   }
 
-  // If the report was routed to a specific branch by ID, also check by name
-  // in case the staff's branchId and the report's routingBranchId reference
-  // different Firestore documents for the same barangay (e.g. created twice).
-  if (staffCoverage) {
-    // Check routingBarangay / routingBranchName by canonical name
-    const routingBarangayCanonical = canonicalCoverageName(
-      report?.routingBarangay || report?.routingBranchName || report?.location?.barangay || ''
-    );
-    if (routingBarangayCanonical && staffCoverageCanonical && routingBarangayCanonical === staffCoverageCanonical) {
-      return true;
+  // Check routingBarangay / routingBranchName / location.barangay against all staff coverages
+  const reportNames = [
+    report?.routingBarangay,
+    report?.routingBranchName,
+    report?.location?.barangay,
+  ].filter(Boolean);
+
+  for (const reportName of reportNames) {
+    const reportCanonical = canonicalCoverageName(reportName);
+    for (const coverage of staffCoverages) {
+      if (canonicalCoverageName(coverage) === reportCanonical || coverage.toLowerCase() === String(reportName).toLowerCase()) {
+        return true;
+      }
     }
   }
 
@@ -860,8 +871,10 @@ function canStaffAccessReport(report, reqUser) {
   }
 
   // Legacy / unrouted reports: fall back to coverage-area name matching.
-  if (staffCoverage && isReportInCoverage(report, staffCoverage)) {
-    return true;
+  for (const coverage of staffCoverages) {
+    if (isReportInCoverage(report, coverage)) {
+      return true;
+    }
   }
 
   return false;
@@ -991,16 +1004,39 @@ function emitReportCreated(report) {
       io.to(`user:${normalized.reporter.uid}`).emit('reports:created', normalized);
     }
 
-    // 3. Instantly push to relevant staff operators
+    // 3. Instantly push to the specific branch room if available
+    if (normalized?.routingBranchId) {
+      io.to(`branch:${normalized.routingBranchId}`).emit('reports:created', normalized);
+    }
+
+    // 4. Instantly push to branchName and location rooms
+    if (normalized?.routingBarangay) {
+      const canonicalBarangay = canonicalCoverageName(normalized.routingBarangay);
+      if (canonicalBarangay) {
+        io.to(`branchName:${canonicalBarangay.toLowerCase()}`).emit('reports:created', normalized);
+        io.to(`location:${canonicalBarangay.toLowerCase()}`).emit('reports:created', normalized);
+      }
+    }
+
+    // 5. Instantly push to relevant staff and branch admin operators
     if (io.sockets?.sockets) {
       io.sockets.sockets.forEach((sock) => {
         const user = sock.data?.user;
         if (!user) return;
         const role = String(user?.roleKey || user?.role || '').toLowerCase();
+        const customRole = String(user?.customRoleName || '').toLowerCase();
         const isPrimaryAdmin = String(user?.email || '').toLowerCase() === 'onegapo2026@gmail.com';
-        if (role === 'admin' || isPrimaryAdmin) return; // already sent via role:admin
+        if (isPrimaryAdmin || (role === 'admin' && !user?.branchId)) return; // already sent via role:admin
 
-        if (role === 'staff') {
+        const isOperator =
+          role === 'staff' ||
+          role.includes('admin') ||
+          customRole.includes('admin') ||
+          Boolean(user?.branchId) ||
+          Boolean(user?.location) ||
+          Boolean(user?.branchName);
+
+        if (isOperator) {
           const staffUser = {
             ...user,
             location: user?.location || user?.branchName || '',
@@ -1013,7 +1049,7 @@ function emitReportCreated(report) {
       });
     }
 
-    // 4. Also broadcast reports:refresh for components tracking aggregate counts
+    // 6. Also broadcast reports:refresh for components tracking aggregate counts
     io.emit('reports:refresh', { reportId: normalized.id });
   } catch (err) {
     console.warn('[emitReportCreated] Error broadcasting realtime report:', err.message || err);
@@ -1036,16 +1072,39 @@ function emitReportModified(report) {
       io.to(`user:${normalized.reporter.uid}`).emit('reports:modified', normalized);
     }
 
-    // 3. Instantly push to relevant staff and responders
+    // 3. Instantly push to the branch room
+    if (normalized?.routingBranchId) {
+      io.to(`branch:${normalized.routingBranchId}`).emit('reports:modified', normalized);
+    }
+
+    // 4. Instantly push to branchName and location rooms
+    if (normalized?.routingBarangay) {
+      const canonicalBarangay = canonicalCoverageName(normalized.routingBarangay);
+      if (canonicalBarangay) {
+        io.to(`branchName:${canonicalBarangay.toLowerCase()}`).emit('reports:modified', normalized);
+        io.to(`location:${canonicalBarangay.toLowerCase()}`).emit('reports:modified', normalized);
+      }
+    }
+
+    // 5. Instantly push to relevant staff, branch admins, and responders
     if (io.sockets?.sockets) {
       io.sockets.sockets.forEach((sock) => {
         const user = sock.data?.user;
         if (!user) return;
         const role = String(user?.roleKey || user?.role || '').toLowerCase();
+        const customRole = String(user?.customRoleName || '').toLowerCase();
         const isPrimaryAdmin = String(user?.email || '').toLowerCase() === 'onegapo2026@gmail.com';
-        if (role === 'admin' || isPrimaryAdmin) return; // already sent via role:admin
+        if (isPrimaryAdmin || (role === 'admin' && !user?.branchId)) return; // already sent via role:admin
 
-        if (role === 'staff') {
+        const isOperator =
+          role === 'staff' ||
+          role.includes('admin') ||
+          customRole.includes('admin') ||
+          Boolean(user?.branchId) ||
+          Boolean(user?.location) ||
+          Boolean(user?.branchName);
+
+        if (isOperator) {
           const staffUser = {
             ...user,
             location: user?.location || user?.branchName || '',
@@ -1058,7 +1117,7 @@ function emitReportModified(report) {
           }
         }
 
-        if (role === 'responder') {
+        if (role === 'responder' || customRole === 'responder') {
           const responderUid = String(user?.uid || '').trim();
           const assignedUid = String(normalized?.assignedResponder?.uid || '').trim();
           if (assignedUid && assignedUid === responderUid) {
@@ -1068,7 +1127,7 @@ function emitReportModified(report) {
       });
     }
 
-    // 4. Broadcast reports:refresh
+    // 6. Broadcast reports:refresh
     io.emit('reports:refresh', { reportId: normalized.id });
   } catch (err) {
     console.warn('[emitReportModified] Error broadcasting realtime report update:', err.message || err);
@@ -1489,7 +1548,7 @@ async function createReport(req, res, next) {
       },
       routingBarangay,
       routingBranchId: routingBranch.id || null,
-      routingBranchName: routingBranch.name || null,
+      routingBranchName: routingBranch.name || routingBarangay,
       reporter: {
         uid: requesterUid,
         email: req.user.email || '',
@@ -1580,7 +1639,18 @@ async function listOwnReports(req, res, next) {
 async function listReportsForOperators(req, res, next) {
   try {
     const role = getRequesterRoleKey(req.user);
-    if (role !== 'staff' && role !== 'admin' && role !== 'responder') {
+    const customRole = String(req.user?.customRoleName || '').trim().toLowerCase();
+    const isPrimaryAdmin = String(req.user?.email || '').toLowerCase() === 'onegapo2026@gmail.com';
+    const isSuperAdmin = isPrimaryAdmin || (role === 'admin' && !req.user?.branchId);
+    const isOperator =
+      isSuperAdmin ||
+      role === 'staff' ||
+      role === 'responder' ||
+      role.includes('admin') ||
+      customRole.includes('admin') ||
+      Boolean(req.user?.branchId);
+
+    if (!isOperator) {
       return res.status(403).json({ error: 'Only staff, responders, and admins can access this endpoint.' });
     }
 
@@ -1610,11 +1680,11 @@ async function listReportsForOperators(req, res, next) {
       }))
       .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 
-    if (role === 'staff') {
+    if (!isSuperAdmin && role !== 'responder') {
       const staffCoverages = await resolveStaffCoverage(db, req.user);
       if (staffCoverages.length === 0) {
         return res.status(403).json({
-          error: 'Staff account is not assigned to a branch/barangay coverage.',
+          error: 'Account is not assigned to a branch/barangay coverage.',
         });
       }
 
