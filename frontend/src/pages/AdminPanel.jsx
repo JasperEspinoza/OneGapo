@@ -201,22 +201,15 @@ function getReportMediaItems(report) {
     .filter(Boolean);
 }
 
-function getReporterDisplayName(report, usersByUid) {
+function getReporterDisplayName(report, isPrimaryAdmin = false) {
+  if (!isPrimaryAdmin) {
+    return 'Anonymous';
+  }
   const reporter = report?.reporter || {};
-  const reporterUid = reporter.uid || reporter.userId || reporter.user_id || reporter.sub || '';
-  const matchedUser = reporterUid ? usersByUid.get(reporterUid) : null;
-
-  const reporterUsername = String(
-    reporter.username || reporter.displayName || reporter.fullName || ''
+  const reporterName = String(
+    reporter.username || reporter.displayName || reporter.fullName || reporter.name || ''
   ).trim();
-  if (reporterUsername) return reporterUsername;
-
-  const matchedUsername = String(
-    matchedUser?.username || matchedUser?.displayName || matchedUser?.fullName || ''
-  ).trim();
-  if (matchedUsername) return matchedUsername;
-
-  return String(reporter.email || matchedUser?.email || '').trim() || '—';
+  return reporterName || 'Anonymous';
 }
 
 function getUserDisplayName(user) {
@@ -1667,8 +1660,8 @@ export default function AdminPanel() {
   }, [selectedReport, usersByUid]);
 
   const resolveReporterName = useCallback(
-    (report) => getReporterDisplayName(report, usersByUid),
-    [usersByUid]
+    (report) => getReporterDisplayName(report, isPrimaryAdmin),
+    [isPrimaryAdmin]
   );
 
   const reportPreStatusRows = useMemo(() => {
@@ -2630,7 +2623,7 @@ export default function AdminPanel() {
                       id="report-search"
                       type="text"
                       className="form-input"
-                      placeholder="Search title, address, reporter"
+                      placeholder="Search title, address, category"
                       value={reportSearchQuery}
                       onChange={(event) => setReportSearchQuery(event.target.value)}
                     />

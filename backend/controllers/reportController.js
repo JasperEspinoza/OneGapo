@@ -9,6 +9,46 @@ const PENDING_SLA_STATUSES = new Set(['submitted', 'in_progress', 'in_review']);
 const SLA_SYNC_BATCH_LIMIT = 400;
 const REPORT_SUBMISSION_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
 
+// ── In-Memory Caching (Reduces Firestore reads) ───────────────────────────
+const performanceMetricsCache = new Map();
+const PERFORMANCE_METRICS_CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes
+
+function invalidatePerformanceMetricsCache() {
+  performanceMetricsCache.clear();
+}
+
+let cachedBranchDocsList = null;
+let cachedBranchDocsAt = 0;
+const BRANCHES_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+async function getCachedBranchDocs(db) {
+  if (cachedBranchDocsList && Date.now() - cachedBranchDocsAt < BRANCHES_CACHE_TTL_MS) {
+    return cachedBranchDocsList;
+  }
+  let docs = [];
+  try {
+    const branchSnap = await db.collection('branches').orderBy('name').get();
+    docs = branchSnap.docs.map((doc) => ({
+      id: doc.id,
+      ...(doc.data() || {}),
+    }));
+  } catch {
+    const fallbackBranchSnap = await db.collection('branches').get();
+    docs = fallbackBranchSnap.docs.map((doc) => ({
+      id: doc.id,
+      ...(doc.data() || {}),
+    }));
+  }
+  cachedBranchDocsList = docs;
+  cachedBranchDocsAt = Date.now();
+  return docs;
+}
+
+function invalidateBranchesCache() {
+  cachedBranchDocsList = null;
+  cachedBranchDocsAt = 0;
+}
+
 const TIER_TARGETS_MINUTES = {
   1: {
     acknowledgment: 10,
@@ -961,9 +1001,9 @@ async function resolveRoutingBranch(db, routingBarangay) {
     return { id: '', name: '' };
   }
 
-  const branchSnap = await db.collection('branches').get();
-  const branchDoc = branchSnap.docs.find((doc) => (
-    canonicalCoverageName(doc.data()?.name || '') === canonicalName
+  const branchDocs = await getCachedBranchDocs(db);
+  const branchDoc = branchDocs.find((doc) => (
+    canonicalCoverageName(doc.name || '') === canonicalName
   ));
 
   return branchDoc
@@ -1031,7 +1071,19 @@ function emitReportsRefresh(reportId) {
   }
 }
 
+function sanitizeReportForStaff(report) {
+  if (!report || typeof report !== 'object') return report;
+  const sanitized = { ...report };
+  if (sanitized.reporter) {
+    sanitized.reporter = {
+      role: sanitized.reporter.role || 'resident',
+    };
+  }
+  return sanitized;
+}
+
 function emitReportCreated(report) {
+  invalidatePerformanceMetricsCache();
   try {
     const socketInstance = require('../realtime/socketInstance');
     const io = socketInstance.get && socketInstance.get();
@@ -1046,7 +1098,9 @@ function emitReportCreated(report) {
 
     console.info(`[emitReportCreated] broadcasting report ${normalized.id} (barangay: ${normalized.routingBarangay}, branchId: ${normalized.routingBranchId})`);
 
-    // 1. Instantly push to all connected Admins
+    const staffPayload = sanitizeReportForStaff(normalized);
+
+    // 1. Instantly push to all connected Primary Admins
     io.to('role:admin').emit('reports:created', normalized);
 
     // 2. Instantly push to the submitting resident
@@ -1054,21 +1108,21 @@ function emitReportCreated(report) {
       io.to(`user:${normalized.reporter.uid}`).emit('reports:created', normalized);
     }
 
-    // 3. Instantly push to the specific branch room
+    // 3. Instantly push to the specific branch room (sanitized for staff)
     if (normalized?.routingBranchId) {
-      io.to(`branch:${normalized.routingBranchId}`).emit('reports:created', normalized);
+      io.to(`branch:${normalized.routingBranchId}`).emit('reports:created', staffPayload);
     }
 
-    // 4. Instantly push to branchName and location rooms
+    // 4. Instantly push to branchName and location rooms (sanitized for staff)
     if (normalized?.routingBarangay) {
       const canonicalBarangay = canonicalCoverageName(normalized.routingBarangay) || normalized.routingBarangay;
-      io.to(`branchName:${canonicalBarangay.toLowerCase()}`).emit('reports:created', normalized);
-      io.to(`location:${canonicalBarangay.toLowerCase()}`).emit('reports:created', normalized);
-      io.to(`branchName:${normalized.routingBarangay.toLowerCase()}`).emit('reports:created', normalized);
-      io.to(`location:${normalized.routingBarangay.toLowerCase()}`).emit('reports:created', normalized);
+      io.to(`branchName:${canonicalBarangay.toLowerCase()}`).emit('reports:created', staffPayload);
+      io.to(`location:${canonicalBarangay.toLowerCase()}`).emit('reports:created', staffPayload);
+      io.to(`branchName:${normalized.routingBarangay.toLowerCase()}`).emit('reports:created', staffPayload);
+      io.to(`location:${normalized.routingBarangay.toLowerCase()}`).emit('reports:created', staffPayload);
     }
 
-    // 5. Instantly push to relevant staff and branch admin operators across all connected sockets
+    // 5. Instantly push to relevant staff and branch admin operators across all connected sockets (sanitized)
     const sockets = io.sockets?.sockets || (io.of && io.of('/').sockets);
     if (sockets) {
       sockets.forEach((sock) => {
@@ -1094,10 +1148,7 @@ function emitReportCreated(report) {
             branchName: user?.branchName || user?.location || '',
           };
           if (canStaffAccessReport(normalized, staffUser)) {
-            sock.emit('reports:created', normalized);
-            if (user?.uid) {
-              io.to(`user:${user.uid}`).emit('reports:created', normalized);
-            }
+            sock.emit('reports:created', staffPayload);
           }
         }
       });
@@ -1111,6 +1162,7 @@ function emitReportCreated(report) {
 }
 
 function emitReportModified(report) {
+  invalidatePerformanceMetricsCache();
   try {
     const socketInstance = require('../realtime/socketInstance');
     const io = socketInstance.get && socketInstance.get();
@@ -1124,7 +1176,9 @@ function emitReportModified(report) {
 
     console.info(`[emitReportModified] broadcasting report update ${normalized.id} (barangay: ${normalized.routingBarangay})`);
 
-    // 1. Instantly push to all connected Admins
+    const staffPayload = sanitizeReportForStaff(normalized);
+
+    // 1. Instantly push to all connected Primary Admins
     io.to('role:admin').emit('reports:modified', normalized);
 
     // 2. Instantly push to the resident
@@ -1132,18 +1186,18 @@ function emitReportModified(report) {
       io.to(`user:${normalized.reporter.uid}`).emit('reports:modified', normalized);
     }
 
-    // 3. Instantly push to the branch room
+    // 3. Instantly push to the branch room (sanitized for staff)
     if (normalized?.routingBranchId) {
-      io.to(`branch:${normalized.routingBranchId}`).emit('reports:modified', normalized);
+      io.to(`branch:${normalized.routingBranchId}`).emit('reports:modified', staffPayload);
     }
 
-    // 4. Instantly push to branchName and location rooms
+    // 4. Instantly push to branchName and location rooms (sanitized for staff)
     if (normalized?.routingBarangay) {
       const canonicalBarangay = canonicalCoverageName(normalized.routingBarangay) || normalized.routingBarangay;
-      io.to(`branchName:${canonicalBarangay.toLowerCase()}`).emit('reports:modified', normalized);
-      io.to(`location:${canonicalBarangay.toLowerCase()}`).emit('reports:modified', normalized);
-      io.to(`branchName:${normalized.routingBarangay.toLowerCase()}`).emit('reports:modified', normalized);
-      io.to(`location:${normalized.routingBarangay.toLowerCase()}`).emit('reports:modified', normalized);
+      io.to(`branchName:${canonicalBarangay.toLowerCase()}`).emit('reports:modified', staffPayload);
+      io.to(`location:${canonicalBarangay.toLowerCase()}`).emit('reports:modified', staffPayload);
+      io.to(`branchName:${normalized.routingBarangay.toLowerCase()}`).emit('reports:modified', staffPayload);
+      io.to(`location:${normalized.routingBarangay.toLowerCase()}`).emit('reports:modified', staffPayload);
     }
 
     // 5. Instantly push to relevant staff, branch admins, and responders
@@ -1172,10 +1226,7 @@ function emitReportModified(report) {
             branchName: user?.branchName || user?.location || '',
           };
           if (canStaffAccessReport(normalized, staffUser)) {
-            sock.emit('reports:modified', normalized);
-            if (user?.uid) {
-              io.to(`user:${user.uid}`).emit('reports:modified', normalized);
-            }
+            sock.emit('reports:modified', staffPayload);
           } else {
             sock.emit('reports:deleted', { id: normalized.id });
           }
@@ -1185,7 +1236,7 @@ function emitReportModified(report) {
           const responderUid = String(user?.uid || '').trim();
           const assignedUid = String(normalized?.assignedResponder?.uid || '').trim();
           if (assignedUid && assignedUid === responderUid) {
-            sock.emit('reports:modified', normalized);
+            sock.emit('reports:modified', staffPayload);
           }
         }
       });
@@ -1199,6 +1250,7 @@ function emitReportModified(report) {
 }
 
 function emitReportDeleted(reportId) {
+  invalidatePerformanceMetricsCache();
   try {
     const socketInstance = require('../realtime/socketInstance');
     const io = socketInstance.get && socketInstance.get();
@@ -1341,6 +1393,15 @@ async function getPerformanceMetrics(req, res, next) {
       return res.status(403).json({ error: 'Only staff and admins can access performance metrics.' });
     }
 
+    const cacheKey = role === 'admin'
+      ? 'admin'
+      : `staff:${String(req.user?.branchId || '').trim()}:${String(req.user?.location || '').trim()}:${String(req.user?.uid || '').trim()}`;
+
+    const cached = performanceMetricsCache.get(cacheKey);
+    if (cached && (Date.now() - cached.cachedAt < PERFORMANCE_METRICS_CACHE_TTL_MS)) {
+      return res.json(cached.payload);
+    }
+
     const db = admin.firestore();
 
     let reportSnap;
@@ -1368,20 +1429,7 @@ async function getPerformanceMetrics(req, res, next) {
       });
     }
 
-    let branchDocs = [];
-    try {
-      const branchSnap = await db.collection('branches').orderBy('name').get();
-      branchDocs = branchSnap.docs.map((doc) => ({
-        id: doc.id,
-        ...(doc.data() || {}),
-      }));
-    } catch {
-      const fallbackBranchSnap = await db.collection('branches').get();
-      branchDocs = fallbackBranchSnap.docs.map((doc) => ({
-        id: doc.id,
-        ...(doc.data() || {}),
-      }));
-    }
+    const branchDocs = await getCachedBranchDocs(db);
 
     const normalizedBranches = branchDocs.map((branch) => ({
       id: branch.id,
@@ -1426,7 +1474,7 @@ async function getPerformanceMetrics(req, res, next) {
       ? resolvedMttrValues.reduce((sum, value) => sum + value, 0) / resolvedMttrValues.length
       : null;
 
-    return res.json({
+    const payload = {
       summary: {
         totalReports,
         resolvedReports,
@@ -1437,7 +1485,14 @@ async function getPerformanceMetrics(req, res, next) {
       barangayRows,
       branchRows,
       generatedAt: new Date().toISOString(),
+    };
+
+    performanceMetricsCache.set(cacheKey, {
+      payload,
+      cachedAt: Date.now(),
     });
+
+    return res.json(payload);
   } catch (err) {
     return next(err);
   }
@@ -1615,7 +1670,6 @@ async function createReport(req, res, next) {
       routingBranchName: routingBranch.name || routingBarangay,
       reporter: {
         uid: requesterUid,
-        email: req.user.email || '',
         role,
       },
       attachments,
@@ -1771,6 +1825,10 @@ async function listReportsForOperators(req, res, next) {
         const reportStatus = String(report?.status || '').toLowerCase();
         return Boolean(assignedResponderUid && requesterUid && assignedResponderUid === requesterUid) && reportStatus !== 'archived';
       });
+    }
+
+    if (!isSuperAdmin) {
+      hydratedReports = hydratedReports.map(sanitizeReportForStaff);
     }
 
     return res.json(hydratedReports);
@@ -2512,9 +2570,8 @@ async function listForwardTargets(req, res, next) {
     }
 
     const callerBranchId = String(req.user?.branchId || '').trim();
-    const snap = await admin.firestore().collection('branches').orderBy('name').get();
-    const targets = snap.docs
-      .map((doc) => ({ id: doc.id, ...doc.data() }))
+    const branchDocs = await getCachedBranchDocs(admin.firestore());
+    const targets = branchDocs
       .filter((branch) => branch.id !== callerBranchId)
       .map((branch) => ({
         id: branch.id,
@@ -3026,5 +3083,9 @@ module.exports = {
   emitReportsRefresh,
   OLONGAPO_BRANCH_MAPPINGS,
   OLONGAPO_BRANCH_ID_TO_NAME,
+  sanitizeReportForStaff,
+  invalidatePerformanceMetricsCache,
+  invalidateBranchesCache,
+  getCachedBranchDocs,
 };
 

@@ -4,6 +4,7 @@ const {
   summarizeEmailDeliveries,
 } = require('../services/emailService');
 const { sendAccountVerificationEmail } = require('../services/verificationService');
+const { invalidateBranchesCache, getCachedBranchDocs } = require('./reportController');
 
 const DEFAULT_STAFF_PERMISSIONS = [
   'view_reports',
@@ -119,6 +120,7 @@ async function createBranch(req, res, next) {
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       createdBy: req.user.uid,
     });
+    invalidateBranchesCache();
 
     // If a staff email was provided, create a staff account and assign to this branch
     let staffCreated = null;
@@ -201,14 +203,13 @@ async function createBranch(req, res, next) {
  */
 async function listBranches(req, res, next) {
   try {
-    const snap = await admin.firestore().collection('branches').orderBy('name').get();
+    const docs = await getCachedBranchDocs(admin.firestore());
     const approvedNames = new Set(DEFAULT_BRANCH_CATALOG.map((branch) => branchKey(branch.name)));
-    const branches = snap.docs
-      .map((doc) => {
-        const data = doc.data() || {};
+    const branches = docs
+      .map((data) => {
         const canonicalName = canonicalBranchName(data.name || '');
         return {
-          id: doc.id,
+          id: data.id,
           ...data,
           name: canonicalName || String(data.name || ''),
           createdAt: undefined,
@@ -270,6 +271,9 @@ async function provisionDefaultBranches(req, res, next) {
       created,
       existing: alreadyPresent,
     });
+    if (created.length > 0) {
+      invalidateBranchesCache();
+    }
   } catch (err) {
     return next(err);
   }
@@ -332,6 +336,7 @@ async function updateBranch(req, res, next) {
     }
 
     await docRef.update(updates);
+    invalidateBranchesCache();
 
     const finalBranchName = updates.name || String(snap.data()?.name || '');
     const finalBranchType = 'public';

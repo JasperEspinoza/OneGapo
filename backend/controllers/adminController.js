@@ -11,6 +11,7 @@ const {
   ALLOWED_ROLES,
   sanitizePermissions,
 } = require('../constants/rbac');
+const { invalidateUserProfileCache } = require('../middleware/authMiddleware');
 const PRIMARY_ADMIN_EMAIL = 'onegapo2026@gmail.com';
 const RESPONDER_ROLE_KEY = 'responder';
 const RESPONDER_ROLE_LABEL = 'Responder';
@@ -367,6 +368,7 @@ async function updateStaff(req, res, next) {
     firestoreUpdates.updatedAt = admin.firestore.FieldValue.serverTimestamp();
     firestoreUpdates.updatedBy = req.user.uid;
     await db.collection('users').doc(uid).update(firestoreUpdates);
+    invalidateUserProfileCache(uid);
 
     return res.json({
       message: 'Account updated successfully.',
@@ -421,6 +423,7 @@ async function deleteUser(req, res, next) {
       admin.firestore().collection('users').doc(uid).delete(),
       admin.firestore().collection('emailVerificationTokens').doc(uid).delete().catch(() => {}),
     ]);
+    invalidateUserProfileCache(uid);
 
     return res.json({ message: 'User deleted.' });
   } catch (err) {
@@ -500,6 +503,7 @@ async function removeStaffRole(req, res, next) {
         createdBy: req.user.uid,
       });
     }
+    invalidateUserProfileCache(uid);
 
     return res.json({
       message: 'Staff role removed successfully. User account retained as resident.',
@@ -678,6 +682,7 @@ async function createBranchStaff(req, res, next) {
             createdBy: req.user.uid,
           }),
     }, { merge: true });
+    invalidateUserProfileCache(userRecord.uid);
 
     let emailDelivery = null;
     if (!existingAccount) {

@@ -7,6 +7,7 @@ const {
   canonicalCoverageName,
   OLONGAPO_BRANCH_MAPPINGS,
   OLONGAPO_BRANCH_ID_TO_NAME,
+  sanitizeReportForStaff,
 } = require('../controllers/reportController');
 
 const notificationStreams = new Map();
@@ -224,9 +225,15 @@ async function fetchReportsForUser(user) {
     .limit(300)
     .get();
 
-  return operatorSnap.docs
+  const isSuperAdmin = String(user?.email || '').toLowerCase() === 'onegapo2026@gmail.com' || (role === 'admin' && !user?.branchId);
+  const reports = operatorSnap.docs
     .map(reportDto)
     .filter((report) => canUserAccessReport(report, user));
+
+  if (!isSuperAdmin) {
+    return reports.map(sanitizeReportForStaff);
+  }
+  return reports;
 }
 
 function reportStreamKey(user) {
@@ -250,6 +257,7 @@ function startReportStreamForUser(io, user) {
   const uid = String(user?.uid || '').trim();
   const room = `user:${uid}`;
   const role = String(user?.role || '').toLowerCase();
+  const isSuperAdmin = String(user?.email || '').toLowerCase() === 'onegapo2026@gmail.com' || (role === 'admin' && !user?.branchId);
 
   let query;
   if (role === 'resident') {
@@ -288,7 +296,7 @@ function startReportStreamForUser(io, user) {
               }
             } else {
               if (canUserAccessReport(report, user)) {
-                io.to(room).emit('reports:created', report);
+                io.to(room).emit('reports:created', isSuperAdmin ? report : sanitizeReportForStaff(report));
               }
             }
             return;
@@ -301,7 +309,7 @@ function startReportStreamForUser(io, user) {
               }
             } else {
               if (canUserAccessReport(report, user)) {
-                io.to(room).emit('reports:modified', report);
+                io.to(room).emit('reports:modified', isSuperAdmin ? report : sanitizeReportForStaff(report));
               } else {
                 // If report no longer accessible to the user, inform client to remove it
                 io.to(room).emit('reports:deleted', { id: report.id });

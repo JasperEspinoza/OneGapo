@@ -4,6 +4,45 @@ const PRIMARY_ADMIN_EMAIL = 'onegapo2026@gmail.com';
 let cachedPrimaryAdminUid = null;
 let primaryAdminUidLookupAttempted = false;
 
+// ── In-Memory User Profile Cache (Reduces Firestore reads) ───────────────
+const userProfileCache = new Map();
+const USER_PROFILE_CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes
+
+function getCachedUserProfile(uid) {
+  if (!uid) return null;
+  const cached = userProfileCache.get(uid);
+  if (!cached) return null;
+  if (Date.now() - cached.cachedAt > USER_PROFILE_CACHE_TTL_MS) {
+    userProfileCache.delete(uid);
+    return null;
+  }
+  return cached.userData;
+}
+
+function setCachedUserProfile(uid, userData) {
+  if (!uid) return;
+  if (userProfileCache.size > 1000) {
+    const now = Date.now();
+    for (const [key, value] of userProfileCache.entries()) {
+      if (now - value.cachedAt > USER_PROFILE_CACHE_TTL_MS) {
+        userProfileCache.delete(key);
+      }
+    }
+  }
+  userProfileCache.set(uid, {
+    userData: userData || {},
+    cachedAt: Date.now(),
+  });
+}
+
+function invalidateUserProfileCache(uid) {
+  if (uid) {
+    userProfileCache.delete(uid);
+  } else {
+    userProfileCache.clear();
+  }
+}
+
 function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
 }
@@ -97,9 +136,14 @@ async function verifyToken(req, res, next) {
 
     if (decodedToken.uid) {
       try {
-        const userSnap = await admin.firestore().collection('users').doc(decodedToken.uid).get();
-        if (userSnap.exists) {
-          const userData = userSnap.data() || {};
+        let userData = getCachedUserProfile(decodedToken.uid);
+        if (!userData) {
+          const userSnap = await admin.firestore().collection('users').doc(decodedToken.uid).get();
+          userData = userSnap.exists ? (userSnap.data() || {}) : {};
+          setCachedUserProfile(decodedToken.uid, userData);
+        }
+
+        if (userData && Object.keys(userData).length > 0) {
           profileOverlay.fullName = userData.fullName || hydratedToken.fullName || '';
           profileOverlay.branchId = userData.branchId || hydratedToken.branchId || null;
           profileOverlay.branchName = userData.branchName || userData.location || hydratedToken.branchName || hydratedToken.location || null;
@@ -206,4 +250,5 @@ module.exports = {
   requireAnyPermission,
   hasPermission,
   hasAnyPermission,
+  invalidateUserProfileCache,
 };
