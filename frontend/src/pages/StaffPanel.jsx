@@ -35,7 +35,6 @@ const REPORT_CLASSIFICATION_OPTIONS = [
   { value: 'infrastructure', label: 'Infrastructure' },
   { value: 'safety', label: 'Public Safety' },
   { value: 'sanitation', label: 'Sanitation' },
-  { value: 'disaster', label: 'Disaster / Emergency' },
   { value: 'general', label: 'General Concern' },
 ];
 
@@ -197,17 +196,6 @@ function getDuplicateLocationLabel(report) {
   }
 
   return String(report?.location?.barangay || '').trim();
-}
-
-function isEmergencyReport(report) {
-  const category = String(report?.category || '').trim().toLowerCase();
-  if (category === 'disaster' || category === 'safety') {
-    return true;
-  }
-
-  const title = String(report?.title || '').trim().toLowerCase();
-  const description = String(report?.description || '').trim().toLowerCase();
-  return /(emergency|urgent|critical|high[\s-]?priority)/i.test(`${title} ${description}`);
 }
 
 function notificationTimestamp(notification) {
@@ -1587,7 +1575,7 @@ export default function StaffPanel() {
                         {visibleReports.map((report) => (
                           <article
                             key={report.id}
-                            className={`ss-report-card ap-report-row-clickable${isEmergencyReport(report) ? ' ss-report-card-emergency' : ''}`}
+                            className="ss-report-card ap-report-row-clickable"
                             role="button"
                             tabIndex={0}
                             onClick={() => {

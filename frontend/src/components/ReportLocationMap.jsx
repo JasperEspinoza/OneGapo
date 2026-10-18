@@ -27,7 +27,6 @@ const REPORT_CATEGORY_LEGEND = [
   { key: 'infrastructure', label: 'Infrastructure', color: '#2E7D32' },
   { key: 'safety', label: 'Public Safety', color: '#1976D2' },
   { key: 'sanitation', label: 'Sanitation', color: '#F59E0B' },
-  { key: 'disaster', label: 'Disaster / Emergency', color: '#D32F2F' },
   { key: 'general', label: 'General Concern', color: '#7B1FA2' },
 ];
 
@@ -335,7 +334,6 @@ function extractBarangayFromMarker(marker) {
 
 function getHeatPointWeight(marker) {
   const category = String(marker?.category || 'general').toLowerCase();
-  if (category === 'disaster') return 1;
   if (category === 'safety') return 0.95;
   if (category === 'sanitation') return 0.75;
   if (category === 'infrastructure') return 0.7;

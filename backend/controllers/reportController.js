@@ -116,7 +116,7 @@ function resolveReportTier({ category, title, description }) {
   const normalizedCategory = String(category || '').trim().toLowerCase();
   const text = `${String(title || '').toLowerCase()} ${String(description || '').toLowerCase()}`;
 
-  if (normalizedCategory === 'disaster' || /\b(live\s*wires?|flash\s*floods?)\b/i.test(text)) {
+  if (/\b(live\s*wires?|flash\s*floods?)\b/i.test(text)) {
     return 1;
   }
 

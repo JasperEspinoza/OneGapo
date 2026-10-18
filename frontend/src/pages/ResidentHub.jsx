@@ -17,7 +17,6 @@ const REPORT_CATEGORIES = [
   { value: 'infrastructure', label: 'Infrastructure' },
   { value: 'safety', label: 'Public Safety' },
   { value: 'sanitation', label: 'Sanitation' },
-  { value: 'disaster', label: 'Disaster / Emergency' },
   { value: 'general', label: 'General Concern' },
 ];
 
@@ -42,13 +41,6 @@ const REPORT_TEMPLATES = [
     category: 'infrastructure',
     title: 'Damaged road surface needs repair',
     description: 'The road surface is damaged with potholes and cracks that make travel unsafe. The issue needs repair and proper maintenance.',
-  },
-  {
-    id: 'emergency',
-    label: 'Urgent safety concern',
-    category: 'disaster',
-    title: 'Immediate safety hazard reported',
-    description: 'There is an urgent safety hazard in this location that may endanger residents or pedestrians. Please inspect and respond quickly.',
   },
 ];
 

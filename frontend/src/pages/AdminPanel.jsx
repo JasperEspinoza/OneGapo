@@ -105,7 +105,6 @@ const REPORT_CATEGORY_META = {
   infrastructure: { label: 'Infrastructure', color: '#2E7D32' },
   safety: { label: 'Public Safety', color: '#1976D2' },
   sanitation: { label: 'Sanitation', color: '#F59E0B' },
-  disaster: { label: 'Disaster / Emergency', color: '#D32F2F' },
   general: { label: 'General Concern', color: '#7B1FA2' },
 };
 

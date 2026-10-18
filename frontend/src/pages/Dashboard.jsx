@@ -10,7 +10,6 @@ const REPORT_CATEGORIES = [
   { value: 'infrastructure', label: 'Infrastructure' },
   { value: 'safety', label: 'Public Safety' },
   { value: 'sanitation', label: 'Sanitation' },
-  { value: 'disaster', label: 'Disaster / Emergency' },
   { value: 'general', label: 'General Concern' },
 ];
 

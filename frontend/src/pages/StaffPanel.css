@@ -139,14 +139,6 @@
   min-height: 2rem;
 }
 
-.ss-report-card-emergency {
-  border-color: var(--color-danger-border);
-  background: color-mix(in srgb, var(--color-danger-bg) 30%, var(--color-surface));
-}
-
-.ss-report-card-emergency .ss-report-title {
-  color: var(--color-danger-text);
-}
 .ss-forward-btn {
   min-width: 7.5rem;
 }
