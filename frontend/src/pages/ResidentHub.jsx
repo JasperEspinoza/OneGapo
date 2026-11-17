@@ -1657,6 +1657,7 @@ export default function ResidentHub({ viewMode = 'resident' }) {
                 onPick={handleMapPick}
                 helpText="Tap the map to pin location."
                 enableRouteControls={false}
+                enableBoundaryToggle={false}
               />
 
               <button

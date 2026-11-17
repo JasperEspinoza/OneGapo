@@ -518,6 +518,7 @@ export default function Dashboard() {
                 lat={selectedLat}
                 lng={selectedLng}
                 onPick={handleMapPick}
+                enableBoundaryToggle={false}
               />
 
               <button

@@ -845,7 +845,7 @@ export default function ReportLocationMap({
   const [routeLoading, setRouteLoading] = useState(false);
   const [routeError, setRouteError] = useState('');
   const [heatmapEnabled, setHeatmapEnabled] = useState(false);
-  const [showBoundaries, setShowBoundaries] = useState(initialShowBoundaries);
+  const [showBoundaries, setShowBoundaries] = useState(enableBoundaryToggle ? initialShowBoundaries : false);
   const [flashedBarangay, setFlashedBarangay] = useState(null);
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('active');
@@ -1443,7 +1443,7 @@ export default function ReportLocationMap({
               freezeMarkerAutoFit={preserveViewOnRefresh}
               showHeatmap={heatmapEnabled}
               boundaries={boundaries}
-              showBoundaries={showBoundaries}
+              showBoundaries={enableBoundaryToggle && showBoundaries}
               flashedBarangay={flashedBarangay}
               isDarkTheme={isDarkTheme}
             />
@@ -1617,7 +1617,7 @@ export default function ReportLocationMap({
                     freezeMarkerAutoFit={preserveViewOnRefresh}
                     showHeatmap={heatmapEnabled}
                     boundaries={boundaries}
-                    showBoundaries={showBoundaries}
+                    showBoundaries={enableBoundaryToggle && showBoundaries}
                     flashedBarangay={flashedBarangay}
                     isDarkTheme={isDarkTheme}
                   />
